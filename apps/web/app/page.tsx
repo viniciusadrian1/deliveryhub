@@ -1,15 +1,23 @@
-import { APP_NAME } from '@deliveryhub/shared';
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+
+import { useAuth } from '../lib/auth-context.js';
+import { r } from '../lib/routes.js';
 
 export default function HomePage() {
+  const router = useRouter();
+  const { state, loading } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+    router.replace(state ? r('/hub') : r('/login'));
+  }, [loading, state, router]);
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <h1 className="text-4xl font-bold">{APP_NAME}</h1>
-      <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
-        Camada única de controle sobre suas plataformas de delivery.
-      </p>
-      <p className="mt-8 rounded-md bg-zinc-100 px-4 py-2 text-sm dark:bg-zinc-800">
-        Fundação pronta. Sprint 1 começa pelo módulo de autenticação.
-      </p>
+    <main className="flex min-h-screen items-center justify-center">
+      <p className="text-zinc-500">Carregando…</p>
     </main>
   );
 }
