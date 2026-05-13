@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Inbox, Radio, Volume2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { OrderCard } from '../../../components/hub/order-card';
@@ -10,8 +11,8 @@ import { useAuth } from '../../../lib/auth-context';
 import type { OrderEventPayload, OrderListItem, OrderStatus } from '../../../lib/hub-types';
 import { getSocket } from '../../../lib/socket';
 
-const COLUMNS: { status: OrderStatus | OrderStatus[]; title: string }[] = [
-  { status: 'placed', title: 'Novos' },
+const COLUMNS: { status: OrderStatus | OrderStatus[]; title: string; accent?: boolean }[] = [
+  { status: 'placed', title: 'Novos', accent: true },
   { status: ['accepted', 'preparing'], title: 'Em preparo' },
   { status: 'ready', title: 'Prontos' },
   { status: 'dispatched', title: 'Despachados' },
@@ -21,6 +22,7 @@ export default function HubPage() {
   const qc = useQueryClient();
   const { state } = useAuth();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [soundOn, setSoundOn] = useState(true);
   const storeId = state?.storeId ?? null;
 
   const { data, isLoading, error } = useQuery({
@@ -30,10 +32,9 @@ export default function HubPage() {
         `/orders?storeId=${encodeURIComponent(storeId ?? '')}&limit=100`,
       ),
     enabled: !!storeId,
-    refetchInterval: 30_000, // fallback caso o WS caia
+    refetchInterval: 30_000,
   });
 
-  // Conexão Socket.IO + invalida cache em eventos.
   useEffect(() => {
     if (!storeId) return;
     const socket = getSocket();
@@ -41,14 +42,15 @@ export default function HubPage() {
 
     const onCreated = (_payload: OrderEventPayload) => {
       void qc.invalidateQueries({ queryKey: ['orders', storeId] });
-      try {
-        // bip curto base64 — fallback silencioso se navegador bloquear autoplay
-        const audio = new Audio(
-          'data:audio/wav;base64,UklGRhwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
-        );
-        audio.play().catch(() => undefined);
-      } catch {
-        // autoplay bloqueado pelo navegador — esperado em algumas situações
+      if (soundOn) {
+        try {
+          const audio = new Audio(
+            'data:audio/wav;base64,UklGRhwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+          );
+          audio.play().catch(() => undefined);
+        } catch {
+          /* autoplay bloqueado */
+        }
       }
     };
     const onUpdated = (payload: OrderEventPayload) => {
@@ -62,7 +64,7 @@ export default function HubPage() {
       socket.off('order.created', onCreated);
       socket.off('order.updated', onUpdated);
     };
-  }, [storeId, qc]);
+  }, [storeId, qc, soundOn]);
 
   const grouped = useMemo(() => {
     const map: Record<string, OrderListItem[]> = {};
@@ -75,11 +77,12 @@ export default function HubPage() {
 
   if (!storeId) {
     return (
-      <div className="flex h-full flex-col items-center justify-center text-center">
-        <h1 className="text-2xl font-bold">Nenhuma loja configurada</h1>
-        <p className="mt-2 max-w-md text-sm text-zinc-500">
-          Antes de receber pedidos, conecte sua primeira plataforma de delivery.
-          (Onboarding completo virá na próxima sprint de UI.)
+      <div className="surface-card flex h-full flex-col items-center justify-center p-10 text-center">
+        <Inbox className="mb-4 h-10 w-10 text-ink-tertiary" />
+        <h1 className="text-xl font-bold">Nenhuma loja configurada</h1>
+        <p className="mt-2 max-w-md text-sm text-ink-secondary">
+          Para receber pedidos, conecte sua primeira plataforma de delivery.
+          A conexão é feita na tela de Integrações.
         </p>
       </div>
     );
@@ -87,44 +90,68 @@ export default function HubPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Hub de Pedidos</h1>
-        <div className="text-sm text-zinc-500">
-          {data?.length ?? 0} pedidos · atualiza em tempo real
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1>Hub de Pedidos</h1>
+          <p className="mt-1 inline-flex items-center gap-2 text-sm text-ink-secondary">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-success-bright" />
+            </span>
+            <Radio className="h-3.5 w-3.5" />
+            atualizando em tempo real · {data?.length ?? 0} pedido{data?.length === 1 ? '' : 's'} no total
+          </p>
         </div>
-      </div>
+        <button
+          onClick={() => setSoundOn(!soundOn)}
+          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+            soundOn
+              ? 'border-surface-border-strong bg-surface-raised text-ink-primary'
+              : 'border-surface-border-subtle bg-surface-raised/50 text-ink-tertiary'
+          }`}
+        >
+          <Volume2 className="h-3.5 w-3.5" />
+          Som {soundOn ? 'ligado' : 'desligado'}
+        </button>
+      </header>
 
       {error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-status-error dark:bg-red-950/40">
+        <p className="mb-3 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger-bright">
           Não foi possível carregar os pedidos.
         </p>
       )}
 
-      <div className="grid flex-1 min-h-0 gap-3 overflow-x-auto md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid flex-1 min-h-0 gap-3 overflow-x-auto md:grid-cols-2 xl:grid-cols-4">
         {COLUMNS.map((col) => {
           const orders = grouped[col.title] ?? [];
           return (
             <section
               key={col.title}
-              className="flex min-w-[250px] flex-col rounded-lg border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-800 dark:bg-zinc-900/40"
+              className="flex min-w-[280px] flex-col rounded-xl border border-surface-border-subtle bg-surface-base/40"
             >
-              <header className="mb-2 flex items-center justify-between px-1">
-                <h2 className="text-sm font-semibold uppercase tracking-wider">
+              <header className="flex items-center justify-between border-b border-surface-border-subtle px-3 py-2.5">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
                   {col.title}
                 </h2>
-                <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-semibold dark:bg-zinc-800">
+                <span
+                  className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                    col.accent && orders.length > 0
+                      ? 'bg-brand-500/15 text-brand-300'
+                      : 'bg-surface-overlay text-ink-secondary'
+                  }`}
+                >
                   {orders.length}
                 </span>
               </header>
-              <div className="flex-1 space-y-2 overflow-y-auto">
+              <div className="flex-1 space-y-2 overflow-y-auto p-2">
                 {isLoading && orders.length === 0 && (
-                  <div className="rounded-md border border-dashed border-zinc-300 p-3 text-center text-xs text-zinc-500 dark:border-zinc-700">
+                  <div className="rounded-lg border border-dashed border-surface-border-subtle p-4 text-center text-xs text-ink-tertiary">
                     Carregando…
                   </div>
                 )}
                 {!isLoading && orders.length === 0 && (
-                  <div className="rounded-md border border-dashed border-zinc-300 p-3 text-center text-xs text-zinc-500 dark:border-zinc-700">
-                    Nenhum pedido nesta coluna
+                  <div className="rounded-lg border border-dashed border-surface-border-subtle p-4 text-center text-xs text-ink-tertiary">
+                    {col.accent ? 'Aguardando novos pedidos' : 'Vazio'}
                   </div>
                 )}
                 {orders.map((order) => (

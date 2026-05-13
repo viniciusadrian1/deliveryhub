@@ -1,10 +1,23 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
+import {
+  ArrowRight,
+  CheckCircle2,
+  ChefHat,
+  Clock,
+  Loader2,
+  Phone,
+  Truck,
+  User,
+  X,
+  XCircle,
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { api, ApiError } from '../../lib/api';
-import { formatCents, STATUS_LABELS, timeAgo } from '../../lib/format';
+import { formatCents, timeAgo } from '../../lib/format';
 import type { OrderDetail, OrderStatus } from '../../lib/hub-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -14,14 +27,43 @@ interface OrderDrawerProps {
   onClose: () => void;
 }
 
-const NEXT_ACTION: Record<OrderStatus, { label: string; path: string } | null> = {
-  placed: { label: 'Aceitar', path: 'accept' },
-  accepted: { label: 'Iniciar preparo', path: 'preparing' },
-  preparing: { label: 'Marcar pronto', path: 'ready' },
-  ready: { label: 'Despachar', path: 'dispatch' },
-  dispatched: { label: 'Marcar entregue', path: 'delivered' },
+interface NextAction {
+  label: string;
+  path: string;
+  icon: typeof CheckCircle2;
+}
+
+const NEXT_ACTION: Record<OrderStatus, NextAction | null> = {
+  placed: { label: 'Aceitar pedido', path: 'accept', icon: CheckCircle2 },
+  accepted: { label: 'Iniciar preparo', path: 'preparing', icon: ChefHat },
+  preparing: { label: 'Marcar pronto', path: 'ready', icon: CheckCircle2 },
+  ready: { label: 'Despachar', path: 'dispatch', icon: Truck },
+  dispatched: { label: 'Marcar entregue', path: 'delivered', icon: CheckCircle2 },
   delivered: null,
   cancelled: null,
+};
+
+const STATUS_VARIANT: Record<
+  OrderStatus,
+  'brand' | 'info' | 'warning' | 'success' | 'neutral' | 'danger'
+> = {
+  placed: 'brand',
+  accepted: 'info',
+  preparing: 'warning',
+  ready: 'success',
+  dispatched: 'info',
+  delivered: 'success',
+  cancelled: 'danger',
+};
+
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  placed: 'Novo',
+  accepted: 'Aceito',
+  preparing: 'Em preparo',
+  ready: 'Pronto',
+  dispatched: 'Despachado',
+  delivered: 'Entregue',
+  cancelled: 'Cancelado',
 };
 
 export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
@@ -36,9 +78,8 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   });
 
   const advance = useMutation({
-    mutationFn: async (path: string) => {
-      return api<OrderDetail>(`/orders/${orderId}/${path}`, { method: 'POST' });
-    },
+    mutationFn: async (path: string) =>
+      api<OrderDetail>(`/orders/${orderId}/${path}`, { method: 'POST' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['orders'] });
       void qc.invalidateQueries({ queryKey: ['order', orderId] });
@@ -46,12 +87,11 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   });
 
   const reject = useMutation({
-    mutationFn: async (reason: string) => {
-      return api<OrderDetail>(`/orders/${orderId}/reject`, {
+    mutationFn: async (reason: string) =>
+      api<OrderDetail>(`/orders/${orderId}/reject`, {
         method: 'POST',
         body: { reason },
-      });
-    },
+      }),
     onSuccess: () => {
       setShowRejectForm(false);
       setRejectReason('');
@@ -65,83 +105,113 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   const nextAction = data ? NEXT_ACTION[data.status] : null;
   const canReject = data && !['delivered', 'cancelled'].includes(data.status);
   const apiErr = (advance.error ?? reject.error) as ApiError | null;
+  const NextIcon = nextAction?.icon;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="fixed inset-0 bg-black/30" />
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
       <div
-        className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-zinc-200 bg-white shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+        className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden border-l border-surface-border bg-surface-overlay shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-          <h2 className="font-semibold">
-            {data ? `Pedido #${data.externalId.slice(0, 8)}` : 'Pedido'}
-          </h2>
+        <header className="flex items-center justify-between border-b border-surface-border-subtle px-5 py-4">
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-ink-tertiary">
+              Pedido
+            </p>
+            <h2 className="font-mono text-sm font-semibold text-ink-primary">
+              {data ? `#${data.externalId.slice(0, 12)}` : '…'}
+            </h2>
+          </div>
           <button
             onClick={onClose}
-            className="text-2xl leading-none text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
+            className="rounded-md p-1.5 text-ink-tertiary transition-colors hover:bg-surface-raised hover:text-ink-primary"
+            aria-label="Fechar"
           >
-            ×
+            <X className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          {isLoading && <p className="text-sm text-zinc-500">Carregando…</p>}
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+          {isLoading && (
+            <div className="flex items-center gap-2 text-sm text-ink-secondary">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando…
+            </div>
+          )}
           {error && (
-            <p className="text-sm text-status-error">Erro ao carregar o pedido.</p>
+            <p className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger-bright">
+              Erro ao carregar o pedido.
+            </p>
           )}
 
           {data && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="flex items-center gap-2">
                 <Badge color={data.platform.colorHex}>{data.platform.name}</Badge>
-                <Badge>{STATUS_LABELS[data.status]}</Badge>
-                <span className="text-xs text-zinc-500">{timeAgo(data.placedAt)}</span>
+                <Badge variant={STATUS_VARIANT[data.status]} dot>
+                  {STATUS_LABELS[data.status]}
+                </Badge>
+                <span className="inline-flex items-center gap-1 text-xs text-ink-tertiary">
+                  <Clock className="h-3 w-3" />
+                  {timeAgo(data.placedAt)}
+                </span>
               </div>
 
               {data.customer && (
-                <div>
-                  <p className="text-sm font-medium">{data.customer.name}</p>
-                  {data.customer.phone && (
-                    <p className="text-xs text-zinc-500">{data.customer.phone}</p>
-                  )}
+                <div className="surface-card flex items-center gap-3 p-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500/10 text-brand-400">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink-primary">
+                      {data.customer.name}
+                    </p>
+                    {data.customer.phone && (
+                      <p className="inline-flex items-center gap-1 text-xs text-ink-secondary">
+                        <Phone className="h-3 w-3" />
+                        {data.customer.phone}
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 
               <div>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  Itens
+                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                  Itens · {data.items.length}
                 </h3>
-                <ul className="space-y-3">
+                <ul className="space-y-2">
                   {data.items.map((item) => (
                     <li
                       key={item.id}
-                      className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800"
+                      className="rounded-lg border border-surface-border-subtle bg-surface-raised p-3"
                     >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <p className="text-sm font-medium">
-                            {item.qty}× {item.nameSnapshot}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-ink-primary">
+                            <span className="text-ink-tertiary">{item.qty}×</span>{' '}
+                            {item.nameSnapshot}
                           </p>
                           {item.notes && (
-                            <p className="text-xs italic text-zinc-500">"{item.notes}"</p>
+                            <p className="mt-0.5 text-xs italic text-ink-secondary">
+                              "{item.notes}"
+                            </p>
                           )}
                         </div>
-                        <span className="text-sm font-mono">
+                        <span className="shrink-0 text-sm font-mono tabular text-ink-primary">
                           {formatCents(item.totalCents)}
                         </span>
                       </div>
                       {item.modifiers.length > 0 && (
-                        <ul className="mt-1 ml-4 space-y-0.5">
+                        <ul className="mt-2 space-y-1 border-l-2 border-surface-border-subtle pl-3">
                           {item.modifiers.map((m) => (
                             <li
                               key={m.id}
-                              className="flex justify-between text-xs text-zinc-500"
+                              className="flex justify-between text-xs text-ink-secondary"
                             >
-                              <span>
-                                + {m.qty}× {m.nameSnapshot}
-                              </span>
-                              <span className="font-mono">
+                              <span>+ {m.qty}× {m.nameSnapshot}</span>
+                              <span className="font-mono tabular">
                                 {formatCents(m.unitPriceCents * m.qty)}
                               </span>
                             </li>
@@ -153,7 +223,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                 </ul>
               </div>
 
-              <div className="space-y-1 rounded-md bg-zinc-50 p-3 text-sm dark:bg-zinc-800">
+              <div className="surface-card p-4">
                 <Row label="Subtotal" value={formatCents(data.subtotalCents)} />
                 <Row label="Entrega" value={formatCents(data.deliveryFeeCents)} />
                 <Row
@@ -168,40 +238,43 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                     muted
                   />
                 )}
-                <div className="my-1 border-t border-zinc-200 dark:border-zinc-700" />
+                <div className="my-2 h-px bg-surface-border-subtle" />
                 <Row label="Total" value={formatCents(data.totalCents)} bold />
-                <Row label="Líquido pra você" value={formatCents(data.netCents)} bold />
+                <Row
+                  label="Líquido pra você"
+                  value={formatCents(data.netCents)}
+                  bold
+                  tone="success"
+                />
               </div>
 
               {data.notes && (
-                <div className="rounded-md bg-yellow-50 p-3 text-sm dark:bg-yellow-950/30">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-yellow-700 dark:text-yellow-500">
+                <div className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-warning-bright">
                     Observação do cliente
                   </p>
-                  <p className="mt-1 italic">"{data.notes}"</p>
+                  <p className="mt-1 italic text-ink-primary">"{data.notes}"</p>
                 </div>
               )}
 
               {data.cancellationReason && (
-                <div className="rounded-md bg-red-50 p-3 text-sm dark:bg-red-950/30">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-status-error">
+                <div className="rounded-lg border border-danger/30 bg-danger-soft p-3 text-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-danger-bright">
                     Cancelado
                   </p>
-                  <p className="mt-1">{data.cancellationReason}</p>
+                  <p className="mt-1 text-ink-primary">{data.cancellationReason}</p>
                 </div>
               )}
 
               {apiErr && (
-                <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-status-error dark:bg-red-950/40">
-                  {apiErr.status === 400
-                    ? 'Transição inválida.'
-                    : 'Erro ao executar a ação.'}
+                <p className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger-bright">
+                  {apiErr.status === 400 ? 'Transição inválida.' : 'Erro ao executar a ação.'}
                 </p>
               )}
 
               {showRejectForm && (
-                <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                <div className="surface-card p-3">
+                  <label className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
                     Motivo da rejeição
                   </label>
                   <input
@@ -209,7 +282,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                     value={rejectReason}
                     onChange={(e) => setRejectReason(e.target.value)}
                     placeholder="Ex.: item esgotado"
-                    className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+                    className="mt-2 w-full rounded-lg border border-surface-border bg-surface-base px-3 py-2 text-sm text-ink-primary placeholder:text-ink-tertiary focus:border-brand-500 focus:outline-none"
                     autoFocus
                   />
                   <div className="mt-2 flex justify-end gap-2">
@@ -228,6 +301,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                       size="sm"
                       disabled={!rejectReason.trim() || reject.isPending}
                       onClick={() => reject.mutate(rejectReason.trim())}
+                      leftIcon={<XCircle className="h-3.5 w-3.5" />}
                     >
                       {reject.isPending ? 'Enviando…' : 'Confirmar rejeição'}
                     </Button>
@@ -239,12 +313,13 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
         </div>
 
         {data && (canReject || nextAction) && !showRejectForm && (
-          <div className="flex items-center gap-2 border-t border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <footer className="flex items-center gap-2 border-t border-surface-border-subtle bg-surface-base/40 px-5 py-3">
             {canReject && data.status === 'placed' && (
               <Button
                 variant="secondary"
                 onClick={() => setShowRejectForm(true)}
                 disabled={advance.isPending}
+                leftIcon={<XCircle className="h-3.5 w-3.5" />}
               >
                 Recusar
               </Button>
@@ -262,12 +337,14 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
               <Button
                 className="ml-auto"
                 onClick={() => advance.mutate(nextAction.path)}
-                disabled={advance.isPending}
+                loading={advance.isPending}
+                leftIcon={NextIcon && <NextIcon className="h-4 w-4" />}
+                rightIcon={!advance.isPending && <ArrowRight className="h-4 w-4" />}
               >
-                {advance.isPending ? 'Enviando…' : `${nextAction.label} →`}
+                {nextAction.label}
               </Button>
             )}
-          </div>
+          </footer>
         )}
       </div>
     </div>
@@ -279,22 +356,28 @@ function Row({
   value,
   muted,
   bold,
+  tone,
 }: {
   label: string;
   value: string;
   muted?: boolean;
   bold?: boolean;
+  tone?: 'success';
 }) {
   return (
-    <div
-      className={
-        'flex justify-between ' +
-        (muted ? 'text-zinc-500 ' : '') +
-        (bold ? 'font-semibold ' : '')
-      }
-    >
-      <span>{label}</span>
-      <span className="font-mono">{value}</span>
+    <div className="flex justify-between py-0.5 text-sm">
+      <span className={clsx('text-ink-secondary', muted && 'text-ink-tertiary')}>{label}</span>
+      <span
+        className={clsx(
+          'font-mono tabular',
+          bold && 'font-semibold',
+          tone === 'success' && 'text-success-bright',
+          !tone && !muted && 'text-ink-primary',
+          muted && 'text-ink-tertiary',
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }

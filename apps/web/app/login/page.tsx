@@ -1,8 +1,11 @@
 'use client';
 
+import { ArrowRight, Mail, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
+import { AuthAside } from '../../components/brand/auth-aside';
+import { Logo } from '../../components/brand/logo';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { ApiError } from '../../lib/api';
@@ -36,51 +39,73 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h1 className="text-2xl font-bold">DeliveryHub</h1>
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-          Entre na sua conta
-        </p>
+    <main className="flex min-h-screen">
+      <AuthAside />
 
-        <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
-          <Input
-            label="E-mail"
-            type="email"
-            name="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-            autoFocus
-          />
-          <Input
-            label="Senha"
-            type="password"
-            name="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-            minLength={8}
-          />
+      <div className="flex flex-1 items-center justify-center p-6 md:p-12">
+        <div className="w-full max-w-sm">
+          {/* logo só em mobile (no desktop fica no aside) */}
+          <div className="mb-8 lg:hidden">
+            <Logo size={32} />
+          </div>
 
-          {error && (
-            <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-status-error dark:bg-red-950/40">
-              {error}
-            </p>
-          )}
+          <h1 className="text-2xl font-bold tracking-tight">Entrar na sua conta</h1>
+          <p className="mt-2 text-sm text-ink-secondary">
+            Bem-vindo de volta. Continue de onde parou.
+          </p>
 
-          <Button type="submit" disabled={submitting} className="mt-2">
-            {submitting ? 'Entrando…' : 'Entrar'}
-          </Button>
-        </form>
+          <form onSubmit={onSubmit} className="mt-8 space-y-4">
+            <Input
+              label="E-mail"
+              type="email"
+              name="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+              autoFocus
+              leftIcon={<Mail className="h-4 w-4" />}
+              placeholder="voce@restaurante.com.br"
+            />
+            <Input
+              label="Senha"
+              type="password"
+              name="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+              minLength={8}
+              leftIcon={<Lock className="h-4 w-4" />}
+              placeholder="••••••••"
+            />
 
-        <div className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">
-          Não tem conta?{' '}
-          <Link href={r('/signup')} className="font-medium underline">
-            Criar conta
-          </Link>
+            {error && (
+              <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger-bright">
+                {error}
+              </div>
+            )}
+
+            <Button
+              type="submit"
+              loading={submitting}
+              fullWidth
+              size="lg"
+              rightIcon={!submitting && <ArrowRight className="h-4 w-4" />}
+            >
+              {submitting ? 'Entrando…' : 'Entrar'}
+            </Button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-ink-secondary">
+            Ainda não tem conta?{' '}
+            <Link
+              href={r('/signup')}
+              className="font-semibold text-brand-400 transition-colors hover:text-brand-300"
+            >
+              Criar conta grátis
+            </Link>
+          </p>
         </div>
       </div>
     </main>

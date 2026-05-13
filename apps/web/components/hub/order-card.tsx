@@ -1,8 +1,9 @@
 'use client';
 
 import clsx from 'clsx';
+import { Clock, User } from 'lucide-react';
 
-import { formatCents, STATUS_LABELS, timeAgo } from '../../lib/format';
+import { formatCents, timeAgo } from '../../lib/format';
 import type { OrderListItem } from '../../lib/hub-types';
 import { Badge } from '../ui/badge';
 
@@ -17,43 +18,42 @@ export function OrderCard({ order, onClick, highlight = false }: OrderCardProps)
     <button
       onClick={onClick}
       className={clsx(
-        'group w-full rounded-lg border bg-white p-3 text-left transition-all hover:shadow-md dark:bg-zinc-900',
+        'group w-full overflow-hidden rounded-xl border bg-surface-raised bg-surface-gradient p-4 text-left shadow-sm transition-all hover:border-surface-border-strong hover:shadow-DEFAULT',
         highlight
-          ? 'border-status-open border-2 shadow-md'
-          : 'border-zinc-200 dark:border-zinc-800',
+          ? 'border-brand-500/40 ring-1 ring-brand-500/30'
+          : 'border-surface-border-subtle',
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Badge color={order.platform.colorHex}>{order.platform.name}</Badge>
-            <span className="text-xs font-mono text-zinc-500">
-              #{order.externalId.slice(0, 6)}
-            </span>
-          </div>
-          <p className="mt-1 truncate text-sm font-medium">
-            {order.customer?.name ?? 'Cliente anônimo'}
-          </p>
-        </div>
-        <span className="shrink-0 text-xs text-zinc-500">{timeAgo(order.placedAt)}</span>
-      </div>
-
-      <div className="mt-2 flex items-baseline justify-between">
-        <span className="text-base font-semibold">{formatCents(order.totalCents)}</span>
-        <span className="text-xs text-zinc-500">
-          Líquido {formatCents(order.netCents)}
+        <Badge color={order.platform.colorHex}>{order.platform.name}</Badge>
+        <span className="inline-flex items-center gap-1 text-[11px] text-ink-tertiary">
+          <Clock className="h-3 w-3" />
+          {timeAgo(order.placedAt)}
         </span>
       </div>
 
-      {order.notes && (
-        <p className="mt-1 line-clamp-1 text-xs italic text-zinc-500">
-          "{order.notes}"
-        </p>
-      )}
-
-      <div className="mt-2 text-[10px] uppercase tracking-wider text-zinc-400">
-        {STATUS_LABELS[order.status]}
+      <div className="mt-3 flex items-center gap-2 text-sm">
+        <User className="h-3.5 w-3.5 text-ink-tertiary" />
+        <span className="truncate font-medium text-ink-primary">
+          {order.customer?.name ?? 'Cliente anônimo'}
+        </span>
       </div>
+
+      <div className="mt-3 flex items-baseline justify-between border-t border-surface-border-subtle pt-3">
+        <span className="text-lg font-bold tabular text-ink-primary">
+          {formatCents(order.totalCents)}
+        </span>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wider text-ink-tertiary">Líquido</p>
+          <p className="text-xs font-semibold tabular text-success-bright">
+            {formatCents(order.netCents)}
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-2 truncate text-[11px] font-mono text-ink-tertiary">
+        #{order.externalId.slice(0, 10)}
+      </p>
     </button>
   );
 }

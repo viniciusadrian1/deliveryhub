@@ -1,38 +1,50 @@
 import clsx from 'clsx';
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
+  hint?: string;
   error?: string;
+  leftIcon?: ReactNode;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, className, id, ...rest }, ref) => {
+  ({ label, hint, error, leftIcon, className, id, ...rest }, ref) => {
     const inputId = id ?? rest.name;
     return (
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         {label && (
           <label
             htmlFor={inputId}
-            className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            className="text-xs font-medium uppercase tracking-wider text-ink-secondary"
           >
             {label}
           </label>
         )}
-        <input
-          id={inputId}
-          ref={ref}
-          className={clsx(
-            'h-10 rounded-md border bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:bg-zinc-950 dark:text-white dark:placeholder:text-zinc-600 dark:focus:ring-white',
-            error
-              ? 'border-status-error'
-              : 'border-zinc-300 dark:border-zinc-700',
-            className,
+        <div className="relative">
+          {leftIcon && (
+            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-ink-tertiary">
+              {leftIcon}
+            </div>
           )}
-          {...rest}
-        />
+          <input
+            id={inputId}
+            ref={ref}
+            className={clsx(
+              'h-11 w-full rounded-lg border bg-surface-raised text-sm text-ink-primary placeholder:text-ink-tertiary',
+              'transition-colors duration-150 focus:outline-none',
+              leftIcon ? 'pl-10 pr-3' : 'px-3',
+              error
+                ? 'border-danger focus:border-danger'
+                : 'border-surface-border hover:border-surface-border-strong focus:border-brand-500',
+              className,
+            )}
+            {...rest}
+          />
+        </div>
+        {hint && !error && <p className="text-xs text-ink-tertiary">{hint}</p>}
         {error && (
-          <p className="text-xs text-status-error" role="alert">
+          <p className="text-xs font-medium text-danger-bright" role="alert">
             {error}
           </p>
         )}

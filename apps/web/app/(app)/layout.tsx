@@ -1,5 +1,6 @@
 'use client';
 
+import { Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
@@ -21,17 +22,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (loading || !state) {
     return (
       <main className="flex min-h-screen items-center justify-center">
-        <p className="text-zinc-500">Carregando…</p>
+        <Loader2 className="h-6 w-6 animate-spin text-brand-400" />
       </main>
     );
   }
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Topbar />
       <div className="flex flex-1 min-h-0">
         <Sidebar />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <div className="flex flex-1 flex-col min-w-0">
+          <Topbar />
+          <main className="flex-1 overflow-auto p-6 md:p-8">
+            <div className="mx-auto max-w-7xl">{children}</div>
+          </main>
+        </div>
       </div>
     </div>
   );
