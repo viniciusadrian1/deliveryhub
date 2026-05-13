@@ -13,6 +13,7 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { TenantPrismaService } from '../../common/tenant/tenant-prisma.service.js';
 import { VaultService } from '../../common/vault/vault.service.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { AdapterRegistry } from './adapter.registry.js';
 
 interface SessionContext {
@@ -43,6 +44,7 @@ export class IntegrationsService {
     private readonly vault: VaultService,
     private readonly registry: AdapterRegistry,
     private readonly audit: AuditLogService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async listConnections(auth: AuthContext): Promise<
@@ -214,7 +216,42 @@ export class IntegrationsService {
         },
       });
       this.logger.error({ err, connectionId: conn.id }, 'finalize_failed');
+
+      // Notifica owners + managers da org sobre a falha.
+      await this.notifyOrgManagers(auth.orgId, {
+        kind: 'integration_error',
+        title: `Falha ao conectar ${conn.platform.name}`,
+        body: message.slice(0, 240),
+        linkUrl: '/integrations',
+      });
+
       throw err;
+    }
+  }
+
+  private async notifyOrgManagers(
+    organizationId: string,
+    payload: {
+      kind: 'integration_error' | 'platform_disconnected';
+      title: string;
+      body: string;
+      linkUrl?: string;
+    },
+  ): Promise<void> {
+    const targets = await this.prisma.membership.findMany({
+      where: { organizationId, role: { in: ['owner', 'manager'] } },
+      include: { user: { select: { id: true, email: true } } },
+    });
+    for (const t of targets) {
+      await this.notifications.create({
+        userId: t.userId,
+        organizationId,
+        kind: payload.kind,
+        title: payload.title,
+        body: payload.body,
+        linkUrl: payload.linkUrl,
+        email: t.user.email,
+      });
     }
   }
 
@@ -248,6 +285,13 @@ export class IntegrationsService {
       action: 'delete',
       ip: session.ip,
       userAgent: session.userAgent,
+    });
+
+    await this.notifyOrgManagers(auth.orgId, {
+      kind: 'platform_disconnected',
+      title: 'Plataforma desconectada',
+      body: `A integração foi revogada. Você não receberá pedidos por este canal até reconectar.`,
+      linkUrl: '/integrations',
     });
   }
 

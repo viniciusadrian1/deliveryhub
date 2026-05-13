@@ -197,6 +197,59 @@ model MenuItemPlatformConfig {
   @@map("menu_item_platform_config")
 }
 
+// ============================================================
+// Notifications (Sprint 7)
+// ============================================================
+
+enum NotificationKind {
+  welcome
+  invitation_accepted
+  integration_error
+  password_changed
+  new_order
+  platform_disconnected
+  payout_mismatch
+  daily_goal
+  system
+
+  @@map("notification_kind")
+}
+
+model Notification {
+  id             String           @id @default(uuid(7))
+  organizationId String?          @map("organization_id")
+  userId         String           @map("user_id")
+  kind           NotificationKind
+  title          String
+  body           String
+  linkUrl        String?          @map("link_url")
+  metadata       Json?
+  readAt         DateTime?        @map("read_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, readAt])
+  @@map("notification")
+}
+
+model NotificationPreference {
+  id            String           @id @default(uuid(7))
+  userId        String           @map("user_id")
+  kind          NotificationKind
+  channelInApp  Boolean          @default(true) @map("channel_in_app")
+  channelEmail  Boolean          @default(false) @map("channel_email")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind])
+  @@map("notification_preference")
+}
+
 model VaultSecret {
   id         String   @id @default(uuid(7))
   name       String   @unique
@@ -238,6 +291,7 @@ model Organization {
   modifierGroups          ModifierGroup[]
   modifiers               Modifier[]
   menuItemPlatformConfigs MenuItemPlatformConfig[]
+  notifications           Notification[]
 
   @@map("organization")
 }
@@ -252,11 +306,13 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  memberships         Membership[]
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  invitationsSent     Invitation[]         @relation("invitations_sent")
-  invitationsAccepted Invitation[]         @relation("invitations_accepted")
+  memberships             Membership[]
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  invitationsSent         Invitation[]             @relation("invitations_sent")
+  invitationsAccepted     Invitation[]             @relation("invitations_accepted")
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@map("user")
 }

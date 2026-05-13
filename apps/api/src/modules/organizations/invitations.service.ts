@@ -18,6 +18,7 @@ import { loadEnv } from '../../config/env.js';
 import type { AuthResult } from '../auth/auth.service.js';
 import { PasswordService } from '../auth/password.service.js';
 import { TokensService } from '../auth/tokens.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 const INVITATION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 dias
 
@@ -38,6 +39,7 @@ export class InvitationsService {
     private readonly tokens: TokensService,
     private readonly email: EmailService,
     private readonly audit: AuditLogService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(
@@ -174,6 +176,23 @@ export class InvitationsService {
       ip: session.ip,
       userAgent: session.userAgent,
     });
+
+    // Notifica quem convidou.
+    const inviter = await this.prisma.user.findUnique({
+      where: { id: invitation.invitedByUserId },
+      select: { id: true, email: true },
+    });
+    if (inviter) {
+      await this.notifications.create({
+        userId: inviter.id,
+        organizationId: invitation.organizationId,
+        kind: 'invitation_accepted',
+        title: 'Convite aceito',
+        body: `${user.name} aceitou seu convite para entrar como ${invitation.role}.`,
+        linkUrl: '/settings/team',
+        email: inviter.email,
+      });
+    }
 
     const access = await this.tokens.signAccessToken({
       sub: user.id,

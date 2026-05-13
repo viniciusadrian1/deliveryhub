@@ -2,6 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type { LoginInput } from './dto/login.dto.js';
 import type { SignupInput } from './dto/signup.dto.js';
 import { PasswordService } from './password.service.js';
@@ -36,6 +37,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokensService,
     private readonly audit: AuditLogService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async signup(input: SignupInput, session: AuthSessionContext = {}): Promise<AuthResult> {
@@ -70,6 +72,16 @@ export class AuthService {
       action: 'signup',
       ip: session.ip,
       userAgent: session.userAgent,
+    });
+
+    await this.notifications.create({
+      userId: user.id,
+      organizationId: organization.id,
+      kind: 'welcome',
+      title: `Bem-vindo ao DeliveryHub, ${user.name}`,
+      body: `Sua organização "${organization.name}" foi criada. Próximo passo: conecte sua primeira plataforma de delivery.`,
+      linkUrl: '/integrations',
+      email: user.email,
     });
 
     return this.issueSessionTokens(user, membership, organization, session);
