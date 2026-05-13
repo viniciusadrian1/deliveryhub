@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 
+import { THEME_INIT_SCRIPT } from '../lib/theme-context';
 import { Providers } from './providers';
 
 import './globals.css';
@@ -19,7 +20,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`dark ${inter.variable}`} suppressHydrationWarning>
+    <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
+      <head>
+        {/* Resolve theme before first paint to avoid flash. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="min-h-screen font-sans antialiased">
         <Providers>{children}</Providers>
       </body>

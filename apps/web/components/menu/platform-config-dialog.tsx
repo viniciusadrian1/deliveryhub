@@ -95,9 +95,9 @@ export function PlatformConfigDialog({ open, onClose, storeId, item }: Props) {
         </Button>
       }
     >
-      {isLoading && <p className="text-sm text-zinc-500">Carregando…</p>}
+      {isLoading && <p className="text-sm text-ink-tertiary">Carregando…</p>}
       {!isLoading && configs.length === 0 && (
-        <p className="rounded-md bg-zinc-50 px-4 py-3 text-sm text-zinc-500 dark:bg-zinc-800">
+        <p className="rounded-md border border-surface-border-subtle bg-surface-base px-4 py-3 text-sm text-ink-secondary">
           Este item ainda não tem configuração em nenhuma plataforma. Faça a{' '}
           <b>sincronização inicial</b> em Integrações para importar do iFood, ou
           publique-o manualmente:
@@ -110,19 +110,19 @@ export function PlatformConfigDialog({ open, onClose, storeId, item }: Props) {
           return (
             <div
               key={cfg.id}
-              className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+              className="rounded-lg border border-surface-border-subtle bg-surface-raised p-4"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Badge color={cfg.platform.colorHex}>{cfg.platform.name}</Badge>
                   {cfg.externalId && (
-                    <span className="font-mono text-xs text-zinc-500">
+                    <span className="font-mono text-xs text-ink-tertiary">
                       ext:{cfg.externalId.slice(0, 12)}
                     </span>
                   )}
                 </div>
                 {cfg.lastSyncError && (
-                  <span className="text-xs text-status-error">
+                  <span className="text-xs text-danger-bright">
                     erro: {cfg.lastSyncError.slice(0, 40)}
                   </span>
                 )}
@@ -159,10 +159,10 @@ export function PlatformConfigDialog({ open, onClose, storeId, item }: Props) {
                     <p
                       className={
                         m.marginPct >= 35
-                          ? 'text-status-open'
+                          ? 'text-success-bright'
                           : m.marginPct >= 20
-                            ? 'text-status-paused'
-                            : 'text-status-error'
+                            ? 'text-warning-bright'
+                            : 'text-danger-bright'
                       }
                     >
                       Margem (bruta){' '}

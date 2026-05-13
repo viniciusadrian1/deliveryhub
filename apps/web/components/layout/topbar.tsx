@@ -4,6 +4,7 @@ import { Bell, ChevronDown, LogOut, Store, User } from 'lucide-react';
 import { useState } from 'react';
 
 import { useAuth } from '../../lib/auth-context';
+import { ThemeToggle } from './theme-toggle';
 
 export function Topbar() {
   const { state, logout } = useAuth();
@@ -27,6 +28,7 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-2">
+        <ThemeToggle />
         <button
           className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-secondary transition-colors hover:bg-surface-overlay hover:text-ink-primary"
           aria-label="Notificações"

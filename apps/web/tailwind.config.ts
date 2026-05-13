@@ -1,5 +1,17 @@
 import type { Config } from 'tailwindcss';
 
+/**
+ * Color tokens use CSS variables defined in app/globals.css so the theme
+ * (light / dark) can be swapped at runtime by toggling the `.dark` class on
+ * <html>. Surfaces and ink store *RGB triplets* (e.g. `8 8 13`) so that
+ * Tailwind opacity utilities like `bg-surface-base/50` still work via
+ * `rgb(var(--surface-base) / <alpha-value>)`.
+ *
+ * Brand and platform colors are intentionally fixed: they are identity, not
+ * theme.
+ */
+const surfaceRgb = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
   darkMode: 'class',
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}', './lib/**/*.{ts,tsx}'],
@@ -9,7 +21,7 @@ const config: Config = {
         sans: ['var(--font-sans)', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
       },
       colors: {
-        // ====== Brand ======
+        // ====== Brand (theme-invariant) ======
         // Laranja queimado — distinto de iFood (vermelho puro) e Rappi (laranja vivo).
         brand: {
           50: '#fff7ed',
@@ -23,43 +35,43 @@ const config: Config = {
           800: '#9a3412',
           900: '#7c2d12',
         },
-        // ====== Surfaces (dark first) ======
+        // ====== Surfaces (themed via CSS vars) ======
         surface: {
-          base: '#08080d',
-          raised: '#11111a',
-          overlay: '#1a1a26',
-          'border-subtle': '#26262f',
-          border: '#33333f',
-          'border-strong': '#4c4c5a',
+          base: surfaceRgb('surface-base'),
+          raised: surfaceRgb('surface-raised'),
+          overlay: surfaceRgb('surface-overlay'),
+          'border-subtle': surfaceRgb('surface-border-subtle'),
+          border: surfaceRgb('surface-border'),
+          'border-strong': surfaceRgb('surface-border-strong'),
         },
-        // ====== Ink (texto) ======
+        // ====== Ink (themed via CSS vars) ======
         ink: {
-          primary: '#fafafa',
-          secondary: '#a8a8b3',
-          tertiary: '#6f6f7e',
-          inverse: '#08080d',
+          primary: surfaceRgb('ink-primary'),
+          secondary: surfaceRgb('ink-secondary'),
+          tertiary: surfaceRgb('ink-tertiary'),
+          inverse: surfaceRgb('ink-inverse'),
         },
-        // ====== Semânticos ======
+        // ====== Semantic (themed soft variants via CSS vars) ======
         success: {
-          soft: 'rgba(16, 185, 129, 0.12)',
+          soft: 'var(--success-soft)',
           DEFAULT: '#10b981',
-          bright: '#34d399',
+          bright: 'var(--success-bright)',
         },
         warning: {
-          soft: 'rgba(245, 158, 11, 0.12)',
+          soft: 'var(--warning-soft)',
           DEFAULT: '#f59e0b',
-          bright: '#fbbf24',
+          bright: 'var(--warning-bright)',
         },
         danger: {
-          soft: 'rgba(220, 38, 38, 0.14)',
+          soft: 'var(--danger-soft)',
           DEFAULT: '#ef4444',
-          bright: '#f87171',
+          bright: 'var(--danger-bright)',
         },
         info: {
-          soft: 'rgba(59, 130, 246, 0.12)',
+          soft: 'var(--info-soft)',
           DEFAULT: '#3b82f6',
         },
-        // ====== Plataformas (cores oficiais) ======
+        // ====== Plataformas (cores oficiais — theme-invariant) ======
         platform: {
           ifood: '#EA1D2C',
           rappi: '#FF441F',
@@ -77,18 +89,15 @@ const config: Config = {
         '2xl': '1.25rem',
       },
       boxShadow: {
-        sm: '0 1px 2px 0 rgba(0, 0, 0, 0.4)',
-        DEFAULT:
-          '0 4px 12px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04)',
-        lg: '0 16px 32px -8px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+        sm: 'var(--shadow-sm)',
+        DEFAULT: 'var(--shadow-md)',
+        lg: 'var(--shadow-lg)',
         glow: '0 0 0 1px rgba(249, 115, 22, 0.45), 0 0 32px -4px rgba(249, 115, 22, 0.35)',
       },
       backgroundImage: {
         'brand-gradient': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-        'surface-gradient':
-          'linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 100%)',
-        'hero-radial':
-          'radial-gradient(circle at top right, rgba(249, 115, 22, 0.15), transparent 50%), radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.1), transparent 50%)',
+        'surface-gradient': 'var(--surface-gradient)',
+        'hero-radial': 'var(--hero-radial)',
       },
     },
   },

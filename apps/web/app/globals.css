@@ -2,29 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
+/* =====================================================================
+ * THEME TOKENS
+ * Defaults below = LIGHT theme. `.dark` on <html> swaps to DARK.
+ * Surfaces/Ink are stored as `R G B` triplets so Tailwind opacity utilities
+ * (e.g. `bg-surface-raised/80`) work with `rgb(var(--*) / <alpha>)`.
+ * =====================================================================*/
+:root {
+  /* --- Light theme --- */
+  --surface-base: 246 246 248;          /* #f6f6f8 */
+  --surface-raised: 255 255 255;        /* #ffffff */
+  --surface-overlay: 255 255 255;       /* #ffffff */
+  --surface-border-subtle: 229 229 235; /* #e5e5eb */
+  --surface-border: 212 212 220;        /* #d4d4dc */
+  --surface-border-strong: 176 176 188; /* #b0b0bc */
+
+  --ink-primary: 10 10 20;              /* #0a0a14 */
+  --ink-secondary: 74 74 88;            /* #4a4a58 */
+  --ink-tertiary: 143 143 157;          /* #8f8f9d */
+  --ink-inverse: 255 255 255;           /* #ffffff */
+
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --success-bright: #047857;
+  --warning-soft: rgba(245, 158, 11, 0.14);
+  --warning-bright: #b45309;
+  --danger-soft: rgba(220, 38, 38, 0.10);
+  --danger-bright: #b91c1c;
+  --info-soft: rgba(59, 130, 246, 0.10);
+
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.06);
+  --shadow-md:
+    0 4px 12px -2px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(15, 23, 42, 0.04);
+  --shadow-lg:
+    0 16px 32px -8px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(15, 23, 42, 0.04);
+
+  --surface-gradient:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 100%);
+  --hero-radial:
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.10), transparent 50%),
+    radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.06), transparent 50%);
+  --body-radial:
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.05), transparent 45%),
+    radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.03), transparent 45%);
+}
+
+.dark {
+  /* --- Dark theme --- */
+  --surface-base: 8 8 13;               /* #08080d */
+  --surface-raised: 17 17 26;           /* #11111a */
+  --surface-overlay: 26 26 38;          /* #1a1a26 */
+  --surface-border-subtle: 38 38 47;    /* #26262f */
+  --surface-border: 51 51 63;           /* #33333f */
+  --surface-border-strong: 76 76 90;    /* #4c4c5a */
+
+  --ink-primary: 250 250 250;           /* #fafafa */
+  --ink-secondary: 168 168 179;         /* #a8a8b3 */
+  --ink-tertiary: 111 111 126;          /* #6f6f7e */
+  --ink-inverse: 8 8 13;                /* #08080d */
+
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --success-bright: #34d399;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --warning-bright: #fbbf24;
+  --danger-soft: rgba(220, 38, 38, 0.14);
+  --danger-bright: #f87171;
+  --info-soft: rgba(59, 130, 246, 0.12);
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md:
+    0 4px 12px -2px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-lg:
+    0 16px 32px -8px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  --surface-gradient:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%);
+  --hero-radial:
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.15), transparent 50%),
+    radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.10), transparent 50%);
+  --body-radial:
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.06), transparent 45%),
+    radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.05), transparent 45%);
+}
+
 @layer base {
   html {
-    color-scheme: dark;
+    color-scheme: light;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
+  html.dark {
+    color-scheme: dark;
+  }
 
   html,
   body {
-    background-color: theme('colors.surface.base');
-    color: theme('colors.ink.primary');
+    background-color: rgb(var(--surface-base));
+    color: rgb(var(--ink-primary));
     font-feature-settings: 'cv11', 'ss01', 'ss03';
   }
 
   body {
-    background-image:
-      radial-gradient(circle at top right, rgba(249, 115, 22, 0.06), transparent 45%),
-      radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.05), transparent 45%);
+    background-image: var(--body-radial);
     background-attachment: fixed;
   }
 
-  /* Scrollbar — sutil, casa com a paleta */
+  /* Scrollbar — sutil, casa com a paleta atual */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -33,12 +120,12 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: theme('colors.surface.border');
+    background: rgb(var(--surface-border));
     border-radius: 8px;
-    border: 2px solid theme('colors.surface.base');
+    border: 2px solid rgb(var(--surface-base));
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: theme('colors.surface.border-strong');
+    background: rgb(var(--surface-border-strong));
   }
 
   *:focus-visible {

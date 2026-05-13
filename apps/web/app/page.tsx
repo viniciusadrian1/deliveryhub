@@ -17,7 +17,7 @@ export default function HomePage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center">
-      <p className="text-zinc-500">Carregando…</p>
+      <p className="text-ink-tertiary">Carregando…</p>
     </main>
   );
 }
