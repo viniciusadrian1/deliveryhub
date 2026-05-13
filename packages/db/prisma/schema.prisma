@@ -102,6 +102,7 @@ model Category {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
   menuItems    MenuItem[]
+  pauses       Pause[]
 
   @@index([organizationId, storeId])
   @@map("category")
@@ -129,6 +130,7 @@ model MenuItem {
   modifierGroups  ModifierGroup[]
   platformConfigs MenuItemPlatformConfig[]
   orderItems      OrderItem[]
+  pauses          Pause[]
 
   @@index([organizationId, storeId])
   @@index([categoryId])
@@ -405,6 +407,61 @@ model WebhookEvent {
   @@map("webhook_event")
 }
 
+// ============================================================
+// Pauses (Sprint 10 — diferencial #2: pausa multiplataforma)
+// ============================================================
+
+enum PauseScope {
+  store
+  category
+  item
+
+  @@map("pause_scope")
+}
+
+enum PauseReason {
+  kitchen_overloaded
+  end_of_shift
+  out_of_stock
+  scheduled
+  other
+
+  @@map("pause_reason")
+}
+
+model Pause {
+  id                String      @id @default(uuid(7))
+  organizationId    String      @map("organization_id")
+  storeId           String      @map("store_id")
+  scope             PauseScope
+  categoryId        String?     @map("category_id")
+  menuItemId        String?     @map("menu_item_id")
+  platformIds       String[]    @map("platform_ids") // vazio = todas plataformas conectadas
+  startsAt          DateTime    @default(now()) @map("starts_at")
+  endsAt            DateTime?   @map("ends_at")
+  reason            PauseReason @default(other)
+  reasonNote        String?     @map("reason_note")
+  createdByUserId   String      @map("created_by_user_id")
+  cancelledAt       DateTime?   @map("cancelled_at")
+  cancelledByUserId String?     @map("cancelled_by_user_id")
+  appliedAt         DateTime?   @map("applied_at")     // confirmação de propagação
+  reopenedAt        DateTime?   @map("reopened_at")    // quando o cron reabriu
+  errorMessage      String?     @map("error_message")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category     Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  menuItem     MenuItem?    @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  createdBy    User         @relation("pauses_created", fields: [createdByUserId], references: [id])
+  cancelledBy  User?        @relation("pauses_cancelled", fields: [cancelledByUserId], references: [id])
+
+  @@index([organizationId, storeId, startsAt(sort: Desc)])
+  @@index([endsAt]) // varredura do cron de reabertura automática
+  @@map("pause")
+}
+
 model VaultSecret {
   id         String   @id @default(uuid(7))
   name       String   @unique
@@ -449,6 +506,7 @@ model Organization {
   notifications           Notification[]
   customers               Customer[]
   orders                  Order[]
+  pauses                  Pause[]
 
   @@map("organization")
 }
@@ -470,6 +528,8 @@ model User {
   invitationsAccepted     Invitation[]             @relation("invitations_accepted")
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
+  pausesCreated           Pause[]                  @relation("pauses_created")
+  pausesCancelled         Pause[]                  @relation("pauses_cancelled")
 
   @@map("user")
 }
@@ -513,6 +573,7 @@ model Store {
   categories          Category[]
   menuItems           MenuItem[]
   orders              Order[]
+  pauses              Pause[]
 
   @@index([organizationId])
   @@map("store")

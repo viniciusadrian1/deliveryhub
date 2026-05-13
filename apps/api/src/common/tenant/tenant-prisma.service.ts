@@ -35,6 +35,7 @@ const TENANT_MODELS = [
   'MenuItemPlatformConfig',
   'Customer',
   'Order',
+  'Pause',
 ] as const;
 
 function injectOrgIdIntoData(data: unknown, orgId: string): unknown {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AuditModule } from './common/audit/audit.module.js';
@@ -20,12 +21,14 @@ import { MenuModule } from './modules/menu/menu.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
+import { PausesModule } from './modules/pauses/pauses.module.js';
 import { PricingModule } from './modules/pricing/pricing.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.LOG_LEVEL ?? 'info',
@@ -52,6 +55,7 @@ import { UsersModule } from './modules/users/users.module.js';
     IntegrationsModule,
     MenuModule,
     OrdersModule,
+    PausesModule,
     PricingModule,
     UsersModule,
   ],
