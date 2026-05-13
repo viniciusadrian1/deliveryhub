@@ -2,6 +2,11 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
+import {
+  ConsentService,
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+} from '../compliance/consent.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import type { LoginInput } from './dto/login.dto.js';
 import type { SignupInput } from './dto/signup.dto.js';
@@ -38,6 +43,7 @@ export class AuthService {
     private readonly tokens: TokensService,
     private readonly audit: AuditLogService,
     private readonly notifications: NotificationsService,
+    private readonly consent: ConsentService,
   ) {}
 
   async signup(input: SignupInput, session: AuthSessionContext = {}): Promise<AuthResult> {
@@ -73,6 +79,29 @@ export class AuthService {
       ip: session.ip,
       userAgent: session.userAgent,
     });
+
+    // Registra consentimento implícito de Termos e Privacidade.
+    // Versão por data — cada deploy que altera o documento bumpa a constante.
+    await Promise.all([
+      this.consent.record({
+        subjectKind: 'user',
+        subjectId: user.id,
+        kind: 'terms',
+        version: CURRENT_TERMS_VERSION,
+        accepted: true,
+        ip: session.ip,
+        userAgent: session.userAgent,
+      }),
+      this.consent.record({
+        subjectKind: 'user',
+        subjectId: user.id,
+        kind: 'privacy',
+        version: CURRENT_PRIVACY_VERSION,
+        accepted: true,
+        ip: session.ip,
+        userAgent: session.userAgent,
+      }),
+    ]);
 
     await this.notifications.create({
       userId: user.id,

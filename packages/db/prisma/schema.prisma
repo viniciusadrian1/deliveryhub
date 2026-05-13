@@ -536,6 +536,40 @@ model VaultSecret {
 }
 
 // ============================================================
+// LGPD — consent log (Sprint 12)
+// ============================================================
+
+enum ConsentSubjectKind {
+  user
+  customer
+
+  @@map("consent_subject_kind")
+}
+
+enum ConsentKind {
+  terms
+  privacy
+  marketing
+
+  @@map("consent_kind")
+}
+
+model ConsentLog {
+  id          String             @id @default(uuid(7))
+  subjectKind ConsentSubjectKind @map("subject_kind")
+  subjectId   String             @map("subject_id")
+  kind        ConsentKind
+  version     String
+  accepted    Boolean
+  ip          String?
+  userAgent   String?            @map("user_agent")
+  at          DateTime           @default(now())
+
+  @@index([subjectKind, subjectId, at(sort: Desc)])
+  @@map("consent_log")
+}
+
+// ============================================================
 // Tenancy core
 // ============================================================
 
