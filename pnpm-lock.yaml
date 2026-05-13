@@ -32,9 +32,15 @@ importers:
       '@deliveryhub/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@deliveryhub/didifood':
+        specifier: workspace:*
+        version: link:../../packages/didifood
       '@deliveryhub/ifood':
         specifier: workspace:*
         version: link:../../packages/ifood
+      '@deliveryhub/keeta':
+        specifier: workspace:*
+        version: link:../../packages/keeta
       '@deliveryhub/rappi':
         specifier: workspace:*
         version: link:../../packages/rappi
@@ -282,6 +288,34 @@ importers:
         specifier: ^8.18.0
         version: 8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
 
+  packages/didifood:
+    dependencies:
+      '@deliveryhub/ifood':
+        specifier: workspace:*
+        version: link:../ifood
+      '@deliveryhub/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@deliveryhub/config':
+        specifier: workspace:*
+        version: link:../config
+      eslint:
+        specifier: ^9.16.0
+        version: 9.39.4(jiti@2.7.0)
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.18.0
+        version: 8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)(terser@5.47.1)
+
   packages/ifood:
     dependencies:
       '@deliveryhub/shared':
@@ -290,6 +324,34 @@ importers:
       zod:
         specifier: ^3.23.8
         version: 3.25.76
+    devDependencies:
+      '@deliveryhub/config':
+        specifier: workspace:*
+        version: link:../config
+      eslint:
+        specifier: ^9.16.0
+        version: 9.39.4(jiti@2.7.0)
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.18.0
+        version: 8.59.3(eslint@9.39.4(jiti@2.7.0))(typescript@5.9.3)
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)(terser@5.47.1)
+
+  packages/keeta:
+    dependencies:
+      '@deliveryhub/ifood':
+        specifier: workspace:*
+        version: link:../ifood
+      '@deliveryhub/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@deliveryhub/config':
         specifier: workspace:*

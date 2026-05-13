@@ -53,6 +53,20 @@ export class WebhooksController {
     return this.handle('aiqfome', req);
   }
 
+  @Public()
+  @Post('99food')
+  @HttpCode(200)
+  async didifoodWebhook(@Req() req: Request & { rawBody?: Buffer }): Promise<{ status: string }> {
+    return this.handle('99food', req);
+  }
+
+  @Public()
+  @Post('keeta')
+  @HttpCode(200)
+  async keetaWebhook(@Req() req: Request & { rawBody?: Buffer }): Promise<{ status: string }> {
+    return this.handle('keeta', req);
+  }
+
   private async handle(
     platformCode: PlatformCode,
     req: Request & { rawBody?: Buffer },

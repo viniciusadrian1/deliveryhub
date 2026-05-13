@@ -44,6 +44,18 @@ const envSchema = z.object({
   AIQFOME_API_BASE_URL: z.string().url().default('https://api.aiqfome.com'),
   AIQFOME_WEBHOOK_SECRET: z.string().optional(),
 
+  // 99Food / DiDi Food Open Platform (developer-food.99app.com)
+  DIDIFOOD_CLIENT_ID: z.string().optional(),
+  DIDIFOOD_CLIENT_SECRET: z.string().optional(),
+  DIDIFOOD_API_BASE_URL: z.string().url().default('https://developer-food.99app.com'),
+  DIDIFOOD_WEBHOOK_SECRET: z.string().optional(),
+
+  // Keeta (Meituan Overseas) — developers.mykeeta.com
+  KEETA_CLIENT_ID: z.string().optional(),
+  KEETA_CLIENT_SECRET: z.string().optional(),
+  KEETA_API_BASE_URL: z.string().url().default('https://openapi.mykeeta.com'),
+  KEETA_WEBHOOK_SECRET: z.string().optional(),
+
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default('local'),
 });

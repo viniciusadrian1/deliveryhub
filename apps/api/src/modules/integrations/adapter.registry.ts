@@ -1,8 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import { AiqfomeAdapter } from '@deliveryhub/aiqfome';
+import { DidifoodAdapter } from '@deliveryhub/didifood';
 import type { PlatformAdapter } from '@deliveryhub/ifood';
 import { IFoodAdapter, MockAdapter } from '@deliveryhub/ifood';
+import { KeetaAdapter } from '@deliveryhub/keeta';
 import { RappiAdapter } from '@deliveryhub/rappi';
 import type { PlatformCode } from '@deliveryhub/shared';
 import { UberEatsAdapter } from '@deliveryhub/ubereats';
@@ -34,9 +36,8 @@ export class AdapterRegistry {
     this.registerRappi(env);
     this.registerUberEats(env);
     this.registerAiqfome(env);
-
-    // 99food (DiDi Food encerrou operação no BR em mar/2023) e keeta
-    // (sem operação no BR) ficam intencionalmente fora do registry.
+    this.registerDidifood(env);
+    this.registerKeeta(env);
   }
 
   private registerIfood(env: Env): void {
@@ -108,6 +109,42 @@ export class AdapterRegistry {
     } else {
       this.adapters.set('aiqfome', new MockAdapter('aiqfome'));
       this.logger.warn('AiQfome adapter registered (MOCK)');
+    }
+  }
+
+  private registerDidifood(env: Env): void {
+    if (env.DIDIFOOD_CLIENT_ID && env.DIDIFOOD_CLIENT_SECRET && env.DIDIFOOD_WEBHOOK_SECRET) {
+      this.adapters.set(
+        '99food',
+        new DidifoodAdapter({
+          clientId: env.DIDIFOOD_CLIENT_ID,
+          clientSecret: env.DIDIFOOD_CLIENT_SECRET,
+          apiBaseUrl: env.DIDIFOOD_API_BASE_URL,
+          webhookSecret: env.DIDIFOOD_WEBHOOK_SECRET,
+        }),
+      );
+      this.logger.log('99Food adapter registered (real — STUB, will throw not_implemented)');
+    } else {
+      this.adapters.set('99food', new MockAdapter('99food'));
+      this.logger.warn('99Food adapter registered (MOCK)');
+    }
+  }
+
+  private registerKeeta(env: Env): void {
+    if (env.KEETA_CLIENT_ID && env.KEETA_CLIENT_SECRET && env.KEETA_WEBHOOK_SECRET) {
+      this.adapters.set(
+        'keeta',
+        new KeetaAdapter({
+          clientId: env.KEETA_CLIENT_ID,
+          clientSecret: env.KEETA_CLIENT_SECRET,
+          apiBaseUrl: env.KEETA_API_BASE_URL,
+          webhookSecret: env.KEETA_WEBHOOK_SECRET,
+        }),
+      );
+      this.logger.log('Keeta adapter registered (real — STUB, will throw not_implemented)');
+    } else {
+      this.adapters.set('keeta', new MockAdapter('keeta'));
+      this.logger.warn('Keeta adapter registered (MOCK)');
     }
   }
 

@@ -16,7 +16,9 @@
   "dependencies": {
     "@deliveryhub/aiqfome": "workspace:*",
     "@deliveryhub/db": "workspace:*",
+    "@deliveryhub/didifood": "workspace:*",
     "@deliveryhub/ifood": "workspace:*",
+    "@deliveryhub/keeta": "workspace:*",
     "@deliveryhub/rappi": "workspace:*",
     "@deliveryhub/shared": "workspace:*",
     "@deliveryhub/ubereats": "workspace:*",
