@@ -27,6 +27,7 @@ const FALLBACK_META: PlatformMeta = {
   name: '',
   colorHex: '#888',
   enabled: false,
+  availability: 'unavailable',
   logo: '',
 };
 
@@ -49,13 +50,18 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
 
   const renderStatus = () => {
     if (!connection) {
-      return meta.enabled ? (
-        <Badge variant="neutral" dot>
-          Não conectado
-        </Badge>
-      ) : (
-        <Badge variant="neutral">Em breve</Badge>
-      );
+      switch (meta.availability) {
+        case 'available':
+          return (
+            <Badge variant="neutral" dot>
+              Não conectado
+            </Badge>
+          );
+        case 'roadmap':
+          return <Badge variant="neutral">Em breve</Badge>;
+        case 'unavailable':
+          return <Badge variant="danger">Indisponível</Badge>;
+      }
     }
     switch (connection.status) {
       case 'active':
@@ -141,16 +147,19 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
             <span className="line-clamp-2">{connection.lastErrorMessage}</span>
           </p>
         )}
-        {!connection && !meta.enabled && (
-          <p>Suporte completo a esta plataforma virá em breve.</p>
-        )}
-        {!connection && meta.enabled && (
+        {!connection && meta.availability === 'available' && (
           <p>Conecte para começar a receber pedidos e sincronizar cardápio.</p>
+        )}
+        {!connection && meta.availability === 'roadmap' && (
+          <p>{meta.reason ?? 'Integração no roadmap — credenciais pendentes.'}</p>
+        )}
+        {!connection && meta.availability === 'unavailable' && (
+          <p>{meta.reason ?? 'Plataforma sem API disponível para integração.'}</p>
         )}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {!connection && meta.enabled && (
+        {!connection && meta.availability === 'available' && (
           <Button size="sm" onClick={onConnect} leftIcon={<Power className="h-3.5 w-3.5" />}>
             Conectar
           </Button>

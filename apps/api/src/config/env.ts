@@ -26,6 +26,24 @@ const envSchema = z.object({
   IFOOD_API_BASE_URL: z.string().url().default('https://merchant-api.ifood.com.br'),
   IFOOD_WEBHOOK_SECRET: z.string().optional(),
 
+  // Rappi Partners (requer parceria comercial)
+  RAPPI_CLIENT_ID: z.string().optional(),
+  RAPPI_CLIENT_SECRET: z.string().optional(),
+  RAPPI_API_BASE_URL: z.string().url().default('https://services.rappi.com'),
+  RAPPI_WEBHOOK_SECRET: z.string().optional(),
+
+  // Uber Eats Marketplace (requer parceria comercial)
+  UBEREATS_CLIENT_ID: z.string().optional(),
+  UBEREATS_CLIENT_SECRET: z.string().optional(),
+  UBEREATS_API_BASE_URL: z.string().url().default('https://api.uber.com'),
+  UBEREATS_WEBHOOK_SECRET: z.string().optional(),
+  UBEREATS_REDIRECT_URI: z.string().url().default('http://localhost:3000/integrations/ubereats/callback'),
+
+  // AiQfome / Magalu Marketplace (API Key, sob NDA)
+  AIQFOME_API_KEY: z.string().optional(),
+  AIQFOME_API_BASE_URL: z.string().url().default('https://api.aiqfome.com'),
+  AIQFOME_WEBHOOK_SECRET: z.string().optional(),
+
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default('local'),
 });

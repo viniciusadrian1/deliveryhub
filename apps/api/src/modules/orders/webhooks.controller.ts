@@ -32,6 +32,27 @@ export class WebhooksController {
     return this.handle('ifood', req);
   }
 
+  @Public()
+  @Post('rappi')
+  @HttpCode(200)
+  async rappiWebhook(@Req() req: Request & { rawBody?: Buffer }): Promise<{ status: string }> {
+    return this.handle('rappi', req);
+  }
+
+  @Public()
+  @Post('ubereats')
+  @HttpCode(200)
+  async ubereatsWebhook(@Req() req: Request & { rawBody?: Buffer }): Promise<{ status: string }> {
+    return this.handle('ubereats', req);
+  }
+
+  @Public()
+  @Post('aiqfome')
+  @HttpCode(200)
+  async aiqfomeWebhook(@Req() req: Request & { rawBody?: Buffer }): Promise<{ status: string }> {
+    return this.handle('aiqfome', req);
+  }
+
   private async handle(
     platformCode: PlatformCode,
     req: Request & { rawBody?: Buffer },

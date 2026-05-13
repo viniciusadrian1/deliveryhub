@@ -14,9 +14,12 @@
     "clean": "rimraf dist .turbo"
   },
   "dependencies": {
+    "@deliveryhub/aiqfome": "workspace:*",
     "@deliveryhub/db": "workspace:*",
     "@deliveryhub/ifood": "workspace:*",
+    "@deliveryhub/rappi": "workspace:*",
     "@deliveryhub/shared": "workspace:*",
+    "@deliveryhub/ubereats": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",

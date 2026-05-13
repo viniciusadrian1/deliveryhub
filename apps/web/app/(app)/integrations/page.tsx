@@ -34,7 +34,13 @@ export default function IntegrationsPage() {
   }
 
   const connectionByCode = new Map(connections.map((c) => [c.platformCode, c]));
-  const allCodes = Object.keys(PLATFORM_META);
+  // Available primeiro, depois roadmap, depois unavailable.
+  const availabilityOrder = { available: 0, roadmap: 1, unavailable: 2 } as const;
+  const allCodes = Object.keys(PLATFORM_META).sort((a, b) => {
+    const av = PLATFORM_META[a]?.availability ?? 'unavailable';
+    const bv = PLATFORM_META[b]?.availability ?? 'unavailable';
+    return availabilityOrder[av] - availabilityOrder[bv];
+  });
   const activeCount = connections.filter((c) => c.status === 'active').length;
 
   return (
