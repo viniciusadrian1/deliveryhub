@@ -12,8 +12,10 @@ import { SentryInterceptor } from './common/observability/sentry.filter.js';
 import { PrismaModule } from './common/prisma/prisma.module.js';
 import { TenantInterceptor } from './common/tenant/tenant.interceptor.js';
 import { TenantModule } from './common/tenant/tenant.module.js';
+import { VaultModule } from './common/vault/vault.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { IntegrationsModule } from './modules/integrations/integrations.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
@@ -37,10 +39,12 @@ import { UsersModule } from './modules/users/users.module.js';
     PrismaModule,
     AuditModule,
     EmailModule,
+    VaultModule,
     TenantModule,
     HealthModule,
     AuthModule,
     OrganizationsModule,
+    IntegrationsModule,
     UsersModule,
   ],
   providers: [

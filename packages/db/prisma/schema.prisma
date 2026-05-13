@@ -24,7 +24,73 @@ model Platform {
   colorHex String  @map("color_hex")
   active   Boolean @default(true)
 
+  connections PlatformConnection[]
+  feeProfiles PlatformFeeProfile[]
+
   @@map("platform")
+}
+
+enum ConnectionStatus {
+  pending
+  active
+  error
+  revoked
+
+  @@map("connection_status")
+}
+
+model PlatformConnection {
+  id                 String           @id @default(uuid(7))
+  organizationId     String           @map("organization_id")
+  storeId            String           @map("store_id")
+  platformId         String           @map("platform_id")
+  status             ConnectionStatus @default(pending)
+  vaultRef           String?          @map("vault_ref")
+  externalMerchantId String?          @map("external_merchant_id")
+  lastSyncAt         DateTime?        @map("last_sync_at")
+  lastErrorAt        DateTime?        @map("last_error_at")
+  lastErrorMessage   String?          @map("last_error_message")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  platform     Platform     @relation(fields: [platformId], references: [id])
+
+  @@unique([storeId, platformId])
+  @@index([organizationId])
+  @@map("platform_connection")
+}
+
+model PlatformFeeProfile {
+  id                   String   @id @default(uuid(7))
+  organizationId       String   @map("organization_id")
+  storeId              String   @map("store_id")
+  platformId           String   @map("platform_id")
+  commissionPct        Decimal  @map("commission_pct") @db.Decimal(5, 2)
+  paymentProcessingPct Decimal  @map("payment_processing_pct") @db.Decimal(5, 2)
+  flatFeeCents         BigInt   @default(0) @map("flat_fee_cents")
+  effectiveFrom        DateTime @default(now()) @map("effective_from") @db.Date
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  platform     Platform     @relation(fields: [platformId], references: [id])
+
+  @@unique([storeId, platformId, effectiveFrom])
+  @@index([organizationId])
+  @@map("platform_fee_profile")
+}
+
+model VaultSecret {
+  id         String   @id @default(uuid(7))
+  name       String   @unique
+  ciphertext String
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("vault_secret")
 }
 
 // ============================================================
@@ -47,9 +113,11 @@ model Organization {
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  memberships Membership[]
-  stores      Store[]
-  invitations Invitation[]
+  memberships         Membership[]
+  stores              Store[]
+  invitations         Invitation[]
+  platformConnections PlatformConnection[]
+  platformFeeProfiles PlatformFeeProfile[]
 
   @@map("organization")
 }
@@ -106,7 +174,9 @@ model Store {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  platformConnections PlatformConnection[]
+  platformFeeProfiles PlatformFeeProfile[]
 
   @@index([organizationId])
   @@map("store")

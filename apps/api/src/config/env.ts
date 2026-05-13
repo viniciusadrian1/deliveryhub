@@ -19,7 +19,12 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('DeliveryHub <no-reply@deliveryhub.local>'),
-  WEB_BASE_URL: z.string().url().default('http://localhost:3000'),
+  WEB_BASE_URL: z.string().url().default('http://localhost:3001'),
+
+  IFOOD_CLIENT_ID: z.string().optional(),
+  IFOOD_CLIENT_SECRET: z.string().optional(),
+  IFOOD_API_BASE_URL: z.string().url().default('https://merchant-api.ifood.com.br'),
+  IFOOD_WEBHOOK_SECRET: z.string().optional(),
 
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default('local'),

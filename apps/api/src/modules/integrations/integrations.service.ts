@@ -1,0 +1,271 @@
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+
+import { ConnectionPendingError, type StoredTokens } from '@deliveryhub/ifood';
+import type { PlatformCode } from '@deliveryhub/shared';
+
+import { AuditLogService } from '../../common/audit/audit-log.service.js';
+import { PrismaService } from '../../common/prisma/prisma.service.js';
+import { TenantPrismaService } from '../../common/tenant/tenant-prisma.service.js';
+import { VaultService } from '../../common/vault/vault.service.js';
+import type { AuthContext } from '../../common/auth/auth-context.js';
+import { AdapterRegistry } from './adapter.registry.js';
+
+interface SessionContext {
+  userAgent?: string;
+  ip?: string;
+}
+
+export interface StartConnectionResponse {
+  connectionId: string;
+  platformCode: PlatformCode;
+  userCode: string;
+  verificationUrl: string;
+  verificationUrlComplete: string;
+  expiresAt: Date;
+  isMock: boolean;
+}
+
+const PENDING_VAULT_PREFIX = 'pending';
+const ACTIVE_VAULT_PREFIX = 'platform-tokens';
+
+@Injectable()
+export class IntegrationsService {
+  private readonly logger = new Logger(IntegrationsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly vault: VaultService,
+    private readonly registry: AdapterRegistry,
+    private readonly audit: AuditLogService,
+  ) {}
+
+  async listConnections(auth: AuthContext): Promise<
+    {
+      id: string;
+      platformCode: PlatformCode;
+      platformName: string;
+      storeId: string;
+      status: string;
+      externalMerchantId: string | null;
+      lastSyncAt: Date | null;
+      lastErrorAt: Date | null;
+      lastErrorMessage: string | null;
+    }[]
+  > {
+    const conns = await this.tenantPrisma.tx.platformConnection.findMany({
+      where: { organizationId: auth.orgId },
+      include: { platform: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return conns.map((c) => ({
+      id: c.id,
+      platformCode: c.platform.code as PlatformCode,
+      platformName: c.platform.name,
+      storeId: c.storeId,
+      status: c.status,
+      externalMerchantId: c.externalMerchantId,
+      lastSyncAt: c.lastSyncAt,
+      lastErrorAt: c.lastErrorAt,
+      lastErrorMessage: c.lastErrorMessage,
+    }));
+  }
+
+  async startConnection(
+    auth: AuthContext,
+    platformCode: PlatformCode,
+    storeId: string,
+    session: SessionContext = {},
+  ): Promise<StartConnectionResponse> {
+    const store = await this.prisma.store.findFirst({
+      where: { id: storeId, organizationId: auth.orgId },
+    });
+    if (!store) throw new NotFoundException('store_not_found');
+
+    const platform = await this.prisma.platform.findUnique({ where: { code: platformCode } });
+    if (!platform || !platform.active) {
+      throw new BadRequestException('platform_not_available');
+    }
+
+    const adapter = this.registry.get(platformCode);
+    const started = await adapter.startConnection();
+
+    // Cria ou atualiza connection em status `pending`. Se já havia uma ativa, ela permanece —
+    // só ativaremos a nova em finalize. Aqui usamos UPSERT por (store_id, platform_id).
+    const connection = await this.prisma.platformConnection.upsert({
+      where: { storeId_platformId: { storeId, platformId: platform.id } },
+      update: {
+        status: 'pending',
+        lastErrorAt: null,
+        lastErrorMessage: null,
+      },
+      create: {
+        organizationId: auth.orgId,
+        storeId,
+        platformId: platform.id,
+        status: 'pending',
+      },
+    });
+
+    await this.vault.write(
+      `${PENDING_VAULT_PREFIX}:${connection.id}`,
+      { pendingHandle: started.pendingHandle, expiresAt: started.expiresAt.toISOString() },
+      { kind: 'pending_handle', platform: platformCode },
+    );
+
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'platform_connection',
+      entityId: connection.id,
+      action: 'create',
+      diff: { platform: platformCode, storeId, status: 'pending' },
+      ip: session.ip,
+      userAgent: session.userAgent,
+    });
+
+    return {
+      connectionId: connection.id,
+      platformCode,
+      userCode: started.userCode,
+      verificationUrl: started.verificationUrl,
+      verificationUrlComplete: started.verificationUrlComplete,
+      expiresAt: started.expiresAt,
+      isMock: this.registry.isMock(platformCode),
+    };
+  }
+
+  async finalizeConnection(
+    auth: AuthContext,
+    connectionId: string,
+    session: SessionContext = {},
+  ): Promise<{ status: string; externalMerchantId: string | null }> {
+    const conn = await this.prisma.platformConnection.findFirst({
+      where: { id: connectionId, organizationId: auth.orgId },
+      include: { platform: true },
+    });
+    if (!conn) throw new NotFoundException('connection_not_found');
+    if (conn.status === 'active') {
+      return { status: conn.status, externalMerchantId: conn.externalMerchantId };
+    }
+
+    const pending = await this.vault.read<{ pendingHandle: string }>(
+      `${PENDING_VAULT_PREFIX}:${conn.id}`,
+    );
+    if (!pending) throw new BadRequestException('pending_handle_missing');
+
+    const adapter = this.registry.get(conn.platform.code as PlatformCode);
+
+    try {
+      const result = await adapter.finalizeConnection(pending.pendingHandle);
+
+      await this.vault.write(
+        `${ACTIVE_VAULT_PREFIX}:${conn.id}`,
+        {
+          accessToken: result.tokens.accessToken,
+          refreshToken: result.tokens.refreshToken,
+          expiresAt: result.tokens.expiresAt.toISOString(),
+        },
+        { kind: 'platform_tokens', platform: conn.platform.code },
+      );
+      await this.vault.delete(`${PENDING_VAULT_PREFIX}:${conn.id}`);
+
+      const updated = await this.prisma.platformConnection.update({
+        where: { id: conn.id },
+        data: {
+          status: 'active',
+          vaultRef: `${ACTIVE_VAULT_PREFIX}:${conn.id}`,
+          externalMerchantId: result.externalMerchantId,
+          lastSyncAt: new Date(),
+          lastErrorAt: null,
+          lastErrorMessage: null,
+        },
+      });
+
+      await this.audit.record({
+        organizationId: auth.orgId,
+        userId: auth.userId,
+        entity: 'platform_connection',
+        entityId: conn.id,
+        action: 'update',
+        diff: { status: 'active', externalMerchantId: result.externalMerchantId },
+        ip: session.ip,
+        userAgent: session.userAgent,
+      });
+
+      return { status: updated.status, externalMerchantId: updated.externalMerchantId };
+    } catch (err) {
+      if (err instanceof ConnectionPendingError) {
+        // Usuário ainda não autorizou — não marcamos como erro, só retornamos status pending.
+        throw new BadRequestException('connection_still_pending');
+      }
+      const message = err instanceof Error ? err.message : 'unknown_error';
+      await this.prisma.platformConnection.update({
+        where: { id: conn.id },
+        data: {
+          status: 'error',
+          lastErrorAt: new Date(),
+          lastErrorMessage: message.slice(0, 500),
+        },
+      });
+      this.logger.error({ err, connectionId: conn.id }, 'finalize_failed');
+      throw err;
+    }
+  }
+
+  async disconnect(
+    auth: AuthContext,
+    connectionId: string,
+    session: SessionContext = {},
+  ): Promise<void> {
+    const conn = await this.prisma.platformConnection.findFirst({
+      where: { id: connectionId, organizationId: auth.orgId },
+    });
+    if (!conn) throw new NotFoundException('connection_not_found');
+
+    await this.vault.delete(`${ACTIVE_VAULT_PREFIX}:${conn.id}`);
+    await this.vault.delete(`${PENDING_VAULT_PREFIX}:${conn.id}`);
+
+    await this.prisma.platformConnection.update({
+      where: { id: conn.id },
+      data: {
+        status: 'revoked',
+        vaultRef: null,
+        externalMerchantId: null,
+      },
+    });
+
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'platform_connection',
+      entityId: conn.id,
+      action: 'delete',
+      ip: session.ip,
+      userAgent: session.userAgent,
+    });
+  }
+
+  /**
+   * Helper para outros services obterem tokens descriptografados de uma conexão.
+   * Refresh automático fica para US-2.7 (job recorrente em sprint posterior).
+   */
+  async getTokens(connectionId: string): Promise<StoredTokens | null> {
+    const data = await this.vault.read<{
+      accessToken: string;
+      refreshToken: string;
+      expiresAt: string;
+    }>(`${ACTIVE_VAULT_PREFIX}:${connectionId}`);
+    if (!data) return null;
+    return {
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      expiresAt: new Date(data.expiresAt),
+    };
+  }
+}
