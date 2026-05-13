@@ -82,6 +82,91 @@ model PlatformFeeProfile {
   @@map("platform_fee_profile")
 }
 
+// ============================================================
+// Menu (Sprint 4 — cardápio centralizado, sem preço-por-plataforma ainda)
+// ============================================================
+
+model Category {
+  id             String   @id @default(uuid(7))
+  organizationId String   @map("organization_id")
+  storeId        String   @map("store_id")
+  name           String
+  description    String?
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  menuItems    MenuItem[]
+
+  @@index([organizationId, storeId])
+  @@map("category")
+}
+
+model MenuItem {
+  id              String   @id @default(uuid(7))
+  organizationId  String   @map("organization_id")
+  storeId         String   @map("store_id")
+  categoryId      String?  @map("category_id")
+  name            String
+  description     String?
+  imageUrl        String?  @map("image_url")
+  prepTimeMinutes Int?     @map("prep_time_minutes")
+  costCents       Int      @default(0) @map("cost_cents")
+  allergens       String[] @default([])
+  sortOrder       Int      @default(0) @map("sort_order")
+  archivedAt      DateTime? @map("archived_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  modifierGroups ModifierGroup[]
+
+  @@index([organizationId, storeId])
+  @@index([categoryId])
+  @@map("menu_item")
+}
+
+model ModifierGroup {
+  id             String   @id @default(uuid(7))
+  organizationId String   @map("organization_id")
+  menuItemId     String   @map("menu_item_id")
+  name           String
+  minSelect      Int      @default(0) @map("min_select")
+  maxSelect      Int      @default(1) @map("max_select")
+  required       Boolean  @default(false)
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItem     MenuItem     @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  modifiers    Modifier[]
+
+  @@index([menuItemId])
+  @@map("modifier_group")
+}
+
+model Modifier {
+  id              String   @id @default(uuid(7))
+  organizationId  String   @map("organization_id")
+  modifierGroupId String   @map("modifier_group_id")
+  name            String
+  costDeltaCents  Int      @default(0) @map("cost_delta_cents")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  modifierGroup ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+
+  @@index([modifierGroupId])
+  @@map("modifier")
+}
+
 model VaultSecret {
   id         String   @id @default(uuid(7))
   name       String   @unique
@@ -118,6 +203,10 @@ model Organization {
   invitations         Invitation[]
   platformConnections PlatformConnection[]
   platformFeeProfiles PlatformFeeProfile[]
+  categories          Category[]
+  menuItems           MenuItem[]
+  modifierGroups      ModifierGroup[]
+  modifiers           Modifier[]
 
   @@map("organization")
 }
@@ -177,6 +266,8 @@ model Store {
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   platformConnections PlatformConnection[]
   platformFeeProfiles PlatformFeeProfile[]
+  categories          Category[]
+  menuItems           MenuItem[]
 
   @@index([organizationId])
   @@map("store")

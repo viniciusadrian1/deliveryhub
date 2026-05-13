@@ -28,6 +28,10 @@ const TENANT_MODELS = [
   'Invitation',
   'PlatformConnection',
   'PlatformFeeProfile',
+  'Category',
+  'MenuItem',
+  'ModifierGroup',
+  'Modifier',
 ] as const;
 
 function injectOrgIdIntoData(data: unknown, orgId: string): unknown {
