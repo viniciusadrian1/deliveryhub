@@ -3,11 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
-import { api, ApiError } from '../../lib/api.js';
-import { formatCents, STATUS_LABELS, timeAgo } from '../../lib/format.js';
-import type { OrderDetail, OrderStatus } from '../../lib/hub-types.js';
-import { Badge } from '../ui/badge.js';
-import { Button } from '../ui/button.js';
+import { api, ApiError } from '../../lib/api';
+import { formatCents, STATUS_LABELS, timeAgo } from '../../lib/format';
+import type { OrderDetail, OrderStatus } from '../../lib/hub-types';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 
 interface OrderDrawerProps {
   orderId: string | null;

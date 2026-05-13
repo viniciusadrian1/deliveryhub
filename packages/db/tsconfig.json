@@ -1,7 +1,9 @@
 {
   "extends": "@deliveryhub/config/tsconfig/base",
   "compilerOptions": {
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "rootDir": "./src"
   },
-  "include": ["src/**/*", "prisma/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["prisma/seed.ts"]
 }

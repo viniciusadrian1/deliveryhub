@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
-import { Button } from '../../components/ui/button.js';
-import { Input } from '../../components/ui/input.js';
-import { ApiError } from '../../lib/api.js';
-import { useAuth } from '../../lib/auth-context.js';
-import { r } from '../../lib/routes.js';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { ApiError } from '../../lib/api';
+import { useAuth } from '../../lib/auth-context';
+import { r } from '../../lib/routes';
 
 export default function SignupPage() {
   const { signup } = useAuth();

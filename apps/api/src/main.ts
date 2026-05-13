@@ -22,6 +22,12 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableShutdownHooks();
+  app.enableCors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Ifood-Signature'],
+  });
 
   await app.listen(env.API_PORT, '0.0.0.0');
   console.warn(`[main] API listening on http://0.0.0.0:${env.API_PORT}`);

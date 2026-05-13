@@ -3,9 +3,9 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { api } from './api.js';
-import { r } from './routes.js';
-import { clearTokens, readTokens, writeTokens } from './tokens.js';
+import { api } from './api';
+import { r } from './routes';
+import { clearTokens, readTokens, writeTokens } from './tokens';
 
 export interface AuthUser {
   id: string;

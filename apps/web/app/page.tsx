@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { useAuth } from '../lib/auth-context.js';
-import { r } from '../lib/routes.js';
+import { useAuth } from '../lib/auth-context';
+import { r } from '../lib/routes';
 
 export default function HomePage() {
   const router = useRouter();

@@ -3,10 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { Sidebar } from '../../components/layout/sidebar.js';
-import { Topbar } from '../../components/layout/topbar.js';
-import { useAuth } from '../../lib/auth-context.js';
-import { r } from '../../lib/routes.js';
+import { Sidebar } from '../../components/layout/sidebar';
+import { Topbar } from '../../components/layout/topbar';
+import { useAuth } from '../../lib/auth-context';
+import { r } from '../../lib/routes';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();

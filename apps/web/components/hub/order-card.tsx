@@ -2,9 +2,9 @@
 
 import clsx from 'clsx';
 
-import { formatCents, STATUS_LABELS, timeAgo } from '../../lib/format.js';
-import type { OrderListItem } from '../../lib/hub-types.js';
-import { Badge } from '../ui/badge.js';
+import { formatCents, STATUS_LABELS, timeAgo } from '../../lib/format';
+import type { OrderListItem } from '../../lib/hub-types';
+import { Badge } from '../ui/badge';
 
 interface OrderCardProps {
   order: OrderListItem;

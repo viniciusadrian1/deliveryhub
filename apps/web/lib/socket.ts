@@ -2,8 +2,8 @@
 
 import { io, type Socket } from 'socket.io-client';
 
-import { API_BASE_URL } from './api.js';
-import { readTokens } from './tokens.js';
+import { API_BASE_URL } from './api';
+import { readTokens } from './tokens';
 
 let socket: Socket | null = null;
 

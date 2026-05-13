@@ -1,7 +1,7 @@
 'use client';
 
-import { useAuth } from '../../lib/auth-context.js';
-import { Button } from '../ui/button.js';
+import { useAuth } from '../../lib/auth-context';
+import { Button } from '../ui/button';
 
 export function Topbar() {
   const { state, logout } = useAuth();

@@ -3,12 +3,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 
-import { OrderCard } from '../../../components/hub/order-card.js';
-import { OrderDrawer } from '../../../components/hub/order-drawer.js';
-import { api } from '../../../lib/api.js';
-import { useAuth } from '../../../lib/auth-context.js';
-import type { OrderEventPayload, OrderListItem, OrderStatus } from '../../../lib/hub-types.js';
-import { getSocket } from '../../../lib/socket.js';
+import { OrderCard } from '../../../components/hub/order-card';
+import { OrderDrawer } from '../../../components/hub/order-drawer';
+import { api } from '../../../lib/api';
+import { useAuth } from '../../../lib/auth-context';
+import type { OrderEventPayload, OrderListItem, OrderStatus } from '../../../lib/hub-types';
+import { getSocket } from '../../../lib/socket';
 
 const COLUMNS: { status: OrderStatus | OrderStatus[]; title: string }[] = [
   { status: 'placed', title: 'Novos' },

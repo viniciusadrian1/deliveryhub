@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-import { Providers } from './providers.js';
+import { Providers } from './providers';
 
 import './globals.css';
 
