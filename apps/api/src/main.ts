@@ -1,7 +1,28 @@
 import 'reflect-metadata';
 
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { NestFactory } from '@nestjs/core';
+import { config as loadDotenv } from 'dotenv';
 import { Logger } from 'nestjs-pino';
+
+// Load .env from the monorepo root. We're compiled to `apps/api/dist/main.js`,
+// and the project root is 3 levels up. Try the closest paths first to avoid
+// accidentally loading an unrelated `.env` from a parent directory on the
+// developer's machine.
+(() => {
+  for (const path of [
+    resolve(__dirname, '..', '.env'),       // apps/api/.env
+    resolve(__dirname, '..', '..', '.env'), // apps/.env
+    resolve(__dirname, '..', '..', '..', '.env'), // monorepo root
+  ]) {
+    if (existsSync(path)) {
+      loadDotenv({ path });
+      break;
+    }
+  }
+})();
 
 import { AppModule } from './app.module.js';
 import { initSentry } from './common/observability/sentry.js';
