@@ -27,6 +27,8 @@ model Platform {
   connections     PlatformConnection[]
   feeProfiles     PlatformFeeProfile[]
   menuItemConfigs MenuItemPlatformConfig[]
+  orders          Order[]
+  webhookEvents   WebhookEvent[]
 
   @@map("platform")
 }
@@ -126,6 +128,7 @@ model MenuItem {
   category        Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   modifierGroups  ModifierGroup[]
   platformConfigs MenuItemPlatformConfig[]
+  orderItems      OrderItem[]
 
   @@index([organizationId, storeId])
   @@index([categoryId])
@@ -162,8 +165,9 @@ model Modifier {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  modifierGroup ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  modifierGroup      ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  orderItemModifiers OrderItemModifier[]
 
   @@index([modifierGroupId])
   @@map("modifier")
@@ -250,6 +254,157 @@ model NotificationPreference {
   @@map("notification_preference")
 }
 
+// ============================================================
+// Orders & Customers (Sprint 8 — Hub de Pedidos em tempo real)
+// ============================================================
+
+model Customer {
+  id             String    @id @default(uuid(7))
+  organizationId String    @map("organization_id")
+  phoneHash      String?   @map("phone_hash") // sha256(dígitos) — dedup
+  documentHash   String?   @map("document_hash") // sha256(dígitos) — dedup
+  phone          String? // cifrado pela PII extension
+  document       String? // cifrado pela PII extension
+  name           String
+  firstSeenAt    DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       Order[]
+
+  @@unique([organizationId, phoneHash])
+  @@unique([organizationId, documentHash])
+  @@index([organizationId, lastSeenAt(sort: Desc)])
+  @@map("customer")
+}
+
+enum OrderStatus {
+  placed
+  accepted
+  preparing
+  ready
+  dispatched
+  delivered
+  cancelled
+
+  @@map("order_status")
+}
+
+enum OrderStatusSource {
+  platform
+  user
+  system
+
+  @@map("order_status_source")
+}
+
+model Order {
+  id                 String      @id @default(uuid(7))
+  organizationId     String      @map("organization_id")
+  storeId            String      @map("store_id")
+  platformId         String      @map("platform_id")
+  externalId         String      @map("external_id")
+  customerId         String?     @map("customer_id")
+  status             OrderStatus @default(placed)
+  subtotalCents      Int         @map("subtotal_cents")
+  deliveryFeeCents   Int         @default(0) @map("delivery_fee_cents")
+  totalCents         Int         @map("total_cents")
+  platformFeeCents   Int         @default(0) @map("platform_fee_cents")
+  processingFeeCents Int         @default(0) @map("processing_fee_cents")
+  flatFeeCents       Int         @default(0) @map("flat_fee_cents")
+  netCents           Int         @map("net_cents")
+  notes              String?
+  placedAt           DateTime    @map("placed_at")
+  acceptedAt         DateTime?   @map("accepted_at")
+  dispatchedAt       DateTime?   @map("dispatched_at")
+  deliveredAt        DateTime?   @map("delivered_at")
+  cancelledAt        DateTime?   @map("cancelled_at")
+  cancellationReason String?     @map("cancellation_reason")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  platform     Platform           @relation(fields: [platformId], references: [id])
+  customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items        OrderItem[]
+  statusEvents OrderStatusEvent[]
+
+  @@unique([platformId, externalId])
+  @@index([organizationId, storeId, placedAt(sort: Desc)])
+  @@index([organizationId, status])
+  @@map("order")
+}
+
+model OrderItem {
+  id             String  @id @default(uuid(7))
+  orderId        String  @map("order_id")
+  menuItemId     String? @map("menu_item_id")
+  externalId     String? @map("external_id")
+  nameSnapshot   String  @map("name_snapshot")
+  qty            Int
+  unitPriceCents Int     @map("unit_price_cents")
+  totalCents     Int     @map("total_cents")
+  notes          String?
+
+  order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem?           @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  modifiers OrderItemModifier[]
+
+  @@index([orderId])
+  @@map("order_item")
+}
+
+model OrderItemModifier {
+  id             String  @id @default(uuid(7))
+  orderItemId    String  @map("order_item_id")
+  modifierId     String? @map("modifier_id")
+  externalId     String? @map("external_id")
+  nameSnapshot   String  @map("name_snapshot")
+  qty            Int     @default(1)
+  unitPriceCents Int     @map("unit_price_cents")
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifier  Modifier? @relation(fields: [modifierId], references: [id], onDelete: SetNull)
+
+  @@index([orderItemId])
+  @@map("order_item_modifier")
+}
+
+model OrderStatusEvent {
+  id          String            @id @default(uuid(7))
+  orderId     String            @map("order_id")
+  status      OrderStatus
+  source      OrderStatusSource
+  actorUserId String?           @map("actor_user_id")
+  at          DateTime          @default(now())
+  metadata    Json?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, at(sort: Desc)])
+  @@map("order_status_event")
+}
+
+model WebhookEvent {
+  id          String    @id @default(uuid(7))
+  platformId  String    @map("platform_id")
+  externalId  String    @map("external_id")
+  eventType   String    @map("event_type")
+  payload     Json
+  receivedAt  DateTime  @default(now()) @map("received_at")
+  processedAt DateTime? @map("processed_at")
+  error       String?
+
+  platform Platform @relation(fields: [platformId], references: [id])
+
+  @@unique([platformId, externalId])
+  @@index([receivedAt(sort: Desc)])
+  @@map("webhook_event")
+}
+
 model VaultSecret {
   id         String   @id @default(uuid(7))
   name       String   @unique
@@ -292,6 +447,8 @@ model Organization {
   modifiers               Modifier[]
   menuItemPlatformConfigs MenuItemPlatformConfig[]
   notifications           Notification[]
+  customers               Customer[]
+  orders                  Order[]
 
   @@map("organization")
 }
@@ -355,6 +512,7 @@ model Store {
   platformFeeProfiles PlatformFeeProfile[]
   categories          Category[]
   menuItems           MenuItem[]
+  orders              Order[]
 
   @@index([organizationId])
   @@map("store")

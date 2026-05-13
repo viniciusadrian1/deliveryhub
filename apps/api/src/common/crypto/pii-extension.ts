@@ -9,6 +9,7 @@ import type { CryptoService } from './crypto.service.js';
 const PII_FIELDS: Record<string, readonly string[]> = {
   organization: ['document'],
   user: ['phone'],
+  customer: ['phone', 'document'],
 };
 
 const WRITE_OPS = new Set([

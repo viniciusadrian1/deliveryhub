@@ -162,6 +162,113 @@ export class IFoodAdapter implements PlatformAdapter {
     return { categories, items };
   }
 
+  async fetchOrder(tokens: StoredTokens, merchantId: string, externalOrderId: string) {
+    interface RawCustomer {
+      name?: string;
+      phone?: string;
+      taxPayerIdentificationNumber?: string;
+      documentNumber?: string;
+    }
+    interface RawOrderItem {
+      id: string;
+      externalCode?: string;
+      categoryId?: string;
+      name: string;
+      quantity: number;
+      unitPrice?: { value: number };
+      totalPrice?: { value: number };
+      observations?: string;
+      options?: Array<{
+        id: string;
+        name: string;
+        quantity: number;
+        price?: { value: number };
+      }>;
+    }
+    interface RawOrder {
+      id: string;
+      merchantId?: string;
+      status: string;
+      customer?: RawCustomer;
+      items: RawOrderItem[];
+      total?: {
+        subTotal?: { value: number };
+        deliveryFee?: { value: number };
+        orderAmount?: { value: number };
+      };
+      payments?: {
+        prepaid?: { value: number };
+      };
+      benefits?: Array<{ value?: { value: number } }>;
+      observations?: string;
+      createdAt?: string;
+      placedAt?: string;
+    }
+
+    const data = await this.get<RawOrder>(
+      `/order/v1.0/orders/${externalOrderId}`,
+      tokens,
+    );
+
+    return {
+      externalId: data.id,
+      externalMerchantId: data.merchantId ?? merchantId,
+      status: mapIFoodStatus(data.status),
+      customer: {
+        name: data.customer?.name ?? 'Cliente',
+        phone: data.customer?.phone,
+        document: data.customer?.documentNumber ?? data.customer?.taxPayerIdentificationNumber,
+      },
+      items: data.items.map((it) => ({
+        externalId: it.id,
+        externalCategoryId: it.categoryId,
+        name: it.name,
+        qty: it.quantity,
+        unitPriceCents: it.unitPrice ? Math.round(it.unitPrice.value * 100) : 0,
+        totalCents: it.totalPrice ? Math.round(it.totalPrice.value * 100) : 0,
+        notes: it.observations,
+        modifiers: it.options?.map((o) => ({
+          externalId: o.id,
+          name: o.name,
+          qty: o.quantity,
+          unitPriceCents: o.price ? Math.round(o.price.value * 100) : 0,
+        })),
+      })),
+      subtotalCents: data.total?.subTotal ? Math.round(data.total.subTotal.value * 100) : 0,
+      deliveryFeeCents: data.total?.deliveryFee
+        ? Math.round(data.total.deliveryFee.value * 100)
+        : 0,
+      totalCents: data.total?.orderAmount ? Math.round(data.total.orderAmount.value * 100) : 0,
+      platformFeeCents: 0, // iFood não devolve breakdown — calculamos pelo fee profile
+      processingFeeCents: 0,
+      flatFeeCents: 0,
+      notes: data.observations,
+      placedAt: new Date(data.placedAt ?? data.createdAt ?? Date.now()),
+    };
+  }
+
+  parseWebhook(payload: unknown) {
+    interface RawWebhook {
+      id?: string;
+      code?: string;
+      fullCode?: string;
+      orderId?: string;
+      merchantId?: string;
+      createdAt?: string;
+    }
+    const p = payload as RawWebhook;
+    if (!p.id || !p.orderId || !p.merchantId) {
+      throw new AdapterApiError('invalid_webhook_payload', 400, payload);
+    }
+    return {
+      eventId: p.id,
+      eventType: p.fullCode ?? p.code ?? 'UNKNOWN',
+      externalOrderId: p.orderId,
+      externalMerchantId: p.merchantId,
+      occurredAt: new Date(p.createdAt ?? Date.now()),
+    };
+  }
+
   async pushItemPrice(
     tokens: StoredTokens,
     merchantId: string,
@@ -307,6 +414,19 @@ export class IFoodAdapter implements PlatformAdapter {
     }
     return (json ?? {}) as T;
   }
+}
+
+// iFood status codes → DeliveryHub OrderStatus
+function mapIFoodStatus(raw: string): import('./adapter.interface.js').RemoteOrderStatus {
+  const code = raw.toUpperCase();
+  if (['PLC', 'PLACED', 'CREATED'].includes(code)) return 'placed';
+  if (['CFM', 'CON', 'CONFIRMED'].includes(code)) return 'accepted';
+  if (['IPR', 'PREPARING', 'IN_PRODUCTION'].includes(code)) return 'preparing';
+  if (['RTD', 'READY_TO_DELIVER', 'READY'].includes(code)) return 'ready';
+  if (['DSP', 'DISPATCHED', 'OUT_FOR_DELIVERY'].includes(code)) return 'dispatched';
+  if (['CON', 'CONCLUDED', 'DELIVERED'].includes(code)) return 'delivered';
+  if (['CAN', 'CANCELLED', 'CANCELED'].includes(code)) return 'cancelled';
+  return 'placed';
 }
 
 function safeJson(text: string): unknown {

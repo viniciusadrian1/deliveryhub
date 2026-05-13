@@ -89,6 +89,63 @@ export class MockAdapter implements PlatformAdapter {
     };
   }
 
+  async fetchOrder(_tokens: StoredTokens, externalMerchantId: string, externalOrderId: string) {
+    return {
+      externalId: externalOrderId,
+      externalMerchantId,
+      status: 'placed' as const,
+      customer: {
+        name: 'Maria Silva',
+        phone: '+5511999998888',
+        document: '12345678900',
+      },
+      items: [
+        {
+          externalId: 'mock-item-smash',
+          name: 'Smash Duplo',
+          qty: 1,
+          unitPriceCents: 3990,
+          totalCents: 3990,
+          modifiers: [
+            { externalId: 'mock-mod-cheese', name: 'Cheddar extra', qty: 1, unitPriceCents: 400 },
+          ],
+        },
+        {
+          externalId: 'mock-item-coke',
+          name: 'Coca-Cola 350ml',
+          qty: 1,
+          unitPriceCents: 800,
+          totalCents: 800,
+        },
+      ],
+      subtotalCents: 5190,
+      deliveryFeeCents: 990,
+      totalCents: 6180,
+      platformFeeCents: 1194,
+      processingFeeCents: 155,
+      flatFeeCents: 0,
+      notes: 'Por favor caprichar',
+      placedAt: new Date(),
+    };
+  }
+
+  parseWebhook(payload: unknown) {
+    const p = payload as {
+      id?: string;
+      code?: string;
+      orderId?: string;
+      merchantId?: string;
+      createdAt?: string;
+    };
+    return {
+      eventId: p.id ?? `mock-evt-${Date.now()}`,
+      eventType: p.code ?? 'PLC',
+      externalOrderId: p.orderId ?? `mock-order-${Date.now()}`,
+      externalMerchantId: p.merchantId ?? 'mock-merchant',
+      occurredAt: new Date(p.createdAt ?? Date.now()),
+    };
+  }
+
   async pushItemPrice(): Promise<void> {}
   async pushItemAvailability(): Promise<void> {}
   async pushStorePause(): Promise<void> {}

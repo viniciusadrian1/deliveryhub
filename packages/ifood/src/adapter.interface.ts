@@ -43,6 +43,63 @@ export interface RemoteMenu {
   items: RemoteMenuItem[];
 }
 
+export type RemoteOrderStatus =
+  | 'placed'
+  | 'accepted'
+  | 'preparing'
+  | 'ready'
+  | 'dispatched'
+  | 'delivered'
+  | 'cancelled';
+
+export interface RemoteOrderCustomer {
+  name: string;
+  phone?: string;
+  document?: string;
+}
+
+export interface RemoteOrderModifier {
+  externalId: string;
+  name: string;
+  qty: number;
+  unitPriceCents: number;
+}
+
+export interface RemoteOrderItem {
+  externalId: string;
+  externalCategoryId?: string;
+  name: string;
+  qty: number;
+  unitPriceCents: number;
+  totalCents: number;
+  notes?: string;
+  modifiers?: RemoteOrderModifier[];
+}
+
+export interface RemoteOrder {
+  externalId: string;
+  externalMerchantId: string;
+  status: RemoteOrderStatus;
+  customer: RemoteOrderCustomer;
+  items: RemoteOrderItem[];
+  subtotalCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+  platformFeeCents: number;
+  processingFeeCents: number;
+  flatFeeCents: number;
+  notes?: string;
+  placedAt: Date;
+}
+
+export interface WebhookEnvelope {
+  eventId: string;
+  eventType: string;
+  externalOrderId: string;
+  externalMerchantId: string;
+  occurredAt: Date;
+}
+
 export interface PlatformAdapter {
   readonly code: PlatformCode;
 
@@ -57,6 +114,14 @@ export interface PlatformAdapter {
   refreshAuth(refreshToken: string): Promise<StoredTokens>;
 
   fetchMenu(tokens: StoredTokens, externalMerchantId: string): Promise<RemoteMenu>;
+
+  fetchOrder(
+    tokens: StoredTokens,
+    externalMerchantId: string,
+    externalOrderId: string,
+  ): Promise<RemoteOrder>;
+
+  parseWebhook(payload: unknown): WebhookEnvelope;
 
   pushItemPrice(
     tokens: StoredTokens,
