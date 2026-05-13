@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 
+import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { LoginInput } from './dto/login.dto.js';
 import type { SignupInput } from './dto/signup.dto.js';
@@ -34,6 +35,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
     private readonly tokens: TokensService,
+    private readonly audit: AuditLogService,
   ) {}
 
   async signup(input: SignupInput, session: AuthSessionContext = {}): Promise<AuthResult> {
@@ -60,6 +62,16 @@ export class AuthService {
       return { user, membership, organization };
     });
 
+    await this.audit.record({
+      organizationId: organization.id,
+      userId: user.id,
+      entity: 'user',
+      entityId: user.id,
+      action: 'signup',
+      ip: session.ip,
+      userAgent: session.userAgent,
+    });
+
     return this.issueSessionTokens(user, membership, organization, session);
   }
 
@@ -82,6 +94,16 @@ export class AuthService {
     if (!membership) {
       throw new UnauthorizedException('no_organization');
     }
+
+    await this.audit.record({
+      organizationId: membership.organizationId,
+      userId: user.id,
+      entity: 'user',
+      entityId: user.id,
+      action: 'login',
+      ip: session.ip,
+      userAgent: session.userAgent,
+    });
 
     return this.issueSessionTokens(user, membership, membership.organization, session);
   }
@@ -121,12 +143,29 @@ export class AuthService {
     });
   }
 
-  async logout(plainRefreshToken: string): Promise<void> {
+  async logout(plainRefreshToken: string, session: AuthSessionContext = {}): Promise<void> {
     const tokenHash = this.tokens.hashRefreshToken(plainRefreshToken);
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      select: { id: true, userId: true, user: { include: { memberships: { take: 1 } } } },
+    });
+
     await this.prisma.refreshToken.updateMany({
       where: { tokenHash, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+
+    if (stored) {
+      await this.audit.record({
+        organizationId: stored.user.memberships[0]?.organizationId,
+        userId: stored.userId,
+        entity: 'refresh_token',
+        entityId: stored.id,
+        action: 'logout',
+        ip: session.ip,
+        userAgent: session.userAgent,
+      });
+    }
   }
 
   private async issueSessionTokens(

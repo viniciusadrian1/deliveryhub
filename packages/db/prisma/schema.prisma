@@ -127,3 +127,41 @@ model RefreshToken {
   @@index([userId])
   @@map("refresh_token")
 }
+
+// ============================================================
+// Compliance & audit
+// ============================================================
+
+enum AuditAction {
+  create
+  update
+  delete
+  login
+  logout
+  signup
+  refresh
+  pause
+  resume
+  price_change
+  export
+  consent
+
+  @@map("audit_action")
+}
+
+model AuditLog {
+  id             String      @id @default(uuid(7))
+  organizationId String?     @map("organization_id")
+  userId         String?     @map("user_id")
+  entity         String
+  entityId       String?     @map("entity_id")
+  action         AuditAction
+  diff           Json?
+  ip             String?
+  userAgent      String?     @map("user_agent")
+  at             DateTime    @default(now())
+
+  @@index([organizationId, entity, at(sort: Desc)])
+  @@index([userId, at(sort: Desc)])
+  @@map("audit_log")
+}

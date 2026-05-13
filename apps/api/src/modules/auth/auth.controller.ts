@@ -45,8 +45,11 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(204)
-  async logout(@Body(new ZodValidationPipe(refreshSchema)) body: RefreshInput): Promise<void> {
-    await this.auth.logout(body.refreshToken);
+  async logout(
+    @Body(new ZodValidationPipe(refreshSchema)) body: RefreshInput,
+    @Req() req: Request,
+  ): Promise<void> {
+    await this.auth.logout(body.refreshToken, this.sessionContext(req));
   }
 
   private sessionContext(req: Request): { userAgent?: string; ip?: string } {
