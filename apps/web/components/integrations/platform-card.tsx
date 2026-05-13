@@ -94,7 +94,7 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
       />
 
       <div className="flex items-start justify-between gap-3">
-        <div className="flex h-12 w-20 items-center justify-center rounded-lg border border-surface-border-subtle bg-white p-2">
+        <div className="relative flex h-12 w-20 items-center justify-center overflow-hidden rounded-lg border border-surface-border-subtle bg-white p-2">
           {meta.logo ? (
             <Image
               src={meta.logo}
@@ -102,6 +102,7 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
               width={64}
               height={32}
               className="h-full w-full object-contain"
+              style={meta.logoScale ? { transform: `scale(${meta.logoScale})` } : undefined}
               unoptimized
             />
           ) : (
