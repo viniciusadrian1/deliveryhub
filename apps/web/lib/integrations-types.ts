@@ -40,6 +40,6 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
   rappi:    { name: 'Rappi',     colorHex: '#FF441F', enabled: false, logo: '/platforms/rappi.png' },
   '99food': { name: '99Food',    colorHex: '#FE3324', enabled: false, logo: '/platforms/99food.svg', logoScale: 1.5 },
   keeta:    { name: 'Keeta',     colorHex: '#FFCC00', enabled: false, logo: '/platforms/keeta.png',  logoScale: 1.5 },
-  ubereats: { name: 'Uber Eats', colorHex: '#06C167', enabled: false, logo: '/platforms/ubereats.svg' },
+  ubereats: { name: 'Uber Eats', colorHex: '#06C167', enabled: false, logo: '/platforms/ubereats.png' },
   aiqfome:  { name: 'AiQfome',   colorHex: '#E2231A', enabled: false, logo: '/platforms/aiqfome.png' },
 };
