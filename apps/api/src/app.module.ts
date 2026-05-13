@@ -18,6 +18,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { IntegrationsModule } from './modules/integrations/integrations.module.js';
 import { MenuModule } from './modules/menu/menu.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
+import { PricingModule } from './modules/pricing/pricing.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
 @Module({
@@ -47,6 +48,7 @@ import { UsersModule } from './modules/users/users.module.js';
     OrganizationsModule,
     IntegrationsModule,
     MenuModule,
+    PricingModule,
     UsersModule,
   ],
   providers: [
