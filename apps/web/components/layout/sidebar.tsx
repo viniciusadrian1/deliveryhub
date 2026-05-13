@@ -35,7 +35,7 @@ const PRIMARY_NAV: NavItem[] = [
 
 const SECONDARY_NAV: NavItem[] = [
   { label: 'Integrações', href: '/integrations', icon: Plug },
-  { label: 'Configurações', href: '/settings', icon: Settings, disabled: true },
+  { label: 'Configurações', href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {
