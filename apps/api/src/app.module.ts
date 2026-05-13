@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 
+import { JwtAuthGuard } from './common/auth/jwt-auth.guard.js';
+import { RolesGuard } from './common/auth/roles.guard.js';
 import { PrismaModule } from './common/prisma/prisma.module.js';
+import { TenantInterceptor } from './common/tenant/tenant.interceptor.js';
+import { TenantModule } from './common/tenant/tenant.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { UsersModule } from './modules/users/users.module.js';
 
 @Module({
   imports: [
@@ -23,8 +29,15 @@ import { AuthModule } from './modules/auth/auth.module.js';
       },
     }),
     PrismaModule,
+    TenantModule,
     HealthModule,
     AuthModule,
+    UsersModule,
+  ],
+  providers: [
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
   ],
 })
 export class AppModule {}
