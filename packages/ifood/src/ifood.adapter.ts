@@ -111,6 +111,68 @@ export class IFoodAdapter implements PlatformAdapter {
     };
   }
 
+  async fetchMenu(tokens: StoredTokens, merchantId: string) {
+    interface RawCategory {
+      id: string;
+      name: string;
+      sortOrder?: number;
+      items?: RawItem[];
+    }
+    interface RawItem {
+      id: string;
+      categoryId?: string;
+      name: string;
+      description?: string;
+      priceCents?: number;
+      price?: { value: number };
+      status?: 'AVAILABLE' | 'UNAVAILABLE';
+      isPublished?: boolean;
+      imageUrl?: string;
+    }
+
+    const data = await this.get<{ categories: RawCategory[] }>(
+      `/catalog/v2.0/merchants/${merchantId}/catalog`,
+      tokens,
+    );
+
+    const categories = data.categories.map((c) => ({
+      externalId: c.id,
+      name: c.name,
+      sortOrder: c.sortOrder,
+    }));
+
+    const items = data.categories.flatMap((c) =>
+      (c.items ?? []).map((it) => ({
+        externalId: it.id,
+        externalCategoryId: it.categoryId ?? c.id,
+        name: it.name,
+        description: it.description,
+        sellingPriceCents:
+          typeof it.priceCents === 'number'
+            ? it.priceCents
+            : it.price
+              ? Math.round(it.price.value * 100)
+              : 0,
+        isAvailable: (it.status ?? 'AVAILABLE') === 'AVAILABLE',
+        isPublished: it.isPublished ?? true,
+        imageUrl: it.imageUrl,
+      })),
+    );
+
+    return { categories, items };
+  }
+
+  async pushItemPrice(
+    tokens: StoredTokens,
+    merchantId: string,
+    externalId: string,
+    sellingPriceCents: number,
+  ): Promise<void> {
+    await this.put(`/catalog/v2.0/merchants/${merchantId}/items/${externalId}/price`, tokens, {
+      value: sellingPriceCents / 100,
+    });
+  }
+
   async pushItemAvailability(
     tokens: StoredTokens,
     merchantId: string,

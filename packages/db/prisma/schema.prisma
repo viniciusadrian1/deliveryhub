@@ -24,8 +24,9 @@ model Platform {
   colorHex String  @map("color_hex")
   active   Boolean @default(true)
 
-  connections PlatformConnection[]
-  feeProfiles PlatformFeeProfile[]
+  connections     PlatformConnection[]
+  feeProfiles     PlatformFeeProfile[]
+  menuItemConfigs MenuItemPlatformConfig[]
 
   @@map("platform")
 }
@@ -120,10 +121,11 @@ model MenuItem {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  modifierGroups ModifierGroup[]
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store           Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category        Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  modifierGroups  ModifierGroup[]
+  platformConfigs MenuItemPlatformConfig[]
 
   @@index([organizationId, storeId])
   @@index([categoryId])
@@ -167,6 +169,34 @@ model Modifier {
   @@map("modifier")
 }
 
+// ============================================================
+// Per-platform configuration of menu items (Sprint 5)
+// ============================================================
+
+model MenuItemPlatformConfig {
+  id                 String    @id @default(uuid(7))
+  organizationId     String    @map("organization_id")
+  menuItemId         String    @map("menu_item_id")
+  platformId         String    @map("platform_id")
+  externalId         String?   @map("external_id")
+  externalCategoryId String?   @map("external_category_id")
+  sellingPriceCents  Int       @default(0) @map("selling_price_cents")
+  isPublished        Boolean   @default(true) @map("is_published")
+  isAvailable        Boolean   @default(true) @map("is_available")
+  lastSyncAt         DateTime? @map("last_sync_at")
+  lastSyncError      String?   @map("last_sync_error")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItem     MenuItem     @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  platform     Platform     @relation(fields: [platformId], references: [id])
+
+  @@unique([menuItemId, platformId])
+  @@index([organizationId])
+  @@map("menu_item_platform_config")
+}
+
 model VaultSecret {
   id         String   @id @default(uuid(7))
   name       String   @unique
@@ -198,15 +228,16 @@ model Organization {
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
-  memberships         Membership[]
-  stores              Store[]
-  invitations         Invitation[]
-  platformConnections PlatformConnection[]
-  platformFeeProfiles PlatformFeeProfile[]
-  categories          Category[]
-  menuItems           MenuItem[]
-  modifierGroups      ModifierGroup[]
-  modifiers           Modifier[]
+  memberships             Membership[]
+  stores                  Store[]
+  invitations             Invitation[]
+  platformConnections     PlatformConnection[]
+  platformFeeProfiles     PlatformFeeProfile[]
+  categories              Category[]
+  menuItems               MenuItem[]
+  modifierGroups          ModifierGroup[]
+  modifiers               Modifier[]
+  menuItemPlatformConfigs MenuItemPlatformConfig[]
 
   @@map("organization")
 }

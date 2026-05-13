@@ -32,6 +32,7 @@ const TENANT_MODELS = [
   'MenuItem',
   'ModifierGroup',
   'Modifier',
+  'MenuItemPlatformConfig',
 ] as const;
 
 function injectOrgIdIntoData(data: unknown, orgId: string): unknown {

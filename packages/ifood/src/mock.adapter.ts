@@ -52,6 +52,44 @@ export class MockAdapter implements PlatformAdapter {
     };
   }
 
+  async fetchMenu() {
+    // Devolve um cardápio fake reproduzível — útil para testar a sincronização inicial.
+    return {
+      categories: [
+        { externalId: 'mock-cat-burgers', name: 'Hambúrgueres', sortOrder: 0 },
+        { externalId: 'mock-cat-drinks', name: 'Bebidas', sortOrder: 1 },
+      ],
+      items: [
+        {
+          externalId: 'mock-item-smash',
+          externalCategoryId: 'mock-cat-burgers',
+          name: 'Smash Duplo',
+          description: 'Dois smash 90g, queijo, alface, tomate, molho.',
+          sellingPriceCents: 3990,
+          isAvailable: true,
+          isPublished: true,
+        },
+        {
+          externalId: 'mock-item-cheeseburger',
+          externalCategoryId: 'mock-cat-burgers',
+          name: 'Cheeseburger',
+          sellingPriceCents: 2890,
+          isAvailable: true,
+          isPublished: true,
+        },
+        {
+          externalId: 'mock-item-coke',
+          externalCategoryId: 'mock-cat-drinks',
+          name: 'Coca-Cola 350ml',
+          sellingPriceCents: 800,
+          isAvailable: true,
+          isPublished: true,
+        },
+      ],
+    };
+  }
+
+  async pushItemPrice(): Promise<void> {}
   async pushItemAvailability(): Promise<void> {}
   async pushStorePause(): Promise<void> {}
   async acceptOrder(): Promise<void> {}

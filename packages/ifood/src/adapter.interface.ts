@@ -21,6 +21,28 @@ export interface FinalizeConnectionResult {
   externalMerchantId: string;
 }
 
+export interface RemoteCategory {
+  externalId: string;
+  name: string;
+  sortOrder?: number;
+}
+
+export interface RemoteMenuItem {
+  externalId: string;
+  externalCategoryId: string | null;
+  name: string;
+  description?: string;
+  sellingPriceCents: number;
+  isAvailable: boolean;
+  isPublished: boolean;
+  imageUrl?: string;
+}
+
+export interface RemoteMenu {
+  categories: RemoteCategory[];
+  items: RemoteMenuItem[];
+}
+
 export interface PlatformAdapter {
   readonly code: PlatformCode;
 
@@ -33,6 +55,15 @@ export interface PlatformAdapter {
   finalizeConnection(pendingHandle: string): Promise<FinalizeConnectionResult>;
 
   refreshAuth(refreshToken: string): Promise<StoredTokens>;
+
+  fetchMenu(tokens: StoredTokens, externalMerchantId: string): Promise<RemoteMenu>;
+
+  pushItemPrice(
+    tokens: StoredTokens,
+    externalMerchantId: string,
+    externalId: string,
+    sellingPriceCents: number,
+  ): Promise<void>;
 
   pushItemAvailability(
     tokens: StoredTokens,
