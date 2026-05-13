@@ -1,6 +1,5 @@
-// DeliveryHub — schema base de fundação.
-// Sprint 1 expandirá este schema com organization/user/membership/store/refresh_token.
-// Sprints subsequentes adicionam menu, orders, pauses, financial, audit_log.
+// DeliveryHub — schema da Sprint 1: tenancy core + auth.
+// Próximas sprints expandem com menu, orders, pauses, financial, audit_log.
 
 generator client {
   provider     = "prisma-client-js"
@@ -14,8 +13,10 @@ datasource db {
   shadowDatabaseUrl = env("DATABASE_URL_SHADOW")
 }
 
-// Placeholder mínimo para validar toolchain.
-// Substituído na Sprint 1 (US-1.2).
+// ============================================================
+// Reference data
+// ============================================================
+
 model Platform {
   id       String  @id @default(uuid(7))
   code     String  @unique
@@ -24,4 +25,105 @@ model Platform {
   active   Boolean @default(true)
 
   @@map("platform")
+}
+
+// ============================================================
+// Tenancy core
+// ============================================================
+
+enum TaxRegime {
+  simples_nacional
+  lucro_presumido
+  lucro_real
+
+  @@map("tax_regime")
+}
+
+model Organization {
+  id         String    @id @default(uuid(7))
+  name       String
+  document   String?
+  taxRegime  TaxRegime @default(simples_nacional) @map("tax_regime")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  memberships Membership[]
+  stores      Store[]
+
+  @@map("organization")
+}
+
+model User {
+  id              String    @id @default(uuid(7))
+  email           String    @unique
+  passwordHash    String    @map("password_hash")
+  name            String
+  phone           String?
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  memberships   Membership[]
+  refreshTokens RefreshToken[]
+
+  @@map("user")
+}
+
+enum Role {
+  owner
+  manager
+  staff
+  financial
+
+  @@map("role")
+}
+
+model Membership {
+  id             String   @id @default(uuid(7))
+  organizationId String   @map("organization_id")
+  userId         String   @map("user_id")
+  role           Role
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("membership")
+}
+
+model Store {
+  id             String   @id @default(uuid(7))
+  organizationId String   @map("organization_id")
+  name           String
+  address        Json?
+  timezone       String   @default("America/Sao_Paulo")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("store")
+}
+
+// ============================================================
+// Auth
+// ============================================================
+
+model RefreshToken {
+  id        String    @id @default(uuid(7))
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  userAgent String?   @map("user_agent")
+  ip        String?
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_token")
 }

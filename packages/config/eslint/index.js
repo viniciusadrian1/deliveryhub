@@ -14,7 +14,10 @@ export default [
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      '@typescript-eslint/consistent-type-imports': 'warn',
+      // Desabilitado: NestJS DI exige imports de classe como valor em runtime
+      // (Reflect.getMetadata via emitDecoratorMetadata). A regra gera falsos
+      // positivos em services/controllers e exigiria parserOptions.project por workspace.
+      '@typescript-eslint/consistent-type-imports': 'off',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },

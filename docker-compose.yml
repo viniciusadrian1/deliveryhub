@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: deliveryhub
       POSTGRES_DB: deliveryhub
     ports:
-      - '5432:5432'
+      - '55432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -23,7 +23,7 @@ services:
     container_name: deliveryhub-redis
     restart: unless-stopped
     ports:
-      - '6379:6379'
+      - '56379:6379'
     volumes:
       - redis_data:/data
     healthcheck:

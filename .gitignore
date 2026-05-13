@@ -21,6 +21,7 @@ packages/db/generated/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+apps/api/server*.log
 
 # IDE
 .idea/
