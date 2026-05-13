@@ -15,10 +15,11 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { label: 'Hub', href: '/hub', icon: '📋' },
-  { label: 'Cardápio', href: '/menu', icon: '🍔', disabled: true },
-  { label: 'Preço & Margem', href: '/pricing', icon: '💰', disabled: true },
-  { label: 'Pausa', href: '/pause', icon: '⏸️', disabled: true },
-  { label: 'Financeiro', href: '/financial', icon: '💳', disabled: true },
+  { label: 'Cardápio', href: '/menu', icon: '🍔' },
+  { label: 'Preço & Margem', href: '/pricing', icon: '💰' },
+  { label: 'Pausa', href: '/pause', icon: '⏸️' },
+  { label: 'Financeiro', href: '/financial', icon: '💳' },
+  { label: 'Integrações', href: '/integrations', icon: '🔌' },
   { label: 'Configurações', href: '/settings', icon: '⚙️', disabled: true },
 ];
 
