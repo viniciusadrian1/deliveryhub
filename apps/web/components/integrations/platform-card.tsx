@@ -9,9 +9,10 @@ import {
   RefreshCw,
   XCircle,
 } from 'lucide-react';
+import Image from 'next/image';
 
 import { api } from '../../lib/api';
-import type { PlatformConnection } from '../../lib/integrations-types';
+import type { PlatformConnection, PlatformMeta } from '../../lib/integrations-types';
 import { PLATFORM_META } from '../../lib/integrations-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -22,9 +23,16 @@ interface PlatformCardProps {
   onConnect: () => void;
 }
 
+const FALLBACK_META: PlatformMeta = {
+  name: '',
+  colorHex: '#888',
+  enabled: false,
+  logo: '',
+};
+
 export function PlatformCard({ code, connection, onConnect }: PlatformCardProps) {
   const qc = useQueryClient();
-  const meta = PLATFORM_META[code] ?? { name: code, colorHex: '#888', enabled: false };
+  const meta = PLATFORM_META[code] ?? { ...FALLBACK_META, name: code };
 
   const disconnect = useMutation({
     mutationFn: async (id: string) => {
@@ -86,11 +94,24 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
       />
 
       <div className="flex items-start justify-between gap-3">
-        <div
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold uppercase text-white"
-          style={{ backgroundColor: meta.colorHex }}
-        >
-          {meta.name.slice(0, 2)}
+        <div className="flex h-12 w-20 items-center justify-center rounded-lg border border-surface-border-subtle bg-white p-2">
+          {meta.logo ? (
+            <Image
+              src={meta.logo}
+              alt={`${meta.name} logo`}
+              width={64}
+              height={32}
+              className="h-full w-full object-contain"
+              unoptimized
+            />
+          ) : (
+            <span
+              className="text-sm font-bold uppercase"
+              style={{ color: meta.colorHex }}
+            >
+              {meta.name.slice(0, 2)}
+            </span>
+          )}
         </div>
         {renderStatus()}
       </div>

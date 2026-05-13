@@ -22,14 +22,18 @@ export interface StartConnectionResponse {
   isMock: boolean;
 }
 
-export const PLATFORM_META: Record<
-  string,
-  { name: string; colorHex: string; enabled: boolean }
-> = {
-  ifood: { name: 'iFood', colorHex: '#EA1D2C', enabled: true },
-  rappi: { name: 'Rappi', colorHex: '#FF441F', enabled: false },
-  '99food': { name: '99Food', colorHex: '#FE3324', enabled: false },
-  keeta: { name: 'Keeta', colorHex: '#FFCC00', enabled: false },
-  ubereats: { name: 'Uber Eats', colorHex: '#06C167', enabled: false },
-  aiqfome: { name: 'AiQfome', colorHex: '#E2231A', enabled: false },
+export interface PlatformMeta {
+  name: string;
+  colorHex: string;
+  enabled: boolean;
+  logo: string;
+}
+
+export const PLATFORM_META: Record<string, PlatformMeta> = {
+  ifood:    { name: 'iFood',     colorHex: '#EA1D2C', enabled: true,  logo: '/platforms/ifood.svg' },
+  rappi:    { name: 'Rappi',     colorHex: '#FF441F', enabled: false, logo: '/platforms/rappi.png' },
+  '99food': { name: '99Food',    colorHex: '#FE3324', enabled: false, logo: '/platforms/99food.svg' },
+  keeta:    { name: 'Keeta',     colorHex: '#FFCC00', enabled: false, logo: '/platforms/keeta.png' },
+  ubereats: { name: 'Uber Eats', colorHex: '#06C167', enabled: false, logo: '/platforms/ubereats.svg' },
+  aiqfome:  { name: 'AiQfome',   colorHex: '#E2231A', enabled: false, logo: '/platforms/aiqfome.png' },
 };
