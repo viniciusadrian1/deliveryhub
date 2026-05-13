@@ -38,8 +38,8 @@ export interface PlatformMeta {
 export const PLATFORM_META: Record<string, PlatformMeta> = {
   ifood:    { name: 'iFood',     colorHex: '#EA1D2C', enabled: true,  logo: '/platforms/ifood.svg' },
   rappi:    { name: 'Rappi',     colorHex: '#FF441F', enabled: false, logo: '/platforms/rappi.png' },
-  '99food': { name: '99Food',    colorHex: '#FE3324', enabled: false, logo: '/platforms/99food.svg', logoScale: 1.5 },
+  '99food': { name: '99Food',    colorHex: '#FE3324', enabled: false, logo: '/platforms/99food.svg', logoScale: 2.2 },
   keeta:    { name: 'Keeta',     colorHex: '#FFCC00', enabled: false, logo: '/platforms/keeta.png',  logoScale: 3.5 },
-  ubereats: { name: 'Uber Eats', colorHex: '#06C167', enabled: false, logo: '/platforms/ubereats.png', logoScale: 1.4 },
-  aiqfome:  { name: 'AiQfome',   colorHex: '#E2231A', enabled: false, logo: '/platforms/aiqfome.png' },
+  ubereats: { name: 'Uber Eats', colorHex: '#06C167', enabled: false, logo: '/platforms/ubereats.png', logoScale: 1.8 },
+  aiqfome:  { name: 'AiQfome',   colorHex: '#E2231A', enabled: false, logo: '/platforms/aiqfome.png', logoScale: 1.6 },
 };
