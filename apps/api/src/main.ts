@@ -4,10 +4,12 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module.js';
+import { initSentry } from './common/observability/sentry.js';
 import { loadEnv } from './config/env.js';
 
 async function bootstrap() {
   const env = loadEnv();
+  initSentry(env);
 
   if (env.MODE === 'worker') {
     // Sprint 5+: inicializa BullMQ consumers em vez do servidor HTTP.

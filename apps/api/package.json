@@ -24,6 +24,8 @@
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/terminus": "^11.0.0",
     "@node-rs/argon2": "^2.0.0",
+    "@sentry/node": "^8.47.0",
+    "resend": "^4.0.0",
     "nestjs-pino": "^4.1.0",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",

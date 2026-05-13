@@ -7,11 +7,14 @@ import { AuditModule } from './common/audit/audit.module.js';
 import { JwtAuthGuard } from './common/auth/jwt-auth.guard.js';
 import { RolesGuard } from './common/auth/roles.guard.js';
 import { CryptoModule } from './common/crypto/crypto.module.js';
+import { EmailModule } from './common/email/email.module.js';
+import { SentryInterceptor } from './common/observability/sentry.filter.js';
 import { PrismaModule } from './common/prisma/prisma.module.js';
 import { TenantInterceptor } from './common/tenant/tenant.interceptor.js';
 import { TenantModule } from './common/tenant/tenant.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
 @Module({
@@ -33,14 +36,17 @@ import { UsersModule } from './modules/users/users.module.js';
     CryptoModule,
     PrismaModule,
     AuditModule,
+    EmailModule,
     TenantModule,
     HealthModule,
     AuthModule,
+    OrganizationsModule,
     UsersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_INTERCEPTOR, useClass: SentryInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TenantInterceptor },
   ],
 })

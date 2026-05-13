@@ -4,13 +4,23 @@ import type { Request } from 'express';
 import { Public } from '../../common/auth/public.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import { type LoginInput, loginSchema } from './dto/login.dto.js';
+import {
+  type ForgotPasswordInput,
+  forgotPasswordSchema,
+  type ResetPasswordInput,
+  resetPasswordSchema,
+} from './dto/password-reset.dto.js';
 import { type RefreshInput, refreshSchema } from './dto/refresh.dto.js';
 import { type SignupInput, signupSchema } from './dto/signup.dto.js';
 import { AuthService, type AuthResult } from './auth.service.js';
+import { PasswordResetService } from './password-reset.service.js';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly passwordReset: PasswordResetService,
+  ) {}
 
   @Public()
   @Post('signup')
@@ -50,6 +60,26 @@ export class AuthController {
     @Req() req: Request,
   ): Promise<void> {
     await this.auth.logout(body.refreshToken, this.sessionContext(req));
+  }
+
+  @Public()
+  @Post('password/forgot')
+  @HttpCode(204)
+  async forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordSchema)) body: ForgotPasswordInput,
+    @Req() req: Request,
+  ): Promise<void> {
+    await this.passwordReset.requestReset(body.email, this.sessionContext(req));
+  }
+
+  @Public()
+  @Post('password/reset')
+  @HttpCode(204)
+  async resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordSchema)) body: ResetPasswordInput,
+    @Req() req: Request,
+  ): Promise<void> {
+    await this.passwordReset.resetPassword(body.token, body.password, this.sessionContext(req));
   }
 
   private sessionContext(req: Request): { userAgent?: string; ip?: string } {

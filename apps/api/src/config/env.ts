@@ -17,6 +17,10 @@ const envSchema = z.object({
 
   VAULT_MASTER_KEY: z.string().min(32),
 
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default('DeliveryHub <no-reply@deliveryhub.local>'),
+  WEB_BASE_URL: z.string().url().default('http://localhost:3000'),
+
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default('local'),
 });

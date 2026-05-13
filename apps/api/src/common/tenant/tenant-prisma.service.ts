@@ -22,7 +22,7 @@ const CREATE_OPS = new Set(['create', 'createMany']);
  * Models que possuem `organizationId` e são automaticamente escopados pelo tenant.
  * Adicionar aqui qualquer novo model com `organizationId` para manter o filtro.
  */
-const TENANT_MODELS = ['Store', 'Membership'] as const;
+const TENANT_MODELS = ['Store', 'Membership', 'Invitation'] as const;
 
 function injectOrgIdIntoData(data: unknown, orgId: string): unknown {
   if (Array.isArray(data)) {
