@@ -1,10 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { Plug } from 'lucide-react';
 import { useState } from 'react';
 
 import { ConnectDialog } from '../../../components/integrations/connect-dialog';
 import { PlatformCard } from '../../../components/integrations/platform-card';
+import { EmptyState } from '../../../components/ui/empty-state';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import type { PlatformConnection } from '../../../lib/integrations-types';
@@ -23,22 +25,34 @@ export default function IntegrationsPage() {
 
   if (!storeId) {
     return (
-      <p className="text-sm text-zinc-500">
-        Crie/selecione uma loja primeiro para conectar plataformas.
-      </p>
+      <EmptyState
+        icon={Plug}
+        title="Nenhuma loja configurada"
+        description="Crie uma loja antes de conectar plataformas de delivery."
+      />
     );
   }
 
   const connectionByCode = new Map(connections.map((c) => [c.platformCode, c]));
   const allCodes = Object.keys(PLATFORM_META);
+  const activeCount = connections.filter((c) => c.status === 'active').length;
 
   return (
     <div className="flex flex-col">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold">Integrações</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Conecte suas plataformas de delivery. Pedidos chegarão direto no Hub.
+      <header className="mb-8">
+        <h1>Integrações</h1>
+        <p className="mt-1 text-sm text-ink-secondary">
+          Conecte suas plataformas de delivery. Pedidos, cardápio e preços ficam
+          sincronizados a partir do Hub.
         </p>
+        <div className="mt-4 flex items-center gap-2 text-xs">
+          <span className="rounded-md bg-success-soft px-2 py-1 font-semibold text-success-bright">
+            {activeCount} conectada{activeCount === 1 ? '' : 's'}
+          </span>
+          <span className="text-ink-tertiary">
+            de {allCodes.length} plataformas suportadas
+          </span>
+        </div>
       </header>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

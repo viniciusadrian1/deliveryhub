@@ -1,11 +1,25 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
+import {
+  AlertCircle,
+  CircleDot,
+  Clock,
+  PauseCircle,
+  Play,
+  PowerOff,
+  RotateCcw,
+  Store,
+  UtensilsCrossed,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Dialog } from '../../../components/ui/dialog';
+import { EmptyState } from '../../../components/ui/empty-state';
 import { Input } from '../../../components/ui/input';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
@@ -39,10 +53,11 @@ const REASON_LABEL: Record<string, string> = {
 };
 
 const DURATION_PRESETS = [
+  { label: '15 min', minutes: 15 },
   { label: '30 min', minutes: 30 },
   { label: '1 hora', minutes: 60 },
   { label: '2 horas', minutes: 120 },
-  { label: 'Até reabrir', minutes: 0 },
+  { label: 'Indefinida', minutes: 0 },
 ];
 
 export default function PausePage() {
@@ -58,8 +73,7 @@ export default function PausePage() {
 
   const { data: active = [] } = useQuery({
     queryKey: ['pauses', 'active', storeId],
-    queryFn: () =>
-      api<Pause[]>(`/pauses/active?storeId=${encodeURIComponent(storeId ?? '')}`),
+    queryFn: () => api<Pause[]>(`/pauses/active?storeId=${encodeURIComponent(storeId ?? '')}`),
     enabled: !!storeId,
     refetchInterval: 30_000,
   });
@@ -111,70 +125,128 @@ export default function PausePage() {
     );
   };
 
-  if (!storeId) return <p className="text-sm text-zinc-500">Crie/selecione uma loja primeiro.</p>;
+  if (!storeId) {
+    return (
+      <EmptyState
+        icon={PauseCircle}
+        title="Nenhuma loja configurada"
+        description="Crie uma loja primeiro."
+      />
+    );
+  }
 
-  const storeStatus = active.length === 0 ? 'open' : 'paused';
+  const isOpen = active.length === 0;
 
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-bold">Pausa Multiplataforma ⭐</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Pause a loja em uma, várias ou todas as plataformas. Reabertura automática
-          no horário definido.
+        <div className="flex items-start gap-2">
+          <h1>Pausa Multiplataforma</h1>
+          <Badge variant="brand" dot>
+            Diferencial
+          </Badge>
+        </div>
+        <p className="mt-2 text-sm text-ink-secondary">
+          Pause em uma, várias ou todas as plataformas — total, por categoria ou item.
+          Reabertura automática no horário definido.
         </p>
       </header>
 
-      {/* Status geral da loja */}
+      {/* Status banner */}
       <section
-        className={`rounded-xl border p-5 ${
-          storeStatus === 'open'
-            ? 'border-status-open bg-green-50 dark:bg-green-950/20'
-            : 'border-status-paused bg-yellow-50 dark:bg-yellow-950/20'
-        }`}
+        className={clsx(
+          'surface-card relative overflow-hidden p-6',
+          isOpen ? 'border-success/40' : 'border-warning/40',
+        )}
       >
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm uppercase tracking-wider text-zinc-500">Status atual</p>
-            <p className="mt-1 text-xl font-bold">
-              {storeStatus === 'open' ? (
-                <span className="text-status-open">🟢 Aberta em todas as plataformas conectadas</span>
-              ) : (
-                <span className="text-status-paused">
-                  🟡 {active.length} pausa{active.length === 1 ? '' : 's'} ativa{active.length === 1 ? '' : 's'}
-                </span>
+        <div
+          className={clsx(
+            'pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-20 blur-3xl',
+            isOpen ? 'bg-success' : 'bg-warning',
+          )}
+        />
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div
+              className={clsx(
+                'flex h-14 w-14 items-center justify-center rounded-2xl',
+                isOpen
+                  ? 'bg-success-soft text-success-bright'
+                  : 'bg-warning-soft text-warning-bright',
               )}
-            </p>
+            >
+              {isOpen ? (
+                <CircleDot className="h-6 w-6 animate-pulse" />
+              ) : (
+                <PauseCircle className="h-6 w-6" />
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-ink-tertiary">
+                Status atual
+              </p>
+              <p
+                className={clsx(
+                  'text-lg font-bold',
+                  isOpen ? 'text-success-bright' : 'text-warning-bright',
+                )}
+              >
+                {isOpen
+                  ? 'Aberta em todas as plataformas conectadas'
+                  : `${active.length} pausa${active.length === 1 ? '' : 's'} ativa${active.length === 1 ? '' : 's'}`}
+              </p>
+              <p className="mt-0.5 text-xs text-ink-secondary">
+                {isOpen
+                  ? `${activeConnections.length} plataforma${activeConnections.length === 1 ? '' : 's'} ${activeConnections.length === 1 ? 'conectada' : 'conectadas'}`
+                  : 'Pedidos podem não estar chegando em todas as plataformas'}
+              </p>
+            </div>
           </div>
-          <Button size="lg" onClick={() => setOpen(true)}>
-            ⏸️ Pausar
+          <Button
+            size="lg"
+            variant={isOpen ? 'primary' : 'secondary'}
+            onClick={() => setOpen(true)}
+            leftIcon={<PauseCircle className="h-4 w-4" />}
+          >
+            Pausar loja
           </Button>
         </div>
       </section>
 
       {/* Pausas ativas */}
       {active.length > 0 && (
-        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-          <header className="bg-zinc-50 px-4 py-2 font-semibold dark:bg-zinc-900">
-            Pausas ativas
+        <section className="surface-card overflow-hidden">
+          <header className="flex items-center gap-2 border-b border-surface-border-subtle px-5 py-3">
+            <PauseCircle className="h-4 w-4 text-warning-bright" />
+            <h2 className="text-sm font-semibold text-ink-primary">Pausas ativas</h2>
+            <Badge variant="warning">{active.length}</Badge>
           </header>
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <ul className="divide-y divide-surface-border-subtle">
             {active.map((p) => (
-              <PauseRow key={p.id} pause={p} onCancel={() => cancel.mutate(p.id)} cancelling={cancel.isPending} />
+              <PauseRow
+                key={p.id}
+                pause={p}
+                onCancel={() => cancel.mutate(p.id)}
+                cancelling={cancel.isPending}
+              />
             ))}
           </ul>
         </section>
       )}
 
       {/* Histórico */}
-      <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-        <header className="bg-zinc-50 px-4 py-2 font-semibold dark:bg-zinc-900">
-          Histórico (últimas {history.length})
+      <section className="surface-card overflow-hidden">
+        <header className="flex items-center gap-2 border-b border-surface-border-subtle px-5 py-3">
+          <RotateCcw className="h-4 w-4 text-ink-tertiary" />
+          <h2 className="text-sm font-semibold text-ink-primary">Histórico</h2>
+          <Badge variant="neutral">{history.length}</Badge>
         </header>
         {history.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-zinc-500">Nenhuma pausa anterior.</p>
+          <p className="px-5 py-6 text-center text-sm text-ink-tertiary">
+            Nenhuma pausa anterior registrada.
+          </p>
         ) : (
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <ul className="divide-y divide-surface-border-subtle">
             {history.map((p) => (
               <PauseRow key={p.id} pause={p} />
             ))}
@@ -186,29 +258,35 @@ export default function PausePage() {
         open={open}
         onClose={() => setOpen(false)}
         title="Pausar loja"
-        description="A pausa será propagada para as plataformas selecionadas em tempo real."
+        description="A pausa é propagada para as plataformas selecionadas em tempo real."
         size="md"
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={() => create.mutate()} disabled={create.isPending}>
-              {create.isPending ? 'Pausando…' : 'Confirmar pausa →'}
+            <Button
+              onClick={() => create.mutate()}
+              loading={create.isPending}
+              leftIcon={<PauseCircle className="h-4 w-4" />}
+            >
+              Confirmar pausa
             </Button>
           </>
         }
       >
-        <div className="space-y-4">
+        <div className="space-y-5">
+          {/* plataformas */}
           <div>
-            <p className="text-sm font-semibold">Plataformas</p>
-            <p className="mt-1 text-xs text-zinc-500">
-              Vazio = todas as plataformas conectadas (
-              {activeConnections.length})
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+              Plataformas
             </p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <p className="mt-1 text-xs text-ink-tertiary">
+              Vazio = todas as plataformas conectadas ({activeConnections.length})
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
               {activeConnections.length === 0 && (
-                <p className="text-xs text-status-error">
+                <p className="text-xs text-danger-bright">
                   Nenhuma plataforma ativa. Conecte em Integrações primeiro.
                 </p>
               )}
@@ -220,11 +298,12 @@ export default function PausePage() {
                     key={c.platformCode}
                     type="button"
                     onClick={() => togglePlatform(c.platformCode)}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    className={clsx(
+                      'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all',
                       selected
-                        ? 'text-white'
-                        : 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
-                    }`}
+                        ? 'text-white shadow-sm'
+                        : 'border border-surface-border bg-surface-base text-ink-secondary hover:border-surface-border-strong hover:text-ink-primary',
+                    )}
                     style={selected ? { backgroundColor: meta?.colorHex ?? '#888' } : {}}
                   >
                     {selected && '✓ '}
@@ -235,32 +314,40 @@ export default function PausePage() {
             </div>
           </div>
 
+          {/* duração */}
           <div>
-            <p className="text-sm font-semibold">Duração</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+              Duração
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
               {DURATION_PRESETS.map((p) => (
                 <button
                   key={p.label}
                   type="button"
                   onClick={() => setDuration(p.minutes)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                  className={clsx(
+                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all',
                     duration === p.minutes
-                      ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
-                      : 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300'
-                  }`}
+                      ? 'bg-brand-gradient text-white shadow-sm'
+                      : 'border border-surface-border bg-surface-base text-ink-secondary hover:border-surface-border-strong hover:text-ink-primary',
+                  )}
                 >
+                  <Clock className="h-3 w-3" />
                   {p.label}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Motivo</label>
+          {/* motivo */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+              Motivo
+            </label>
             <select
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="h-10 rounded-md border border-zinc-300 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+              className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary focus:border-brand-500 focus:outline-none"
             >
               {Object.entries(REASON_LABEL).map(([v, l]) => (
                 <option key={v} value={v}>
@@ -274,7 +361,7 @@ export default function PausePage() {
             label="Observação (opcional)"
             value={reasonNote}
             onChange={(e) => setReasonNote(e.target.value)}
-            placeholder="Ex.: cancelar todos os pedidos novos por enquanto"
+            placeholder="Ex.: voltamos em 30 min"
           />
         </div>
       </Dialog>
@@ -292,38 +379,77 @@ function PauseRow({
   cancelling?: boolean;
 }) {
   const isActive = !pause.cancelledAt && !pause.reopenedAt;
+  const ScopeIcon =
+    pause.scope === 'store' ? Store : pause.scope === 'item' ? UtensilsCrossed : PowerOff;
+
   return (
-    <li className="flex items-start justify-between gap-4 px-4 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {isActive ? (
-            <Badge color="#CA8A04">ATIVA</Badge>
-          ) : pause.cancelledAt ? (
-            <Badge>cancelada</Badge>
-          ) : (
-            <Badge>reaberta</Badge>
+    <li className="flex items-start justify-between gap-4 px-5 py-3">
+      <div className="flex flex-1 items-start gap-3 min-w-0">
+        <div
+          className={clsx(
+            'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+            isActive
+              ? 'bg-warning-soft text-warning-bright'
+              : 'bg-surface-overlay text-ink-tertiary',
           )}
-          <span className="text-sm font-medium">
-            {pause.scope === 'store' && 'Loja inteira'}
-            {pause.scope === 'category' && `Categoria: ${pause.category?.name}`}
-            {pause.scope === 'item' && `Item: ${pause.menuItem?.name}`}
-          </span>
-          <span className="text-xs text-zinc-500">{REASON_LABEL[pause.reason] ?? pause.reason}</span>
+        >
+          <ScopeIcon className="h-4 w-4" />
         </div>
-        {pause.reasonNote && <p className="mt-1 text-xs text-zinc-500">"{pause.reasonNote}"</p>}
-        <p className="mt-1 text-xs text-zinc-500">
-          Início: {new Date(pause.startsAt).toLocaleString('pt-BR')}
-          {pause.endsAt && ` · Termina: ${new Date(pause.endsAt).toLocaleString('pt-BR')}`}
-          {!pause.endsAt && isActive && ' · Indefinida'}
-        </p>
-        {pause.errorMessage && (
-          <p className="mt-1 text-xs text-status-error">⚠ {pause.errorMessage}</p>
-        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {isActive ? (
+              <Badge variant="warning" dot>
+                Ativa
+              </Badge>
+            ) : pause.cancelledAt ? (
+              <Badge variant="neutral">Cancelada</Badge>
+            ) : (
+              <Badge variant="success">Reaberta</Badge>
+            )}
+            <p className="text-sm font-medium text-ink-primary">
+              {pause.scope === 'store' && 'Loja inteira'}
+              {pause.scope === 'category' && `Categoria · ${pause.category?.name ?? '—'}`}
+              {pause.scope === 'item' && `Item · ${pause.menuItem?.name ?? '—'}`}
+            </p>
+            <span className="text-xs text-ink-tertiary">
+              {REASON_LABEL[pause.reason] ?? pause.reason}
+            </span>
+          </div>
+          {pause.reasonNote && (
+            <p className="mt-1 text-xs italic text-ink-secondary">"{pause.reasonNote}"</p>
+          )}
+          <p className="mt-1 text-xs text-ink-tertiary">
+            Início: {new Date(pause.startsAt).toLocaleString('pt-BR')}
+            {pause.endsAt && ` · Termina: ${new Date(pause.endsAt).toLocaleString('pt-BR')}`}
+            {!pause.endsAt && isActive && ' · Indefinida'}
+          </p>
+          {pause.errorMessage && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-danger/30 bg-danger-soft px-2 py-1.5 text-xs text-danger-bright">
+              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              {pause.errorMessage}
+            </div>
+          )}
+        </div>
       </div>
       {onCancel && isActive && (
-        <Button size="sm" variant="secondary" onClick={onCancel} disabled={cancelling}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onCancel}
+          loading={cancelling}
+          leftIcon={<Play className="h-3 w-3" />}
+        >
           Reabrir agora
         </Button>
+      )}
+      {!isActive && pause.cancelledAt && (
+        <span className="inline-flex items-center gap-1 text-xs text-ink-tertiary">
+          <X className="h-3 w-3" />
+          {new Date(pause.cancelledAt).toLocaleString('pt-BR', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+          })}
+        </span>
       )}
     </li>
   );

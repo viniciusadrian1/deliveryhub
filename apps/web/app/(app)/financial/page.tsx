@@ -1,11 +1,26 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  FileSpreadsheet,
+  PiggyBank,
+  Receipt,
+  TrendingUp,
+  Wallet,
+  Zap,
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Dialog } from '../../../components/ui/dialog';
+import { EmptyState } from '../../../components/ui/empty-state';
+import { KpiCard } from '../../../components/ui/kpi-card';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import { formatCents } from '../../../lib/format';
@@ -60,18 +75,21 @@ interface ReconciliationReport {
   partial: number;
   mismatched: number;
   unmatched: number;
-  divergences: Array<{
-    payoutId: string;
-    expectedCents: number;
-    bestMatchAmountCents: number | null;
-    bestMatchDescription: string | null;
-    diffCents: number | null;
-  }>;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const daysAgoISO = (d: number) =>
   new Date(Date.now() - d * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+const STATUS_BADGE: Record<
+  Payout['status'],
+  { variant: 'success' | 'warning' | 'danger' | 'neutral'; label: string }
+> = {
+  reconciled: { variant: 'success', label: 'Conciliado' },
+  partial: { variant: 'warning', label: 'Parcial' },
+  mismatch: { variant: 'danger', label: 'Divergência' },
+  pending: { variant: 'neutral', label: 'Aguardando' },
+};
 
 export default function FinancialPage() {
   const qc = useQueryClient();
@@ -111,8 +129,7 @@ export default function FinancialPage() {
 
   const { data: payouts = [] } = useQuery({
     queryKey: ['fin', 'payouts', storeId],
-    queryFn: () =>
-      api<Payout[]>(`/payouts?storeId=${encodeURIComponent(storeId ?? '')}`),
+    queryFn: () => api<Payout[]>(`/payouts?storeId=${encodeURIComponent(storeId ?? '')}`),
     enabled: !!storeId,
   });
 
@@ -138,213 +155,282 @@ export default function FinancialPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['fin', 'payouts'] }),
   });
 
-  const maxDailyGross = Math.max(1, ...daily.map((d) => d.revenueGrossCents));
+  const maxDaily = Math.max(1, ...daily.map((d) => d.revenueGrossCents));
 
-  if (!storeId) return <p className="text-sm text-zinc-500">Crie/selecione uma loja primeiro.</p>;
+  if (!storeId) {
+    return <EmptyState icon={Wallet} title="Nenhuma loja configurada" />;
+  }
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Financeiro</h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Faturamento, margem, repasses e conciliação bancária.
+          <h1>Financeiro</h1>
+          <p className="mt-1 text-sm text-ink-secondary">
+            Faturamento, margem total, repasses esperados e conciliação bancária.
           </p>
         </div>
         <div className="flex items-end gap-2">
-          <label className="flex flex-col text-xs">
-            de
+          <div className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-raised px-3 py-1.5">
+            <Clock className="h-3.5 w-3.5 text-ink-tertiary" />
             <input
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="h-9 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+              className="bg-transparent text-xs font-medium text-ink-primary focus:outline-none"
             />
-          </label>
-          <label className="flex flex-col text-xs">
-            até
+            <span className="text-ink-tertiary">→</span>
             <input
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="h-9 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+              className="bg-transparent text-xs font-medium text-ink-primary focus:outline-none"
             />
-          </label>
-          <Button variant="secondary" onClick={() => setImportOpen(true)}>
-            + Extrato bancário
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => setImportOpen(true)}
+            leftIcon={<FileSpreadsheet className="h-3.5 w-3.5" />}
+          >
+            Importar extrato
           </Button>
         </div>
       </header>
 
-      {/* KPI cards */}
+      {/* KPIs */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Faturamento bruto" value={formatCents(summary?.revenueGrossCents ?? 0)} />
+        <KpiCard
+          label="Faturamento bruto"
+          value={formatCents(summary?.revenueGrossCents ?? 0)}
+          icon={TrendingUp}
+          hint={`${summary?.orderCount ?? 0} pedido${summary?.orderCount === 1 ? '' : 's'}`}
+        />
         <KpiCard
           label="Taxas pagas"
           value={formatCents(summary?.totalFeesCents ?? 0)}
-          variant="muted"
+          icon={Receipt}
+          tone="muted"
         />
         <KpiCard
-          label="Líquido"
+          label="Líquido pra você"
           value={formatCents(summary?.revenueNetCents ?? 0)}
-          variant="success"
+          icon={PiggyBank}
+          tone="success"
         />
-        <KpiCard label="Ticket médio" value={formatCents(summary?.avgTicketCents ?? 0)} />
+        <KpiCard
+          label="Ticket médio"
+          value={formatCents(summary?.avgTicketCents ?? 0)}
+          icon={BarChart3}
+        />
       </section>
 
-      {/* Gráfico diário */}
-      <section className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="font-semibold">Faturamento por dia ({daily.length})</h2>
-        {daily.length === 0 ? (
-          <p className="mt-4 text-sm text-zinc-500">Sem pedidos no período.</p>
-        ) : (
-          <div className="mt-4 flex items-end gap-1" style={{ height: 160 }}>
-            {daily.map((d) => (
-              <div key={d.day} className="flex flex-1 flex-col items-center gap-1">
-                <div
-                  className="w-full rounded-t bg-zinc-900 dark:bg-white"
-                  style={{
-                    height: `${(d.revenueGrossCents / maxDailyGross) * 140}px`,
-                  }}
-                  title={`${d.day}: ${formatCents(d.revenueGrossCents)} (${d.orderCount} pedidos)`}
-                />
-                <span className="text-[10px] text-zinc-500">
-                  {new Date(d.day).getDate()}
-                </span>
-              </div>
-            ))}
+      {/* Daily chart */}
+      <section className="surface-card overflow-hidden">
+        <header className="flex items-center justify-between border-b border-surface-border-subtle px-5 py-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-brand-400" />
+            <h2 className="text-sm font-semibold text-ink-primary">Faturamento por dia</h2>
           </div>
-        )}
+          <Badge variant="neutral">{daily.length} dias</Badge>
+        </header>
+        <div className="p-5">
+          {daily.length === 0 ? (
+            <p className="py-8 text-center text-sm text-ink-tertiary">
+              Sem pedidos no período selecionado.
+            </p>
+          ) : (
+            <div className="flex items-end gap-1.5" style={{ height: 180 }}>
+              {daily.map((d) => {
+                const pct = (d.revenueGrossCents / maxDaily) * 100;
+                return (
+                  <div
+                    key={d.day}
+                    className="group relative flex flex-1 flex-col items-center gap-1.5"
+                  >
+                    <div
+                      className="w-full rounded-t-md bg-gradient-to-t from-brand-600 to-brand-400 transition-all hover:from-brand-500 hover:to-brand-300"
+                      style={{ height: `${Math.max(pct, 3)}%` }}
+                      title={`${d.day}: ${formatCents(d.revenueGrossCents)} · ${d.orderCount} pedidos`}
+                    />
+                    <span className="text-[10px] text-ink-tertiary">
+                      {new Date(d.day).getDate()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
-      {/* Por plataforma */}
-      {byPlatform.length > 0 && (
-        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-          <header className="bg-zinc-50 px-4 py-2 font-semibold dark:bg-zinc-900">
-            Faturamento por plataforma
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Por plataforma */}
+        <section className="surface-card overflow-hidden">
+          <header className="border-b border-surface-border-subtle px-5 py-3">
+            <h2 className="text-sm font-semibold text-ink-primary">Por plataforma</h2>
           </header>
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-xs uppercase text-zinc-500 dark:border-zinc-800">
-              <tr>
-                <th className="px-4 py-2">Plataforma</th>
-                <th className="px-4 py-2 text-right">Pedidos</th>
-                <th className="px-4 py-2 text-right">Bruto</th>
-                <th className="px-4 py-2 text-right">Líquido</th>
-                <th className="px-4 py-2 text-right">Share</th>
-              </tr>
-            </thead>
-            <tbody>
+          {byPlatform.length === 0 ? (
+            <p className="px-5 py-6 text-center text-sm text-ink-tertiary">
+              Sem dados no período.
+            </p>
+          ) : (
+            <ul className="divide-y divide-surface-border-subtle">
               {byPlatform.map((p) => (
-                <tr key={p.platformCode} className="border-t border-zinc-100 dark:border-zinc-800">
-                  <td className="px-4 py-2">
-                    <Badge color={p.colorHex}>{p.platformName}</Badge>
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">{p.orderCount}</td>
-                  <td className="px-4 py-2 text-right font-mono">{formatCents(p.revenueGrossCents)}</td>
-                  <td className="px-4 py-2 text-right font-mono">{formatCents(p.revenueNetCents)}</td>
-                  <td className="px-4 py-2 text-right font-mono">{p.sharePct.toFixed(1)}%</td>
-                </tr>
+                <li key={p.platformCode} className="flex items-center gap-3 px-5 py-3">
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-xs font-bold uppercase text-white"
+                    style={{ backgroundColor: p.colorHex }}
+                  >
+                    {p.platformName.slice(0, 2)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink-primary">{p.platformName}</p>
+                    <p className="text-xs text-ink-tertiary">
+                      {p.orderCount} pedido{p.orderCount === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-mono tabular text-ink-primary">
+                      {formatCents(p.revenueGrossCents)}
+                    </p>
+                    <p className="text-xs text-ink-tertiary tabular">
+                      {p.sharePct.toFixed(1)}% · líq {formatCents(p.revenueNetCents)}
+                    </p>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          )}
         </section>
-      )}
 
-      {/* Top itens */}
-      {topItems.length > 0 && (
-        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-          <header className="bg-zinc-50 px-4 py-2 font-semibold dark:bg-zinc-900">
-            Top itens por margem (período)
+        {/* Top itens */}
+        <section className="surface-card overflow-hidden">
+          <header className="flex items-center justify-between border-b border-surface-border-subtle px-5 py-3">
+            <h2 className="text-sm font-semibold text-ink-primary">Top itens por margem</h2>
+            <Badge variant="neutral">{topItems.length}</Badge>
           </header>
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-xs uppercase text-zinc-500 dark:border-zinc-800">
-              <tr>
-                <th className="px-4 py-2">Item</th>
-                <th className="px-4 py-2 text-right">Vendidos</th>
-                <th className="px-4 py-2 text-right">Faturado</th>
-                <th className="px-4 py-2 text-right">Margem total</th>
-              </tr>
-            </thead>
-            <tbody>
+          {topItems.length === 0 ? (
+            <p className="px-5 py-6 text-center text-sm text-ink-tertiary">
+              Sem itens vendidos no período.
+            </p>
+          ) : (
+            <ul className="divide-y divide-surface-border-subtle">
               {topItems.map((it, idx) => (
-                <tr key={(it.menuItemId ?? 'x') + idx} className="border-t border-zinc-100 dark:border-zinc-800">
-                  <td className="px-4 py-2">
-                    {idx + 1}. {it.name}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">{it.sold}</td>
-                  <td className="px-4 py-2 text-right font-mono">{formatCents(it.grossRevenueCents)}</td>
-                  <td className="px-4 py-2 text-right font-mono text-status-open">
+                <li
+                  key={(it.menuItemId ?? 'x') + idx}
+                  className="flex items-center gap-3 px-5 py-3"
+                >
+                  <div
+                    className={clsx(
+                      'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-xs font-bold',
+                      idx === 0
+                        ? 'bg-brand-500/20 text-brand-300'
+                        : 'bg-surface-overlay text-ink-secondary',
+                    )}
+                  >
+                    {idx + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink-primary">{it.name}</p>
+                    <p className="text-xs text-ink-tertiary">
+                      {it.sold} vendido{it.sold === 1 ? '' : 's'} ·{' '}
+                      {formatCents(it.grossRevenueCents)}
+                    </p>
+                  </div>
+                  <span className="font-mono text-sm font-semibold tabular text-success-bright">
                     {formatCents(it.marginCents)}
-                  </td>
-                </tr>
+                  </span>
+                </li>
               ))}
-            </tbody>
-          </table>
+            </ul>
+          )}
         </section>
-      )}
+      </div>
 
       {/* Conciliação */}
-      <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-        <header className="flex items-center justify-between bg-zinc-50 px-4 py-2 dark:bg-zinc-900">
-          <h2 className="font-semibold">Conciliação de repasses</h2>
+      <section className="surface-card overflow-hidden">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border-subtle px-5 py-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-success-bright" />
+            <h2 className="text-sm font-semibold text-ink-primary">Conciliação de repasses</h2>
+            <Badge variant="neutral">{payouts.length}</Badge>
+          </div>
           <Button
             size="sm"
             onClick={() => reconcile.mutate()}
-            disabled={reconcile.isPending}
+            loading={reconcile.isPending}
+            leftIcon={<Zap className="h-3.5 w-3.5" />}
           >
-            {reconcile.isPending ? 'Rodando…' : 'Rodar conciliação automática →'}
+            Rodar conciliação
           </Button>
         </header>
         {payouts.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-zinc-500">
-            Sem payouts ainda. Use <b>POST /payouts/recompute</b> para gerar a partir
-            dos pedidos do período.
-          </p>
+          <div className="px-5 py-8">
+            <EmptyState
+              icon={CheckCircle2}
+              title="Nenhum repasse calculado ainda"
+              description={
+                'Use POST /payouts/recompute pra gerar o esperado a partir dos pedidos do período, ou importe um extrato e rode a conciliação.'
+              }
+            />
+          </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-xs uppercase text-zinc-500 dark:border-zinc-800">
-              <tr>
-                <th className="px-4 py-2">Plataforma</th>
-                <th className="px-4 py-2">Período</th>
-                <th className="px-4 py-2 text-right">Esperado</th>
-                <th className="px-4 py-2 text-right">Recebido</th>
-                <th className="px-4 py-2">Status</th>
+            <thead>
+              <tr className="border-b border-surface-border-subtle text-left text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                <th className="px-5 py-2.5">Plataforma</th>
+                <th className="px-5 py-2.5">Período</th>
+                <th className="px-5 py-2.5 text-right">Esperado</th>
+                <th className="px-5 py-2.5 text-right">Recebido</th>
+                <th className="px-5 py-2.5">Status</th>
               </tr>
             </thead>
             <tbody>
-              {payouts.map((p) => (
-                <tr key={p.id} className="border-t border-zinc-100 dark:border-zinc-800">
-                  <td className="px-4 py-2">
-                    <Badge color={p.platform.colorHex}>{p.platform.name}</Badge>
-                  </td>
-                  <td className="px-4 py-2 text-xs">
-                    {new Date(p.referencePeriodStart).toLocaleDateString('pt-BR')} →{' '}
-                    {new Date(p.referencePeriodEnd).toLocaleDateString('pt-BR')}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">
-                    {formatCents(p.expectedAmountCents)}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">
-                    {p.receivedAmountCents !== null
-                      ? formatCents(p.receivedAmountCents)
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-2">
-                    {p.status === 'reconciled' && (
-                      <span className="text-status-open">✅ Conciliado</span>
-                    )}
-                    {p.status === 'partial' && (
-                      <span className="text-status-paused">⚠️ Parcial</span>
-                    )}
-                    {p.status === 'mismatch' && (
-                      <span className="text-status-error">⚠️ Divergência</span>
-                    )}
-                    {p.status === 'pending' && (
-                      <span className="text-zinc-500">⏳ Aguardando</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {payouts.map((p) => {
+                const meta = STATUS_BADGE[p.status];
+                const diff =
+                  p.receivedAmountCents !== null
+                    ? Number(p.receivedAmountCents) - Number(p.expectedAmountCents)
+                    : null;
+                return (
+                  <tr
+                    key={p.id}
+                    className="border-t border-surface-border-subtle/60 hover:bg-surface-overlay/40"
+                  >
+                    <td className="px-5 py-3">
+                      <Badge color={p.platform.colorHex}>{p.platform.name}</Badge>
+                    </td>
+                    <td className="px-5 py-3 text-xs text-ink-secondary">
+                      {new Date(p.referencePeriodStart).toLocaleDateString('pt-BR')} →{' '}
+                      {new Date(p.referencePeriodEnd).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono tabular">
+                      {formatCents(p.expectedAmountCents)}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono tabular">
+                      {p.receivedAmountCents !== null
+                        ? formatCents(p.receivedAmountCents)
+                        : '—'}
+                      {diff !== null && Math.abs(diff) > 0 && (
+                        <span
+                          className={clsx(
+                            'ml-1 text-xs',
+                            diff < 0 ? 'text-danger-bright' : 'text-warning-bright',
+                          )}
+                        >
+                          ({diff < 0 ? '' : '+'}
+                          {formatCents(diff)})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      <Badge variant={meta.variant} dot>
+                        {meta.label}
+                      </Badge>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -353,61 +439,48 @@ export default function FinancialPage() {
       <Dialog
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        title="Importar extrato bancário (CSV)"
-        description="Cole o CSV exportado do seu banco. Aceita ; ou , como separador."
+        title="Importar extrato bancário"
+        description="Cole o CSV do seu banco. Detectamos separador (; ou ,) e formato BR automaticamente."
         size="lg"
         footer={
           <>
             <Button variant="ghost" onClick={() => setImportOpen(false)}>
               Cancelar
             </Button>
-            <Button onClick={() => importCsv.mutate()} disabled={importCsv.isPending || !csvText.trim()}>
-              {importCsv.isPending ? 'Importando…' : 'Importar'}
+            <Button
+              onClick={() => importCsv.mutate()}
+              loading={importCsv.isPending}
+              disabled={!csvText.trim()}
+              leftIcon={<FileSpreadsheet className="h-4 w-4" />}
+            >
+              Importar
             </Button>
           </>
         }
       >
-        <textarea
-          value={csvText}
-          onChange={(e) => setCsvText(e.target.value)}
-          rows={12}
-          className="w-full rounded-md border border-zinc-300 bg-white p-3 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-950"
-          placeholder={`Data;Histórico;Valor\n10/05/2026;Crédito iFood;7823,40\n17/05/2026;Crédito iFood;8014,90`}
-        />
-        {importCsv.data && (
-          <p className="mt-2 text-sm text-status-open">
-            ✅ {importCsv.data.inserted} importadas, {importCsv.data.duplicated} duplicadas
-            ({importCsv.data.parsed} total)
-          </p>
-        )}
+        <div className="space-y-3">
+          <textarea
+            value={csvText}
+            onChange={(e) => setCsvText(e.target.value)}
+            rows={12}
+            className="w-full rounded-lg border border-surface-border bg-surface-base p-3 font-mono text-xs text-ink-primary placeholder:text-ink-tertiary focus:border-brand-500 focus:outline-none"
+            placeholder={`Data;Histórico;Valor\n10/05/2026;Crédito iFood;7823,40\n17/05/2026;Crédito iFood;8014,90`}
+          />
+          {importCsv.data && (
+            <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success-bright">
+              <CheckCircle2 className="h-4 w-4" />
+              {importCsv.data.inserted} importadas · {importCsv.data.duplicated} duplicadas ·{' '}
+              {importCsv.data.parsed} total
+            </div>
+          )}
+          {importCsv.error && (
+            <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger-bright">
+              <AlertTriangle className="h-4 w-4" />
+              CSV inválido. Verifique os cabeçalhos (Data, Histórico, Valor).
+            </div>
+          )}
+        </div>
       </Dialog>
-    </div>
-  );
-}
-
-function KpiCard({
-  label,
-  value,
-  variant,
-}: {
-  label: string;
-  value: string;
-  variant?: 'success' | 'muted';
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <p className="text-xs uppercase tracking-wider text-zinc-500">{label}</p>
-      <p
-        className={`mt-2 text-2xl font-bold ${
-          variant === 'success'
-            ? 'text-status-open'
-            : variant === 'muted'
-              ? 'text-zinc-500'
-              : ''
-        }`}
-      >
-        {value}
-      </p>
     </div>
   );
 }

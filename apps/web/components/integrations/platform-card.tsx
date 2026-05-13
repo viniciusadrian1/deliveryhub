@@ -1,6 +1,14 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Power,
+  RefreshCw,
+  XCircle,
+} from 'lucide-react';
 
 import { api } from '../../lib/api';
 import type { PlatformConnection } from '../../lib/integrations-types';
@@ -14,20 +22,6 @@ interface PlatformCardProps {
   onConnect: () => void;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
-  active: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  error: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  revoked: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendente — finalize a conexão',
-  active: 'Ativo',
-  error: 'Erro na integração',
-  revoked: 'Desconectado',
-};
-
 export function PlatformCard({ code, connection, onConnect }: PlatformCardProps) {
   const qc = useQueryClient();
   const meta = PLATFORM_META[code] ?? { name: code, colorHex: '#888', enabled: false };
@@ -36,87 +30,151 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
     mutationFn: async (id: string) => {
       await api(`/integrations/connections/${id}`, { method: 'DELETE' });
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['integrations'] });
-    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['integrations'] }),
   });
 
   const finalize = useMutation({
-    mutationFn: async (id: string) => {
-      return api(`/integrations/connections/${id}/finalize`, { method: 'POST' });
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['integrations'] });
-    },
+    mutationFn: async (id: string) =>
+      api(`/integrations/connections/${id}/finalize`, { method: 'POST' }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['integrations'] }),
   });
 
+  const renderStatus = () => {
+    if (!connection) {
+      return meta.enabled ? (
+        <Badge variant="neutral" dot>
+          Não conectado
+        </Badge>
+      ) : (
+        <Badge variant="neutral">Em breve</Badge>
+      );
+    }
+    switch (connection.status) {
+      case 'active':
+        return (
+          <Badge variant="success" dot>
+            Conectado
+          </Badge>
+        );
+      case 'pending':
+        return (
+          <Badge variant="warning" dot>
+            Aguardando autorização
+          </Badge>
+        );
+      case 'error':
+        return (
+          <Badge variant="danger" dot>
+            Erro
+          </Badge>
+        );
+      case 'revoked':
+        return (
+          <Badge variant="neutral" dot>
+            Desconectado
+          </Badge>
+        );
+    }
+  };
+
   return (
-    <div className="flex flex-col rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="surface-card relative flex flex-col overflow-hidden p-5">
+      {/* faixa colorida da plataforma no topo */}
+      <div
+        className="absolute inset-x-0 top-0 h-1"
+        style={{ backgroundColor: meta.colorHex }}
+      />
+
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Badge color={meta.colorHex}>{meta.name}</Badge>
-            {!meta.enabled && <Badge>Em breve</Badge>}
-          </div>
-          {connection ? (
-            <p className={`mt-3 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[connection.status]}`}>
-              {STATUS_LABELS[connection.status] ?? connection.status}
-            </p>
-          ) : meta.enabled ? (
-            <p className="mt-3 text-sm text-zinc-500">Não conectado</p>
-          ) : (
-            <p className="mt-3 text-sm text-zinc-500">Em breve no DeliveryHub</p>
-          )}
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-sm font-bold uppercase text-white"
+          style={{ backgroundColor: meta.colorHex }}
+        >
+          {meta.name.slice(0, 2)}
         </div>
+        {renderStatus()}
       </div>
 
-      {connection?.externalMerchantId && (
-        <p className="mt-2 font-mono text-xs text-zinc-500">
-          merchant: {connection.externalMerchantId}
-        </p>
-      )}
-      {connection?.lastSyncAt && (
-        <p className="mt-1 text-xs text-zinc-500">
-          última sincronização: {new Date(connection.lastSyncAt).toLocaleString('pt-BR')}
-        </p>
-      )}
-      {connection?.lastErrorMessage && (
-        <p className="mt-1 text-xs text-status-error">{connection.lastErrorMessage}</p>
-      )}
+      <h3 className="mt-3 text-base font-semibold text-ink-primary">{meta.name}</h3>
+
+      <div className="mt-3 flex-1 space-y-1 text-xs text-ink-tertiary">
+        {connection?.externalMerchantId && (
+          <p className="flex items-center gap-1.5 font-mono">
+            <span className="text-ink-secondary">merchant:</span>
+            <span className="truncate">{connection.externalMerchantId}</span>
+          </p>
+        )}
+        {connection?.lastSyncAt && (
+          <p className="flex items-center gap-1.5">
+            <Clock className="h-3 w-3" />
+            {new Date(connection.lastSyncAt).toLocaleString('pt-BR', {
+              dateStyle: 'short',
+              timeStyle: 'short',
+            })}
+          </p>
+        )}
+        {connection?.lastErrorMessage && (
+          <p className="flex items-start gap-1.5 text-danger-bright">
+            <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className="line-clamp-2">{connection.lastErrorMessage}</span>
+          </p>
+        )}
+        {!connection && !meta.enabled && (
+          <p>Suporte completo a esta plataforma virá em breve.</p>
+        )}
+        {!connection && meta.enabled && (
+          <p>Conecte para começar a receber pedidos e sincronizar cardápio.</p>
+        )}
+      </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         {!connection && meta.enabled && (
-          <Button size="sm" onClick={onConnect}>
-            Conectar {meta.name}
+          <Button size="sm" onClick={onConnect} leftIcon={<Power className="h-3.5 w-3.5" />}>
+            Conectar
           </Button>
         )}
         {connection?.status === 'pending' && (
           <Button
             size="sm"
             onClick={() => finalize.mutate(connection.id)}
-            disabled={finalize.isPending}
+            loading={finalize.isPending}
+            leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
           >
-            {finalize.isPending ? 'Verificando…' : 'Já autorizei →'}
+            Já autorizei
           </Button>
         )}
         {connection?.status === 'active' && (
           <>
-            <Button size="sm" variant="secondary" onClick={onConnect}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onConnect}
+              leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+            >
               Reconectar
             </Button>
             <Button
               size="sm"
-              variant="danger"
+              variant="ghost"
               onClick={() => {
-                if (confirm(`Desconectar ${meta.name}? Você não receberá mais pedidos por aqui.`)) {
-                  disconnect.mutate(connection.id);
-                }
+                if (confirm(`Desconectar ${meta.name}?`)) disconnect.mutate(connection.id);
               }}
-              disabled={disconnect.isPending}
+              loading={disconnect.isPending}
+              leftIcon={<XCircle className="h-3.5 w-3.5" />}
             >
               Desconectar
             </Button>
           </>
+        )}
+        {connection?.status === 'error' && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onConnect}
+            leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+          >
+            Tentar de novo
+          </Button>
         )}
       </div>
     </div>

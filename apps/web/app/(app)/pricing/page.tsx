@@ -1,10 +1,13 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
+import { Calculator, Eye, Play, Sparkles, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
+import { EmptyState } from '../../../components/ui/empty-state';
 import { Input } from '../../../components/ui/input';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
@@ -59,6 +62,23 @@ interface SimulationResult {
   rows: SimulationRow[];
 }
 
+const STRATEGY_META: Record<Strategy, { label: string; description: string; star?: boolean }> = {
+  same_gross_pct: {
+    label: 'Variação por %',
+    description: 'Aumenta/diminui o preço atual em % igual para todas as plataformas',
+  },
+  fixed_delta_cents: {
+    label: 'Delta fixo em centavos',
+    description: 'Soma/subtrai a mesma quantia (R$) do preço atual',
+  },
+  keep_margin_pct: {
+    label: 'Manter margem líquida',
+    description:
+      'Calcula preço bruto diferente por plataforma para atingir a mesma margem líquida — mesmo com taxas diferentes',
+    star: true,
+  },
+};
+
 export default function PricingPage() {
   const qc = useQueryClient();
   const { state } = useAuth();
@@ -85,21 +105,24 @@ export default function PricingPage() {
       minMarginPct: parseFloat(minMarginPct) || undefined,
     };
     if (selectedIds.size > 0) base.menuItemIds = Array.from(selectedIds);
-    if (strategy === 'same_gross_pct')
-      return { ...base, strategy, deltaPct: parseFloat(deltaPct) };
+    if (strategy === 'same_gross_pct') return { ...base, strategy, deltaPct: parseFloat(deltaPct) };
     if (strategy === 'fixed_delta_cents')
       return { ...base, strategy, deltaCents: parseInt(deltaCents, 10) };
     return { ...base, strategy, targetMarginPct: parseFloat(targetMarginPct) };
   };
 
   const simulate = useMutation({
-    mutationFn: async () => api<SimulationResult>('/pricing/simulate', { method: 'POST', body: buildPayload() }),
+    mutationFn: async () =>
+      api<SimulationResult>('/pricing/simulate', { method: 'POST', body: buildPayload() }),
     onSuccess: (r) => setPreview(r),
   });
 
   const apply = useMutation({
     mutationFn: async () =>
-      api('/pricing/apply', { method: 'POST', body: { ...buildPayload(), skipBelowMinimum: true } }),
+      api('/pricing/apply', {
+        method: 'POST',
+        body: { ...buildPayload(), skipBelowMinimum: true },
+      }),
     onSuccess: () => {
       setPreview(null);
       void qc.invalidateQueries({ queryKey: ['pricing', storeId] });
@@ -108,211 +131,279 @@ export default function PricingPage() {
 
   const totalSelected = selectedIds.size || rows.length;
 
-  const marginColor = (pct: number) => {
-    if (pct >= 35) return 'text-status-open';
-    if (pct >= 20) return 'text-status-paused';
-    return 'text-status-error';
+  const marginTone = (pct: number): 'success' | 'warning' | 'danger' => {
+    if (pct >= 35) return 'success';
+    if (pct >= 20) return 'warning';
+    return 'danger';
   };
 
-  if (!storeId)
-    return <p className="text-sm text-zinc-500">Crie/selecione uma loja primeiro.</p>;
+  if (!storeId) {
+    return <EmptyState icon={TrendingUp} title="Nenhuma loja configurada" />;
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <header>
-        <h1 className="text-2xl font-bold">Preço &amp; Margem ⭐</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Margem líquida real por item × plataforma. Simulador resolve o preço bruto que
-          mantém a mesma margem mesmo com taxas diferentes.
+        <div className="flex items-start gap-2">
+          <h1>Preço &amp; Margem</h1>
+          <Badge variant="brand" dot>
+            Diferencial
+          </Badge>
+        </div>
+        <p className="mt-2 max-w-2xl text-sm text-ink-secondary">
+          Margem líquida real por item × plataforma. O simulador calcula o preço bruto
+          necessário em cada plataforma para atingir a mesma margem — comissão diferente,{' '}
+          <b className="text-ink-primary">mesma margem líquida</b>.
         </p>
       </header>
 
-      {/* Listagem com margem atual */}
-      <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-        <header className="flex items-center justify-between bg-zinc-50 px-4 py-2 dark:bg-zinc-900">
-          <h2 className="font-semibold">Itens publicados ({rows.length})</h2>
-          <span className="text-xs text-zinc-500">
+      {/* Lista atual com margens */}
+      <section className="surface-card overflow-hidden">
+        <header className="flex items-center justify-between border-b border-surface-border-subtle px-5 py-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-ink-primary">
+              Itens publicados
+            </h2>
+            <Badge variant="neutral">{rows.length}</Badge>
+          </div>
+          <span className="text-xs text-ink-tertiary">
             {selectedIds.size === 0
-              ? 'Sem seleção = aplicar em todos'
-              : `${selectedIds.size} selecionado(s)`}
+              ? 'Sem seleção · simulador aplicará em todos'
+              : `${selectedIds.size} selecionado${selectedIds.size === 1 ? '' : 's'}`}
           </span>
         </header>
-        <table className="w-full text-sm">
-          <thead className="border-b border-zinc-200 text-left text-xs uppercase text-zinc-500 dark:border-zinc-800">
-            <tr>
-              <th className="w-8 px-3 py-2"></th>
-              <th className="px-3 py-2">Item</th>
-              <th className="px-3 py-2 text-right">CMV</th>
-              <th className="px-3 py-2">Plataforma</th>
-              <th className="px-3 py-2 text-right">Preço</th>
-              <th className="px-3 py-2 text-right">Margem</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) =>
-              row.platforms.map((p, idx) => (
-                <tr
-                  key={`${row.menuItemId}-${p.platformCode}`}
-                  className="border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/50"
-                >
-                  {idx === 0 ? (
-                    <td className="px-3 py-2" rowSpan={row.platforms.length}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(row.menuItemId)}
-                        onChange={(e) => {
-                          const s = new Set(selectedIds);
-                          if (e.target.checked) s.add(row.menuItemId);
-                          else s.delete(row.menuItemId);
-                          setSelectedIds(s);
-                        }}
-                      />
+
+        {rows.length === 0 ? (
+          <div className="px-5 py-10">
+            <EmptyState
+              icon={Calculator}
+              title="Sem itens publicados"
+              description="Publique itens em alguma plataforma (Cardápio → plataformas) ou faça sincronização inicial em Integrações."
+            />
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-surface-border-subtle text-left text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                <th className="w-10 px-5 py-2.5"></th>
+                <th className="px-5 py-2.5">Item</th>
+                <th className="px-5 py-2.5 text-right">CMV</th>
+                <th className="px-5 py-2.5">Plataforma</th>
+                <th className="px-5 py-2.5 text-right">Preço</th>
+                <th className="px-5 py-2.5 text-right">Margem</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) =>
+                row.platforms.map((p, idx) => (
+                  <tr
+                    key={`${row.menuItemId}-${p.platformCode}`}
+                    className="border-t border-surface-border-subtle/60 transition-colors hover:bg-surface-overlay/40"
+                  >
+                    {idx === 0 ? (
+                      <td className="px-5 py-3" rowSpan={row.platforms.length}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(row.menuItemId)}
+                          onChange={(e) => {
+                            const s = new Set(selectedIds);
+                            if (e.target.checked) s.add(row.menuItemId);
+                            else s.delete(row.menuItemId);
+                            setSelectedIds(s);
+                          }}
+                          className="h-4 w-4 rounded border-surface-border bg-surface-base text-brand-500"
+                        />
+                      </td>
+                    ) : null}
+                    {idx === 0 ? (
+                      <td className="px-5 py-3" rowSpan={row.platforms.length}>
+                        <div className="font-medium text-ink-primary">{row.menuItemName}</div>
+                      </td>
+                    ) : null}
+                    {idx === 0 ? (
+                      <td
+                        className="px-5 py-3 text-right font-mono tabular text-ink-primary"
+                        rowSpan={row.platforms.length}
+                      >
+                        {formatCents(row.costCents)}
+                      </td>
+                    ) : null}
+                    <td className="px-5 py-3">
+                      <Badge variant="neutral">{p.platformName}</Badge>
                     </td>
-                  ) : null}
-                  {idx === 0 ? (
-                    <td className="px-3 py-2" rowSpan={row.platforms.length}>
-                      <div className="font-medium">{row.menuItemName}</div>
+                    <td className="px-5 py-3 text-right font-mono tabular">
+                      {formatCents(p.sellingPriceCents)}
                     </td>
-                  ) : null}
-                  {idx === 0 ? (
-                    <td className="px-3 py-2 text-right font-mono" rowSpan={row.platforms.length}>
-                      {formatCents(row.costCents)}
+                    <td className="px-5 py-3 text-right">
+                      <Badge variant={marginTone(p.breakdown.marginPct)} dot>
+                        {p.breakdown.marginPct.toFixed(1)}%
+                      </Badge>
                     </td>
-                  ) : null}
-                  <td className="px-3 py-2">
-                    <Badge>{p.platformName}</Badge>
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono">
-                    {formatCents(p.sellingPriceCents)}
-                  </td>
-                  <td className={`px-3 py-2 text-right font-mono ${marginColor(p.breakdown.marginPct)}`}>
-                    {p.breakdown.marginPct.toFixed(1)}%
-                  </td>
-                </tr>
-              )),
-            )}
-          </tbody>
-        </table>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        )}
       </section>
 
       {/* Simulador */}
-      <section className="rounded-lg border border-zinc-200 p-5 dark:border-zinc-800">
-        <h2 className="font-semibold">Alterar preço em lote</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Aplicará em {totalSelected} {totalSelected === 1 ? 'item' : 'itens'}{' '}
-          {selectedIds.size === 0 && '(todos)'}
-        </p>
+      <section className="surface-card overflow-hidden">
+        <header className="border-b border-surface-border-subtle bg-surface-base/40 px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-brand-400" />
+            <h2 className="text-sm font-semibold text-ink-primary">
+              Alterar preço em lote
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-ink-tertiary">
+            Aplicar em {totalSelected} {totalSelected === 1 ? 'item' : 'itens'}{' '}
+            {selectedIds.size === 0 && '(todos os publicados)'}
+          </p>
+        </header>
 
-        <div className="mt-4 space-y-2">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              checked={strategy === 'same_gross_pct'}
-              onChange={() => setStrategy('same_gross_pct')}
-            />
-            Aumentar/diminuir preço atual por %
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              checked={strategy === 'fixed_delta_cents'}
-              onChange={() => setStrategy('fixed_delta_cents')}
-            />
-            Somar/subtrair valor fixo em centavos
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              checked={strategy === 'keep_margin_pct'}
-              onChange={() => setStrategy('keep_margin_pct')}
-            />
-            ⭐ Manter mesma margem líquida em todas as plataformas
-          </label>
-        </div>
+        <div className="space-y-5 p-5">
+          {/* Strategy cards */}
+          <div className="grid gap-3 md:grid-cols-3">
+            {(Object.entries(STRATEGY_META) as [Strategy, (typeof STRATEGY_META)[Strategy]][]).map(
+              ([key, meta]) => {
+                const active = strategy === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setStrategy(key)}
+                    className={clsx(
+                      'group flex flex-col rounded-xl border p-4 text-left transition-all',
+                      active
+                        ? 'border-brand-500 bg-brand-500/10 shadow-glow'
+                        : 'border-surface-border-subtle bg-surface-base hover:border-surface-border',
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={clsx(
+                          'text-sm font-semibold',
+                          active ? 'text-brand-300' : 'text-ink-primary',
+                        )}
+                      >
+                        {meta.label}
+                      </span>
+                      {meta.star && (
+                        <Badge variant="brand">⭐</Badge>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-ink-secondary">
+                      {meta.description}
+                    </p>
+                  </button>
+                );
+              },
+            )}
+          </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          {strategy === 'same_gross_pct' && (
+          {/* Strategy params */}
+          <div className="grid grid-cols-2 gap-4 border-t border-surface-border-subtle pt-5">
+            {strategy === 'same_gross_pct' && (
+              <Input
+                label="Delta (%)"
+                value={deltaPct}
+                onChange={(e) => setDeltaPct(e.target.value)}
+                type="number"
+                step="0.1"
+              />
+            )}
+            {strategy === 'fixed_delta_cents' && (
+              <Input
+                label="Delta (centavos)"
+                value={deltaCents}
+                onChange={(e) => setDeltaCents(e.target.value)}
+                type="number"
+              />
+            )}
+            {strategy === 'keep_margin_pct' && (
+              <Input
+                label="Margem-alvo (%)"
+                value={targetMarginPct}
+                onChange={(e) => setTargetMarginPct(e.target.value)}
+                type="number"
+                step="0.5"
+                hint="O sistema resolve o preço bruto pra cada plataforma"
+              />
+            )}
             <Input
-              label="Delta (%)"
-              value={deltaPct}
-              onChange={(e) => setDeltaPct(e.target.value)}
-              type="number"
-              step="0.1"
-            />
-          )}
-          {strategy === 'fixed_delta_cents' && (
-            <Input
-              label="Delta (centavos)"
-              value={deltaCents}
-              onChange={(e) => setDeltaCents(e.target.value)}
-              type="number"
-            />
-          )}
-          {strategy === 'keep_margin_pct' && (
-            <Input
-              label="Margem-alvo (%)"
-              value={targetMarginPct}
-              onChange={(e) => setTargetMarginPct(e.target.value)}
+              label="Margem mínima (%)"
+              value={minMarginPct}
+              onChange={(e) => setMinMarginPct(e.target.value)}
               type="number"
               step="0.5"
+              hint="Itens abaixo serão sinalizados na pré-visualização"
             />
-          )}
-          <Input
-            label="Margem mínima — abaixo vai marcar"
-            value={minMarginPct}
-            onChange={(e) => setMinMarginPct(e.target.value)}
-            type="number"
-            step="0.5"
-          />
-        </div>
+          </div>
 
-        <div className="mt-4 flex gap-2">
-          <Button onClick={() => simulate.mutate()} disabled={simulate.isPending}>
-            {simulate.isPending ? 'Calculando…' : 'Pré-visualizar →'}
-          </Button>
-          {preview && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-surface-border-subtle pt-5">
             <Button
-              variant="primary"
-              onClick={() => {
-                if (
-                  confirm(
-                    `Aplicar em ${preview.itemsAffected} itens? (descarta ${preview.itemsBelowMinimum} abaixo da mínima)`,
-                  )
-                ) {
-                  apply.mutate();
-                }
-              }}
-              disabled={apply.isPending}
+              variant="secondary"
+              onClick={() => simulate.mutate()}
+              loading={simulate.isPending}
+              leftIcon={<Eye className="h-4 w-4" />}
             >
-              {apply.isPending ? 'Aplicando…' : 'Aplicar (skip < mínima)'}
+              {simulate.isPending ? 'Calculando…' : 'Pré-visualizar'}
             </Button>
-          )}
+            {preview && (
+              <Button
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Aplicar em ${preview.itemsAffected} itens? (${preview.itemsBelowMinimum} abaixo da mínima serão pulados)`,
+                    )
+                  ) {
+                    apply.mutate();
+                  }
+                }}
+                loading={apply.isPending}
+                leftIcon={<Play className="h-4 w-4" />}
+              >
+                Aplicar mudanças
+              </Button>
+            )}
+          </div>
         </div>
       </section>
 
-      {/* Pré-visualização */}
+      {/* Preview */}
       {preview && (
-        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800">
-          <header className="flex flex-wrap items-center justify-between gap-2 bg-zinc-50 px-4 py-2 dark:bg-zinc-900">
-            <h2 className="font-semibold">Pré-visualização</h2>
-            <div className="flex gap-3 text-xs">
-              <span>itens: {preview.itemsAffected}</span>
-              <span>plataformas: {preview.platformsAffected}</span>
-              <span className="text-status-paused">
-                abaixo da mínima: {preview.itemsBelowMinimum}
-              </span>
-              <span className="text-status-error">impossíveis: {preview.itemsImpossible}</span>
+        <section className="surface-card overflow-hidden">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border-subtle px-5 py-3">
+            <div className="flex items-center gap-2">
+              <Eye className="h-4 w-4 text-brand-400" />
+              <h2 className="text-sm font-semibold text-ink-primary">Pré-visualização</h2>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              <Badge variant="neutral">
+                {preview.itemsAffected} itens · {preview.platformsAffected} plataformas
+              </Badge>
+              {preview.itemsBelowMinimum > 0 && (
+                <Badge variant="warning" dot>
+                  {preview.itemsBelowMinimum} abaixo da mínima
+                </Badge>
+              )}
+              {preview.itemsImpossible > 0 && (
+                <Badge variant="danger" dot>
+                  {preview.itemsImpossible} impossíveis
+                </Badge>
+              )}
             </div>
           </header>
           <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-xs uppercase text-zinc-500 dark:border-zinc-800">
-              <tr>
-                <th className="px-3 py-2">Item</th>
-                <th className="px-3 py-2">Plataforma</th>
-                <th className="px-3 py-2 text-right">Atual</th>
-                <th className="px-3 py-2 text-right">Novo</th>
-                <th className="px-3 py-2 text-right">Margem antes</th>
-                <th className="px-3 py-2 text-right">Margem depois</th>
+            <thead>
+              <tr className="border-b border-surface-border-subtle text-left text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                <th className="px-5 py-2.5">Item</th>
+                <th className="px-5 py-2.5">Plataforma</th>
+                <th className="px-5 py-2.5 text-right">Atual</th>
+                <th className="px-5 py-2.5 text-right">Novo</th>
+                <th className="px-5 py-2.5 text-right">Antes</th>
+                <th className="px-5 py-2.5 text-right">Depois</th>
               </tr>
             </thead>
             <tbody>
@@ -320,27 +411,33 @@ export default function PricingPage() {
                 row.platforms.map((p) => (
                   <tr
                     key={`${row.menuItemId}-${p.platformCode}`}
-                    className={`border-t border-zinc-100 dark:border-zinc-800 ${
-                      p.belowMinimum ? 'bg-yellow-50 dark:bg-yellow-950/20' : ''
-                    } ${p.impossible ? 'bg-red-50 dark:bg-red-950/20' : ''}`}
+                    className={clsx(
+                      'border-t border-surface-border-subtle/60',
+                      p.belowMinimum && 'bg-warning-soft',
+                      p.impossible && 'bg-danger-soft',
+                    )}
                   >
-                    <td className="px-3 py-2">{row.menuItemName}</td>
-                    <td className="px-3 py-2">{p.platformCode}</td>
-                    <td className="px-3 py-2 text-right font-mono">
+                    <td className="px-5 py-2.5 text-ink-primary">{row.menuItemName}</td>
+                    <td className="px-5 py-2.5 text-ink-secondary">{p.platformCode}</td>
+                    <td className="px-5 py-2.5 text-right font-mono tabular text-ink-secondary">
                       {formatCents(p.currentPriceCents)}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono">
+                    <td className="px-5 py-2.5 text-right font-mono tabular font-semibold text-ink-primary">
                       {p.newPriceCents === null ? '—' : formatCents(p.newPriceCents)}
                     </td>
-                    <td className={`px-3 py-2 text-right font-mono ${marginColor(p.currentMarginPct)}`}>
-                      {p.currentMarginPct.toFixed(1)}%
+                    <td className="px-5 py-2.5 text-right">
+                      <span className="text-xs text-ink-tertiary tabular">
+                        {p.currentMarginPct.toFixed(1)}%
+                      </span>
                     </td>
-                    <td
-                      className={`px-3 py-2 text-right font-mono ${
-                        p.newMarginPct === null ? 'text-status-error' : marginColor(p.newMarginPct)
-                      }`}
-                    >
-                      {p.newMarginPct === null ? 'impossível' : `${p.newMarginPct.toFixed(1)}%`}
+                    <td className="px-5 py-2.5 text-right">
+                      {p.newMarginPct === null ? (
+                        <Badge variant="danger">impossível</Badge>
+                      ) : (
+                        <Badge variant={marginTone(p.newMarginPct)} dot>
+                          {p.newMarginPct.toFixed(1)}%
+                        </Badge>
+                      )}
                     </td>
                   </tr>
                 )),

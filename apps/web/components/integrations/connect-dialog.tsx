@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowRight, CheckCircle2, ExternalLink, Info, Loader2, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 
 import { api } from '../../lib/api';
@@ -28,12 +29,11 @@ export function ConnectDialog({
   const [started, setStarted] = useState<StartConnectionResponse | null>(null);
 
   const start = useMutation({
-    mutationFn: async () => {
-      return api<StartConnectionResponse>('/integrations/connect', {
+    mutationFn: async () =>
+      api<StartConnectionResponse>('/integrations/connect', {
         method: 'POST',
         body: { storeId, platformCode },
-      });
-    },
+      }),
     onSuccess: (data) => {
       setStarted(data);
       void qc.invalidateQueries({ queryKey: ['integrations'] });
@@ -54,83 +54,141 @@ export function ConnectDialog({
     },
   });
 
+  const close = () => {
+    onClose();
+    setStarted(null);
+  };
+
   return (
     <Dialog
       open={open}
-      onClose={() => {
-        onClose();
-        setStarted(null);
-      }}
+      onClose={close}
       title={`Conectar ${platformName}`}
-      description="Autorize o DeliveryHub a acessar sua loja na plataforma."
+      description={
+        started
+          ? 'Conclua a autorização no portal da plataforma.'
+          : 'Autorize o DeliveryHub a acessar sua loja na plataforma.'
+      }
       footer={
         started ? (
           <>
-            <Button variant="ghost" onClick={() => { onClose(); setStarted(null); }}>
+            <Button variant="ghost" onClick={close}>
               Cancelar
             </Button>
-            <Button onClick={() => finalize.mutate()} disabled={finalize.isPending}>
-              {finalize.isPending ? 'Verificando…' : 'Já autorizei →'}
+            <Button
+              onClick={() => finalize.mutate()}
+              loading={finalize.isPending}
+              rightIcon={!finalize.isPending && <ArrowRight className="h-4 w-4" />}
+            >
+              {finalize.isPending ? 'Verificando…' : 'Já autorizei'}
             </Button>
           </>
         ) : (
           <>
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={close}>
               Cancelar
             </Button>
-            <Button onClick={() => start.mutate()} disabled={start.isPending}>
-              {start.isPending ? 'Iniciando…' : 'Iniciar conexão →'}
+            <Button
+              onClick={() => start.mutate()}
+              loading={start.isPending}
+              rightIcon={!start.isPending && <ArrowRight className="h-4 w-4" />}
+            >
+              {start.isPending ? 'Iniciando…' : 'Iniciar conexão'}
             </Button>
           </>
         )
       }
     >
       {!started ? (
-        <div className="space-y-3 text-sm">
-          <p>Ao iniciar a conexão, o DeliveryHub vai:</p>
-          <ul className="space-y-1 text-zinc-600 dark:text-zinc-400">
-            <li>✓ Receber seus pedidos em tempo real</li>
-            <li>✓ Sincronizar cardápio e preços</li>
-            <li>✓ Pausar/reabrir sua loja a seu pedido</li>
+        <div className="space-y-4">
+          <p className="text-sm text-ink-secondary">Ao iniciar, o DeliveryHub passa a:</p>
+          <ul className="space-y-3">
+            {[
+              'Receber seus pedidos em tempo real',
+              'Sincronizar cardápio e preços',
+              'Pausar e reabrir sua loja a seu pedido',
+            ].map((s) => (
+              <li key={s} className="flex items-start gap-2.5 text-sm">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-bright" />
+                <span className="text-ink-primary">{s}</span>
+              </li>
+            ))}
           </ul>
-          <p className="rounded-md bg-zinc-100 px-3 py-2 text-xs dark:bg-zinc-800">
-            ⓘ Nunca acessamos dados de outras lojas nem alteramos nada sem sua confirmação.
-          </p>
+          <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info-soft px-3 py-2.5 text-sm">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+            <p className="text-ink-secondary">
+              Suas credenciais ficam <b className="text-ink-primary">cifradas em vault</b>{' '}
+              (AES-256-GCM). Nunca acessamos outras lojas e nada é alterado sem sua
+              confirmação.
+            </p>
+          </div>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {started.isMock && (
-            <div className="rounded-md bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:bg-yellow-950/30 dark:text-yellow-200">
-              <Badge>MOCK</Badge> Sem credenciais reais do iFood — usando adapter simulado.
+            <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2.5 text-sm">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning-bright" />
+              <div>
+                <Badge variant="warning">Sandbox mock</Badge>
+                <p className="mt-1 text-ink-secondary">
+                  Sem credenciais reais do iFood — usando o adapter simulado pra
+                  validar o fluxo.
+                </p>
+              </div>
             </div>
           )}
-          <ol className="space-y-3 text-sm">
-            <li>
-              <span className="font-semibold">1.</span> Abra esta URL em outra aba:
-              <br />
-              <a
-                href={started.verificationUrlComplete}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-block break-all rounded-md bg-zinc-100 px-2 py-1 font-mono text-xs underline dark:bg-zinc-800"
-              >
-                {started.verificationUrl}
-              </a>
-            </li>
-            <li>
-              <span className="font-semibold">2.</span> Digite este código:
-              <div className="mt-2 select-all rounded-lg bg-zinc-100 px-4 py-3 text-center font-mono text-2xl font-bold tracking-widest dark:bg-zinc-800">
-                {started.userCode}
+
+          <ol className="space-y-4">
+            <li className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
+                1
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-ink-primary">
+                  Abra o portal {platformName}
+                </p>
+                <a
+                  href={started.verificationUrlComplete}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 break-all rounded-lg border border-surface-border bg-surface-base px-3 py-2 font-mono text-xs text-brand-300 hover:border-surface-border-strong"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {started.verificationUrl}
+                </a>
               </div>
             </li>
-            <li>
-              <span className="font-semibold">3.</span> Volte aqui e clique em{' '}
-              <b>"Já autorizei →"</b>.
+            <li className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
+                2
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-ink-primary">Digite este código</p>
+                <div className="mt-2 select-all rounded-xl border border-surface-border bg-surface-base px-5 py-4 text-center font-mono text-2xl font-bold tracking-[0.4em] text-ink-primary">
+                  {started.userCode}
+                </div>
+              </div>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
+                3
+              </span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-ink-primary">
+                  Volte e clique em <b className="text-brand-300">"Já autorizei"</b>
+                </p>
+              </div>
             </li>
           </ol>
-          <p className="text-xs text-zinc-500">
-            O código expira em{' '}
-            {Math.round((new Date(started.expiresAt).getTime() - Date.now()) / 60000)} min.
+
+          <p className="flex items-center gap-1.5 text-xs text-ink-tertiary">
+            <Loader2 className="h-3 w-3 animate-pulse" />
+            Código expira em{' '}
+            {Math.max(
+              0,
+              Math.round((new Date(started.expiresAt).getTime() - Date.now()) / 60000),
+            )}{' '}
+            min
           </p>
         </div>
       )}
