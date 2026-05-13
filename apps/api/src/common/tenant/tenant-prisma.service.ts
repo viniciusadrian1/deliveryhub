@@ -36,6 +36,8 @@ const TENANT_MODELS = [
   'Customer',
   'Order',
   'Pause',
+  'Payout',
+  'BankTransaction',
 ] as const;
 
 function injectOrgIdIntoData(data: unknown, orgId: string): unknown {

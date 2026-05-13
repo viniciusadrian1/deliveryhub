@@ -16,6 +16,7 @@ import { TenantModule } from './common/tenant/tenant.module.js';
 import { VaultModule } from './common/vault/vault.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { FinancialModule } from './modules/financial/financial.module.js';
 import { IntegrationsModule } from './modules/integrations/integrations.module.js';
 import { MenuModule } from './modules/menu/menu.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
@@ -57,6 +58,7 @@ import { UsersModule } from './modules/users/users.module.js';
     OrdersModule,
     PausesModule,
     PricingModule,
+    FinancialModule,
     UsersModule,
   ],
   providers: [

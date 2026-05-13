@@ -29,6 +29,7 @@ model Platform {
   menuItemConfigs MenuItemPlatformConfig[]
   orders          Order[]
   webhookEvents   WebhookEvent[]
+  payouts         Payout[]
 
   @@map("platform")
 }
@@ -462,6 +463,67 @@ model Pause {
   @@map("pause")
 }
 
+// ============================================================
+// Financial — payouts and bank reconciliation (Sprint 11)
+// ============================================================
+
+enum PayoutStatus {
+  pending // ainda esperando repasse
+  partial // recebido < esperado
+  reconciled // recebido == esperado (com tolerância)
+  mismatch // recebido > esperado ou divergência inexplicada
+
+  @@map("payout_status")
+}
+
+model Payout {
+  id                   String       @id @default(uuid(7))
+  organizationId       String       @map("organization_id")
+  storeId              String       @map("store_id")
+  platformId           String       @map("platform_id")
+  referencePeriodStart DateTime     @map("reference_period_start") @db.Date
+  referencePeriodEnd   DateTime     @map("reference_period_end") @db.Date
+  expectedAmountCents  BigInt       @map("expected_amount_cents")
+  expectedPayDate      DateTime?    @map("expected_pay_date") @db.Date
+  receivedAmountCents  BigInt?      @map("received_amount_cents")
+  receivedAt           DateTime?    @map("received_at")
+  bankTransactionId    String?      @map("bank_transaction_id")
+  status               PayoutStatus @default(pending)
+  notes                String?
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store           Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  platform        Platform         @relation(fields: [platformId], references: [id])
+  bankTransaction BankTransaction? @relation(fields: [bankTransactionId], references: [id], onDelete: SetNull)
+
+  @@unique([platformId, storeId, referencePeriodStart, referencePeriodEnd])
+  @@index([organizationId, status])
+  @@index([organizationId, storeId, expectedPayDate])
+  @@map("payout")
+}
+
+model BankTransaction {
+  id             String   @id @default(uuid(7))
+  organizationId String   @map("organization_id")
+  storeId        String   @map("store_id")
+  date           DateTime @db.Date
+  amountCents    BigInt   @map("amount_cents")
+  description    String
+  raw            Json
+  importedAt     DateTime @default(now()) @map("imported_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  payouts      Payout[]
+
+  // Dedupe: mesma data + valor + descrição = mesma linha do extrato.
+  @@unique([storeId, date, amountCents, description])
+  @@index([organizationId, storeId, date(sort: Desc)])
+  @@map("bank_transaction")
+}
+
 model VaultSecret {
   id         String   @id @default(uuid(7))
   name       String   @unique
@@ -507,6 +569,8 @@ model Organization {
   customers               Customer[]
   orders                  Order[]
   pauses                  Pause[]
+  payouts                 Payout[]
+  bankTransactions        BankTransaction[]
 
   @@map("organization")
 }
@@ -574,6 +638,8 @@ model Store {
   menuItems           MenuItem[]
   orders              Order[]
   pauses              Pause[]
+  payouts             Payout[]
+  bankTransactions    BankTransaction[]
 
   @@index([organizationId])
   @@map("store")
