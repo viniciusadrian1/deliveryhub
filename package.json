@@ -1,0 +1,35 @@
+{
+  "name": "deliveryhub",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "db:generate": "pnpm --filter @deliveryhub/db generate",
+    "db:migrate": "pnpm --filter @deliveryhub/db migrate",
+    "db:seed": "pnpm --filter @deliveryhub/db seed",
+    "db:studio": "pnpm --filter @deliveryhub/db studio",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "clean": "turbo run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prettier": "^3.4.0",
+    "rimraf": "^6.0.1",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  quality:
+    name: Lint + Typecheck + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: deliveryhub
+          POSTGRES_PASSWORD: deliveryhub
+          POSTGRES_DB: deliveryhub
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 5s --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://deliveryhub:deliveryhub@localhost:5432/deliveryhub?schema=public
+      DATABASE_URL_SHADOW: postgresql://deliveryhub:deliveryhub@localhost:5432/deliveryhub_shadow?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: test-jwt-access-secret-with-32-bytes-minimum
+      JWT_REFRESH_SECRET: test-jwt-refresh-secret-with-32-bytes-minimum
+      VAULT_MASTER_KEY: test-vault-master-key-32-bytes-bb
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
