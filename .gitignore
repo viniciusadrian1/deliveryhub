@@ -43,4 +43,7 @@ coverage/
 # Misc
 .cache/
 .tmp/
-apps/web/.pid
+*.pid
+
+# Source assets (originais ficam fora; usadas estão em apps/web/public/)
+images/
