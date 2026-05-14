@@ -1,0 +1,197 @@
+# =============================================================================
+#  DeliveryHub — Infrastructure as Code para Render
+# =============================================================================
+#  Define 4 servicos:
+#    1. Postgres (banco principal)
+#    2. Key Value / Redis (cache + Socket.IO pub/sub)
+#    3. API NestJS (deliveryhub-api)
+#    4. Web Next.js (deliveryhub-web)
+#
+#  Como aplicar:
+#  1. Faca push deste arquivo pra branch `main` do GitHub.
+#  2. No painel da Render, clique em "New" -> "Blueprint".
+#  3. Selecione o repo `viniciusadrian1/deliveryhub`.
+#  4. A Render le este YAML, lista os 4 servicos e pede confirmacao.
+#  5. Em cada servico, a Render vai destacar variaveis com `sync: false` —
+#     voce preenche manualmente no painel (sao secrets/URLs externas).
+#
+#  IMPORTANTE: A primeira deploy vai falhar ate voce preencher as variaveis
+#  marcadas `sync: false`. Depois disso, dispara um "Manual Deploy" e sobe.
+# =============================================================================
+
+databases:
+  - name: deliveryhub-postgres
+    databaseName: deliveryhub
+    user: deliveryhub
+    region: virginia      # Mais perto do Brasil. Outras opcoes: oregon, frankfurt, singapore.
+    plan: starter         # $7/mo, 1 GB. Use `free` (256 MB, expira em 30 dias) pra MVP.
+    postgresMajorVersion: 16
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Redis (Key Value) — cache + Socket.IO pub/sub
+  # ---------------------------------------------------------------------------
+  - type: keyvalue
+    name: deliveryhub-redis
+    region: virginia
+    plan: starter         # $10/mo, 256 MB. `free` tambem expira em 30 dias.
+    ipAllowList: []       # Lista vazia = acessivel apenas pelos outros servicos Render (rede interna).
+
+  # ---------------------------------------------------------------------------
+  # 2. API NestJS
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: deliveryhub-api
+    runtime: node
+    region: virginia
+    plan: starter         # $7/mo. Free dorme apos 15 min ocioso — nao recomendado pra producao.
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /api/healthz
+
+    # Build: instala deps + gera Prisma client + builda API
+    buildCommand: |
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter @deliveryhub/db generate &&
+      pnpm --filter "@deliveryhub/api..." build
+
+    # Aplica migrations Prisma antes de cada deploy (idempotente)
+    preDeployCommand: pnpm --filter @deliveryhub/db migrate:deploy
+
+    # Render injeta $PORT; respeitamos isso via API_PORT
+    startCommand: API_PORT=$PORT node apps/api/dist/main.js
+
+    envVars:
+      # ----- Configuracao basica -----
+      - key: NODE_ENV
+        value: production
+      - key: MODE
+        value: api
+      - key: LOG_LEVEL
+        value: info
+      - key: JWT_ACCESS_TTL
+        value: "900"
+      - key: JWT_REFRESH_TTL
+        value: "2592000"
+
+      # ----- Banco e cache (Render injeta automaticamente) -----
+      - key: DATABASE_URL
+        fromDatabase:
+          name: deliveryhub-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: deliveryhub-redis
+          type: keyvalue
+          property: connectionString
+
+      # ----- Secrets gerados pela Render (32 bytes random) -----
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: VAULT_MASTER_KEY
+        generateValue: true
+
+      # ----- Web (preencher MANUALMENTE com a URL publica do web service) -----
+      - key: WEB_BASE_URL
+        sync: false       # exemplo: https://deliveryhub-web.onrender.com
+
+      # ----- E-mail transacional (Resend) -----
+      - key: EMAIL_FROM
+        value: "DeliveryHub <no-reply@deliveryhub.com.br>"
+      - key: RESEND_API_KEY
+        sync: false       # pegue em resend.com/api-keys
+
+      # ----- Observabilidade -----
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+
+      # ----- iFood (real) -----
+      - key: IFOOD_CLIENT_ID
+        sync: false
+      - key: IFOOD_CLIENT_SECRET
+        sync: false
+      - key: IFOOD_API_BASE_URL
+        value: https://merchant-api.ifood.com.br
+      - key: IFOOD_WEBHOOK_SECRET
+        sync: false
+
+      # ----- Rappi (aguardando aprovacao Partners) -----
+      - key: RAPPI_CLIENT_ID
+        sync: false
+      - key: RAPPI_CLIENT_SECRET
+        sync: false
+      - key: RAPPI_API_BASE_URL
+        value: https://services.rappi.com
+      - key: RAPPI_WEBHOOK_SECRET
+        sync: false
+
+      # ----- Uber Eats (aguardando onboarding Marketplace) -----
+      - key: UBEREATS_CLIENT_ID
+        sync: false
+      - key: UBEREATS_CLIENT_SECRET
+        sync: false
+      - key: UBEREATS_API_BASE_URL
+        value: https://api.uber.com
+      - key: UBEREATS_WEBHOOK_SECRET
+        sync: false
+      - key: UBEREATS_REDIRECT_URI
+        sync: false       # ex: https://deliveryhub-web.onrender.com/integrations/ubereats/callback
+
+      # ----- AiQfome / Magalu (NDA) -----
+      - key: AIQFOME_API_KEY
+        sync: false
+      - key: AIQFOME_API_BASE_URL
+        value: https://api.aiqfome.com
+      - key: AIQFOME_WEBHOOK_SECRET
+        sync: false
+
+      # ----- 99Food (DiDi Food Open Platform) -----
+      - key: DIDIFOOD_CLIENT_ID
+        sync: false
+      - key: DIDIFOOD_CLIENT_SECRET
+        sync: false
+      - key: DIDIFOOD_API_BASE_URL
+        value: https://developer-food.99app.com
+      - key: DIDIFOOD_WEBHOOK_SECRET
+        sync: false
+
+      # ----- Keeta (Meituan Overseas) -----
+      - key: KEETA_CLIENT_ID
+        sync: false
+      - key: KEETA_CLIENT_SECRET
+        sync: false
+      - key: KEETA_API_BASE_URL
+        value: https://openapi.mykeeta.com
+      - key: KEETA_WEBHOOK_SECRET
+        sync: false
+
+  # ---------------------------------------------------------------------------
+  # 3. Web Next.js
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: deliveryhub-web
+    runtime: node
+    region: virginia
+    plan: starter
+    branch: main
+    autoDeploy: true
+
+    buildCommand: |
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter "@deliveryhub/web..." build
+
+    startCommand: cd apps/web && pnpm exec next start -p $PORT
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # URL publica da API — preencha MANUALMENTE com a URL do api service
+      # depois do primeiro deploy (ex: https://deliveryhub-api.onrender.com).
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
