@@ -51,15 +51,16 @@ services:
     autoDeploy: true
     healthCheckPath: /api/healthz
 
-    # Build: instala deps + gera Prisma client + builda API
+    # Build: instala deps, gera Prisma client, builda API, aplica migrations
+    # e popula tabela `platform`. Tudo idempotente, seguro pra rodar em todo deploy.
+    # (`preDeployCommand` seria mais limpo mas e feature paga — incluimos aqui.)
     buildCommand: |
       corepack enable &&
       pnpm install --frozen-lockfile &&
       pnpm --filter @deliveryhub/db generate &&
-      pnpm --filter "@deliveryhub/api..." build
-
-    # Aplica migrations Prisma antes de cada deploy (idempotente)
-    preDeployCommand: pnpm --filter @deliveryhub/db migrate:deploy
+      pnpm --filter "@deliveryhub/api..." build &&
+      pnpm --filter @deliveryhub/db migrate:deploy &&
+      pnpm --filter @deliveryhub/db seed
 
     # Render injeta $PORT; respeitamos isso via API_PORT
     startCommand: API_PORT=$PORT node apps/api/dist/main.js
