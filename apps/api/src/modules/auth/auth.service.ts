@@ -67,6 +67,17 @@ export class AuthService {
         data: { organizationId: organization.id, userId: user.id, role: 'owner' },
       });
 
+      // Cria a loja padrao com o mesmo nome da organizacao. O campo "Nome da loja"
+      // do formulario de signup mapeia pra `organizationName` no schema, entao o
+      // usuario espera ter uma loja com esse nome ja pronta.
+      await tx.store.create({
+        data: {
+          organizationId: organization.id,
+          name: input.organizationName,
+          timezone: 'America/Sao_Paulo',
+        },
+      });
+
       return { user, membership, organization };
     });
 
