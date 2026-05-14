@@ -24,8 +24,8 @@ databases:
     databaseName: deliveryhub
     user: deliveryhub
     region: virginia          # Mais perto do Brasil. Outras opcoes: oregon, frankfurt, singapore.
-    plan: basic-256mb         # ~$6/mo. Outras opcoes: `free` (limitado, expira em 30d),
-                              # `basic-1gb` (~$19/mo), `basic-4gb` (~$95/mo), `pro-4gb`+.
+    plan: free                # Free tier — atencao: instancia expira ~30 dias apos criada.
+                              # Upgrade pra `basic-256mb` (~$6/mo) quando virar producao real.
     postgresMajorVersion: 16
 
 services:
@@ -35,7 +35,7 @@ services:
   - type: keyvalue
     name: deliveryhub-redis
     region: virginia
-    plan: starter         # $10/mo, 256 MB. `free` tambem expira em 30 dias.
+    plan: free            # Free tier — expira ~30 dias apos criado. Upgrade pra `starter` em prod.
     ipAllowList: []       # Lista vazia = acessivel apenas pelos outros servicos Render (rede interna).
 
   # ---------------------------------------------------------------------------
@@ -45,7 +45,8 @@ services:
     name: deliveryhub-api
     runtime: node
     region: virginia
-    plan: starter         # $7/mo. Free dorme apos 15 min ocioso — nao recomendado pra producao.
+    plan: free            # Free tier: dorme apos ~15 min ocioso (primeiro request acorda em ~30-60s).
+                          # Tudo bem pra demo, NAO recomendado pra producao com webhook iFood real.
     branch: main
     autoDeploy: true
     healthCheckPath: /api/healthz
@@ -178,7 +179,7 @@ services:
     name: deliveryhub-web
     runtime: node
     region: virginia
-    plan: starter
+    plan: free            # Free tier: dorme apos ~15 min ocioso.
     branch: main
     autoDeploy: true
 
