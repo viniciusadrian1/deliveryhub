@@ -25,7 +25,8 @@
     "clean": "rimraf generated dist .turbo"
   },
   "dependencies": {
-    "@prisma/client": "^6.0.0"
+    "@prisma/client": "^6.0.0",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@deliveryhub/config": "workspace:*",
