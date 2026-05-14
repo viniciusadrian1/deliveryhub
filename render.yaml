@@ -51,12 +51,13 @@ services:
     autoDeploy: true
     healthCheckPath: /api/healthz
 
-    # Build: instala deps, gera Prisma client, builda API, aplica migrations
-    # e popula tabela `platform`. Tudo idempotente, seguro pra rodar em todo deploy.
-    # (`preDeployCommand` seria mais limpo mas e feature paga — incluimos aqui.)
+    # Build: instala deps (--prod=false pra incluir devDeps mesmo com NODE_ENV=production,
+    # pois @deliveryhub/config e tsc estao em devDependencies), gera Prisma client,
+    # builda API, aplica migrations e popula tabela `platform`.
+    # Tudo idempotente, seguro pra rodar em todo deploy.
     buildCommand: |
       corepack enable &&
-      pnpm install --frozen-lockfile &&
+      pnpm install --frozen-lockfile --prod=false &&
       pnpm --filter @deliveryhub/db generate &&
       pnpm --filter "@deliveryhub/api..." build &&
       pnpm --filter @deliveryhub/db migrate:deploy &&
@@ -186,7 +187,7 @@ services:
 
     buildCommand: |
       corepack enable &&
-      pnpm install --frozen-lockfile &&
+      pnpm install --frozen-lockfile --prod=false &&
       pnpm --filter "@deliveryhub/web..." build
 
     startCommand: cd apps/web && pnpm exec next start -p $PORT
