@@ -2,6 +2,7 @@ import {
   AdapterApiError,
   type FinalizeConnectionResult,
   type PlatformAdapter,
+  type PolledEvent,
   type RemoteMenu,
   type RemoteOrder,
   type StartConnectionResult,
@@ -111,6 +112,12 @@ export class AiqfomeAdapter implements PlatformAdapter {
   async dispatchOrder(): Promise<void> {
     throw new AdapterApiError(NOT_IMPLEMENTED, 501);
   }
+
+  // AiQfome usa webhook + API Key; sem polling público.
+  async pollEvents(_tokens: StoredTokens, _externalMerchantId: string): Promise<PolledEvent[]> {
+    return [];
+  }
+  async acknowledgeEvents(_tokens: StoredTokens, _eventIds: string[]): Promise<void> {}
 
   verifyWebhookSignature(_headers: Record<string, string>, _rawBody: Buffer): boolean {
     // TODO: HMAC-SHA256 com webhookSecret e header X-Aiqfome-Signature.

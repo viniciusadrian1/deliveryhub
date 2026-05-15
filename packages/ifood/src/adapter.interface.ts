@@ -100,6 +100,13 @@ export interface WebhookEnvelope {
   occurredAt: Date;
 }
 
+/**
+ * Evento devolvido pelo endpoint de polling. Compatível com `WebhookEnvelope`
+ * (mesmos campos obrigatórios) — assim o pipeline de ingestão usa o mesmo
+ * fluxo, venha de webhook ou poll.
+ */
+export type PolledEvent = WebhookEnvelope;
+
 export interface PlatformAdapter {
   readonly code: PlatformCode;
 
@@ -122,6 +129,23 @@ export interface PlatformAdapter {
   ): Promise<RemoteOrder>;
 
   parseWebhook(payload: unknown): WebhookEnvelope;
+
+  /**
+   * Polling: consulta a plataforma por eventos pendentes (alternativa a
+   * receber webhooks). Para iFood "Distribuído" é a forma recomendada.
+   * Devolve array vazio se não há eventos.
+   *
+   * Implementações que não suportam polling devem devolver `[]` (mock,
+   * stubs) — quem suporta de verdade lê os eventos e devolve já parseados.
+   */
+  pollEvents(tokens: StoredTokens, externalMerchantId: string): Promise<PolledEvent[]>;
+
+  /**
+   * Confirma para a plataforma que os eventos foram processados. iFood
+   * deixa um evento pendente até receber ack — sem ack, o mesmo evento
+   * aparece nos próximos polls.
+   */
+  acknowledgeEvents(tokens: StoredTokens, eventIds: string[]): Promise<void>;
 
   pushItemPrice(
     tokens: StoredTokens,

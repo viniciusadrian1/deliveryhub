@@ -153,6 +153,12 @@ export class MockAdapter implements PlatformAdapter {
   async rejectOrder(): Promise<void> {}
   async dispatchOrder(): Promise<void> {}
 
+  // Mock não tem eventos reais — devolve array vazio. Ack é no-op.
+  async pollEvents() {
+    return [];
+  }
+  async acknowledgeEvents(): Promise<void> {}
+
   verifyWebhookSignature(): boolean {
     return true;
   }

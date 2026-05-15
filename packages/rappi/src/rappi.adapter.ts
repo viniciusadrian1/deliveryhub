@@ -2,6 +2,7 @@ import {
   AdapterApiError,
   type FinalizeConnectionResult,
   type PlatformAdapter,
+  type PolledEvent,
   type RemoteMenu,
   type RemoteOrder,
   type StartConnectionResult,
@@ -118,6 +119,13 @@ export class RappiAdapter implements PlatformAdapter {
   async dispatchOrder(): Promise<void> {
     throw new AdapterApiError(NOT_IMPLEMENTED, 501);
   }
+
+  // Rappi não tem API de polling pública conhecida; até a parceria definir
+  // o caminho, devolvemos array vazio (poller ignora) e ack é no-op.
+  async pollEvents(_tokens: StoredTokens, _externalMerchantId: string): Promise<PolledEvent[]> {
+    return [];
+  }
+  async acknowledgeEvents(_tokens: StoredTokens, _eventIds: string[]): Promise<void> {}
 
   verifyWebhookSignature(_headers: Record<string, string>, _rawBody: Buffer): boolean {
     // TODO: HMAC-SHA256 com webhookSecret + header X-Rappi-Signature.

@@ -42,14 +42,24 @@ export class AdapterRegistry {
 
   private registerIfood(env: Env): void {
     if (env.IFOOD_CLIENT_ID && env.IFOOD_CLIENT_SECRET && env.IFOOD_WEBHOOK_SECRET) {
+      const httpLogger = new Logger('IFoodAdapter.http');
       this.adapters.set(
         'ifood',
-        new IFoodAdapter({
-          clientId: env.IFOOD_CLIENT_ID,
-          clientSecret: env.IFOOD_CLIENT_SECRET,
-          apiBaseUrl: env.IFOOD_API_BASE_URL,
-          webhookSecret: env.IFOOD_WEBHOOK_SECRET,
-        }),
+        new IFoodAdapter(
+          {
+            clientId: env.IFOOD_CLIENT_ID,
+            clientSecret: env.IFOOD_CLIENT_SECRET,
+            apiBaseUrl: env.IFOOD_API_BASE_URL,
+            webhookSecret: env.IFOOD_WEBHOOK_SECRET,
+          },
+          {
+            log: ({ method, path, status, durationMs, ok }) => {
+              const msg = `${method} ${path} -> ${status} (${durationMs}ms)`;
+              if (ok) httpLogger.debug(msg);
+              else httpLogger.warn(msg);
+            },
+          },
+        ),
       );
       this.logger.log('iFood adapter registered (real)');
     } else {

@@ -297,7 +297,6 @@ export class IntegrationsService {
 
   /**
    * Helper para outros services obterem tokens descriptografados de uma conexão.
-   * Refresh automático fica para US-2.7 (job recorrente em sprint posterior).
    */
   async getTokens(connectionId: string): Promise<StoredTokens | null> {
     const data = await this.vault.read<{
@@ -311,5 +310,16 @@ export class IntegrationsService {
       refreshToken: data.refreshToken,
       expiresAt: new Date(data.expiresAt),
     };
+  }
+
+  /**
+   * Persiste novos tokens (usado pelo poller após `adapter.refreshAuth`).
+   */
+  async saveTokens(connectionId: string, tokens: StoredTokens): Promise<void> {
+    await this.vault.write(`${ACTIVE_VAULT_PREFIX}:${connectionId}`, {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: tokens.expiresAt.toISOString(),
+    });
   }
 }

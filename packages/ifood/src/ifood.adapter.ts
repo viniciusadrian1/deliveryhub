@@ -5,6 +5,7 @@ import {
   ConnectionPendingError,
   type FinalizeConnectionResult,
   type PlatformAdapter,
+  type PolledEvent,
   type StartConnectionResult,
   type StoredTokens,
 } from './adapter.interface.js';
@@ -44,10 +45,30 @@ interface TokenResponse {
   expiresIn: number;
 }
 
+/**
+ * Hook opcional pra logar requests (injetado pela camada de aplicação).
+ * Não logamos `body` por padrão pra evitar vazar dados pessoais.
+ */
+export interface IFoodRequestLogger {
+  (info: {
+    method: string;
+    path: string;
+    status: number;
+    durationMs: number;
+    ok: boolean;
+  }): void;
+}
+
 export class IFoodAdapter implements PlatformAdapter {
   readonly code = 'ifood' as const;
+  private readonly log?: IFoodRequestLogger;
 
-  constructor(private readonly config: IFoodAdapterConfig) {}
+  constructor(
+    private readonly config: IFoodAdapterConfig,
+    options: { log?: IFoodRequestLogger } = {},
+  ) {
+    this.log = options.log;
+  }
 
   async startConnection(): Promise<StartConnectionResult> {
     const body = new URLSearchParams({ clientId: this.config.clientId });
@@ -269,6 +290,60 @@ export class IFoodAdapter implements PlatformAdapter {
     };
   }
 
+  /**
+   * Lista eventos pendentes para esta credencial. iFood usa o conceito de
+   * "grupos" pra filtrar (ORDER_STATUS, KEEP_ALIVE, etc.) — pedimos
+   * apenas ORDER_STATUS pra economizar processamento. Resposta:
+   *
+   *   [
+   *     { id: "evt-...", code: "PLC", fullCode: "PLACED",
+   *       orderId: "...", merchantId: "...", createdAt: "ISO" },
+   *     ...
+   *   ]
+   *
+   * Array vazio é resposta válida (sem eventos novos).
+   */
+  async pollEvents(tokens: StoredTokens, _merchantId: string): Promise<PolledEvent[]> {
+    interface RawEvent {
+      id?: string;
+      code?: string;
+      fullCode?: string;
+      orderId?: string;
+      merchantId?: string;
+      createdAt?: string;
+    }
+    const data = await this.get<RawEvent[]>(
+      '/order/v1.0/events:polling?groups=ORDER_STATUS',
+      tokens,
+    );
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((e): e is RawEvent & { id: string; orderId: string; merchantId: string } =>
+        Boolean(e.id && e.orderId && e.merchantId),
+      )
+      .map((e) => ({
+        eventId: e.id,
+        eventType: e.fullCode ?? e.code ?? 'UNKNOWN',
+        externalOrderId: e.orderId,
+        externalMerchantId: e.merchantId,
+        occurredAt: new Date(e.createdAt ?? Date.now()),
+      }));
+  }
+
+  /**
+   * Confirma processamento de eventos. iFood reentrega o mesmo evento em
+   * polls subsequentes até o ack chegar — esse passo é obrigatório.
+   * Body esperado: array `[{id: "evt-..."}]`.
+   */
+  async acknowledgeEvents(tokens: StoredTokens, eventIds: string[]): Promise<void> {
+    if (eventIds.length === 0) return;
+    await this.post(
+      '/order/v1.0/events/acknowledgment',
+      tokens,
+      eventIds.map((id) => ({ id })),
+    );
+  }
+
   async pushItemPrice(
     tokens: StoredTokens,
     merchantId: string,
@@ -398,13 +473,32 @@ export class IFoodAdapter implements PlatformAdapter {
     path: string,
     init: { headers: Record<string, string>; body?: string | URLSearchParams },
   ): Promise<T> {
-    const res = await fetch(this.config.apiBaseUrl + path, {
-      method,
-      headers: init.headers,
-      body: init.body,
-    });
+    const start = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(this.config.apiBaseUrl + path, {
+        method,
+        headers: init.headers,
+        body: init.body,
+      });
+    } catch (err) {
+      this.log?.({
+        method,
+        path,
+        status: 0,
+        durationMs: Date.now() - start,
+        ok: false,
+      });
+      throw new AdapterApiError(
+        `ifood_network_error ${method} ${path}`,
+        0,
+        err instanceof Error ? err.message : 'network_error',
+      );
+    }
+    const durationMs = Date.now() - start;
     const text = await res.text();
     const json: unknown = text ? safeJson(text) : undefined;
+    this.log?.({ method, path, status: res.status, durationMs, ok: res.ok });
     if (!res.ok) {
       throw new AdapterApiError(
         `ifood_api_error ${res.status} ${method} ${path}`,
