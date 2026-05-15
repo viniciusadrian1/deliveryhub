@@ -108,6 +108,22 @@ services:
       - key: RESEND_API_KEY
         sync: false       # pegue em resend.com/api-keys
 
+      # ----- Object Storage (uploads de imagem) -----
+      # Sem isso, o endpoint /uploads/image volta 503.
+      # Recomendado: Cloudflare R2 (free tier real).
+      - key: STORAGE_ENDPOINT
+        sync: false       # ex: https://<account-id>.r2.cloudflarestorage.com
+      - key: STORAGE_REGION
+        value: auto
+      - key: STORAGE_BUCKET
+        sync: false       # ex: deliveryhub-uploads
+      - key: STORAGE_ACCESS_KEY_ID
+        sync: false
+      - key: STORAGE_SECRET_ACCESS_KEY
+        sync: false
+      - key: STORAGE_PUBLIC_URL
+        sync: false       # ex: https://pub-<id>.r2.dev
+
       # ----- Observabilidade -----
       - key: SENTRY_DSN
         sync: false

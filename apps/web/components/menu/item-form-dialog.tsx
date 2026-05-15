@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { RecipeBuilder, rowsToApiPayload } from '../inventory/recipe-builder';
 import { ComboBuilder } from './combo-builder';
 import { ModifierGroupsBuilder } from './modifier-groups-builder';
+import { ImageUpload } from '../ui/image-upload';
 import { api } from '../../lib/api';
 import type {
   Ingredient,
@@ -67,6 +68,7 @@ export function ItemFormDialog({
   const [costMode, setCostMode] = useState<CostMode>('manual');
   const [costReais, setCostReais] = useState('');
   const [prepTime, setPrepTime] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [recipeRows, setRecipeRows] = useState<RecipeBuilderRow[]>([]);
   const [comboRows, setComboRows] = useState<ComboBuilderRow[]>([]);
 
@@ -105,6 +107,7 @@ export function ItemFormDialog({
     setCostMode(editing?.costMode ?? 'manual');
     setCostReais(editing ? (editing.costCents / 100).toFixed(2) : '');
     setPrepTime(editing?.prepTimeMinutes?.toString() ?? '');
+    setImageUrl(editing?.imageUrl ?? null);
     setRecipeRows([]);
     setComboRows([]);
   }, [open, editing, categories]);
@@ -153,6 +156,7 @@ export function ItemFormDialog({
         costCents:
           productKind === 'combo' || costMode === 'recipe' ? 0 : cents,
         prepTimeMinutes: prepTime ? parseInt(prepTime, 10) : undefined,
+        imageUrl: imageUrl ?? null,
       };
       const itemId = editing
         ? (
@@ -251,6 +255,8 @@ export function ItemFormDialog({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+
+        <ImageUpload value={imageUrl} onChange={setImageUrl} label="Foto do produto" />
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">

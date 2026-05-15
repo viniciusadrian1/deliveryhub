@@ -56,6 +56,21 @@ const envSchema = z.object({
   KEETA_API_BASE_URL: z.string().url().default('https://openapi.mykeeta.com'),
   KEETA_WEBHOOK_SECRET: z.string().optional(),
 
+  // ===== Object Storage (R2 / S3 / Supabase-storage compatible) =====
+  // Quando todos preenchidos, uploads vão pro bucket. Quando vazios, o
+  // endpoint de upload responde 503 com mensagem clara.
+  STORAGE_ENDPOINT: z.string().url().optional(),
+  STORAGE_REGION: z.string().default('auto'),
+  STORAGE_BUCKET: z.string().optional(),
+  STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  /**
+   * URL base pública do bucket — ex.: https://media.seudominio.com.br
+   * ou https://pub-<id>.r2.dev. Concatenamos com a key para gerar a URL
+   * final no MenuItem.imageUrl.
+   */
+  STORAGE_PUBLIC_URL: z.string().url().optional(),
+
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default('local'),
 });

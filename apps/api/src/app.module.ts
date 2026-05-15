@@ -26,6 +26,7 @@ import { OrdersModule } from './modules/orders/orders.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { PausesModule } from './modules/pauses/pauses.module.js';
 import { PricingModule } from './modules/pricing/pricing.module.js';
+import { UploadsModule } from './modules/uploads/uploads.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
 @Module({
@@ -63,6 +64,7 @@ import { UsersModule } from './modules/users/users.module.js';
     PausesModule,
     PricingModule,
     FinancialModule,
+    UploadsModule,
     UsersModule,
   ],
   providers: [
