@@ -99,7 +99,9 @@ export class OrdersService {
       where: {
         organizationId: auth.orgId,
         storeId: query.storeId,
-        status: query.status ?? undefined,
+        status: query.statusIn?.length
+          ? { in: query.statusIn }
+          : (query.status ?? undefined),
         placedAt: query.since ? { gte: query.since } : undefined,
       },
       orderBy: { placedAt: 'desc' },
@@ -109,6 +111,12 @@ export class OrdersService {
       include: {
         platform: { select: { code: true, name: true, colorHex: true } },
         customer: { select: { id: true, name: true } },
+        items: query.withItems
+          ? {
+              orderBy: { id: 'asc' },
+              include: { modifiers: true },
+            }
+          : false,
       },
     });
   }

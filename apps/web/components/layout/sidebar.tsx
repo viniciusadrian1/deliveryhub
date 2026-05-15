@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import {
   Boxes,
+  ChefHat,
   LayoutGrid,
   UtensilsCrossed,
   TrendingUp,
@@ -24,6 +25,12 @@ interface NavItem {
   icon: LucideIcon;
   badge?: string;
   disabled?: boolean;
+  /**
+   * Quando true, abre em nova aba (rel=noopener) — ideal pro KDS que
+   * roda em tablet/monitor dedicado na cozinha sem afetar a navegação
+   * do operador no Hub.
+   */
+  externalTab?: boolean;
 }
 
 const PRIMARY_NAV: NavItem[] = [
@@ -36,6 +43,7 @@ const PRIMARY_NAV: NavItem[] = [
 ];
 
 const SECONDARY_NAV: NavItem[] = [
+  { label: 'KDS Cozinha', href: '/kds', icon: ChefHat, badge: 'novo', externalTab: true },
   { label: 'Integrações', href: '/integrations', icon: Plug },
   { label: 'Configurações', href: '/settings', icon: Settings },
 ];
@@ -101,14 +109,16 @@ function NavSection({
           }
           return (
             <li key={item.href} className="relative">
-              {active && (
+              {active && !item.externalTab && (
                 <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-brand-500" />
               )}
               <Link
                 href={r(item.href)}
+                target={item.externalTab ? '_blank' : undefined}
+                rel={item.externalTab ? 'noopener' : undefined}
                 className={clsx(
                   'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all',
-                  active
+                  active && !item.externalTab
                     ? 'bg-surface-overlay text-ink-primary shadow-sm'
                     : 'text-ink-secondary hover:bg-surface-overlay/60 hover:text-ink-primary',
                 )}
@@ -116,7 +126,7 @@ function NavSection({
                 <Icon
                   className={clsx(
                     'h-4 w-4 shrink-0 transition-colors',
-                    active
+                    active && !item.externalTab
                       ? 'text-brand-400'
                       : 'text-ink-tertiary group-hover:text-ink-secondary',
                   )}
