@@ -86,13 +86,23 @@ export class StockConsumptionService {
       for (const item of order.items) {
         if (!item.menuItemId) continue;
         try {
-          await this.accumulateLeafConsumption(
+          // Expande primeiro o item: se for combo, vira N MenuItems single;
+          // cada um vai pra accumulateLeafConsumption pra expandir a receita.
+          const expanded = await this.expandToSingleItems(
             order.organizationId,
             item.menuItemId,
             new Prisma.Decimal(item.qty),
-            totals,
             warnings,
           );
+          for (const e of expanded) {
+            await this.accumulateLeafConsumption(
+              order.organizationId,
+              e.menuItemId,
+              e.qty,
+              totals,
+              warnings,
+            );
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'unknown_error';
           warnings.push(`item:${item.id}:${msg}`);
@@ -166,6 +176,42 @@ export class StockConsumptionService {
         warnings: ['unexpected_failure'],
       };
     }
+  }
+
+  /**
+   * Se o MenuItem é combo, expande para seus componentes (single). Se é
+   * single, devolve ele mesmo. Não é recursivo (combos-de-combos não são
+   * suportados — o ComboService rejeita).
+   */
+  private async expandToSingleItems(
+    organizationId: string,
+    menuItemId: string,
+    qty: Prisma.Decimal,
+    warnings: string[],
+  ): Promise<{ menuItemId: string; qty: Prisma.Decimal }[]> {
+    const item = await this.prisma.menuItem.findFirst({
+      where: { id: menuItemId, organizationId },
+      select: { id: true, productKind: true },
+    });
+    if (!item) {
+      warnings.push(`menu_item_not_found:${menuItemId}`);
+      return [];
+    }
+    if (item.productKind !== 'combo') {
+      return [{ menuItemId: item.id, qty }];
+    }
+    const components = await this.prisma.comboComponent.findMany({
+      where: { comboMenuItemId: menuItemId, organizationId },
+      select: { componentMenuItemId: true, quantity: true },
+    });
+    if (components.length === 0) {
+      warnings.push(`combo_without_components:${menuItemId}`);
+      return [];
+    }
+    return components.map((c) => ({
+      menuItemId: c.componentMenuItemId,
+      qty: qty.mul(c.quantity),
+    }));
   }
 
   /**

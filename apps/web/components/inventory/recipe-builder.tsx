@@ -4,8 +4,13 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { formatCents } from '../../lib/format';
-import type { Ingredient, RecipeBuilderRow } from '../../lib/inventory-types';
+import type {
+  Ingredient,
+  IngredientUnit,
+  RecipeBuilderRow,
+} from '../../lib/inventory-types';
 import { INGREDIENT_UNIT_LABELS as UNIT } from '../../lib/inventory-types';
+import { getCompatibleUnits, tryConvertToBase } from '../../lib/units';
 import { Button } from '../ui/button';
 
 interface RecipeBuilderProps {
@@ -27,11 +32,16 @@ interface RecipeBuilderProps {
 /**
  * Tabela editável de componentes da receita.
  *
- * Cada linha: select de ingrediente + quantidade + custo subtotal (live).
- * Footer: custo total + custo unitário (se batchYield).
+ * Cada linha: ingrediente + quantidade + unidade (compatível com a base
+ * do ingrediente, ex. g/kg) + custo subtotal calculado live.
  *
- * O cálculo de custo é feito client-side com base nos `costPerUnit`
- * carregados — o backend recalcula authoritativamente ao salvar.
+ * Importante: o usuário pode digitar em qualquer unidade compatível com
+ * a base do ingrediente. Ex.: bacon cadastrado em `kg`, mas eu uso 50 g
+ * no lanche. Conversão acontece no submit (via `lib/units`).
+ *
+ * O cálculo de custo client-side aqui assume `quantity` na unidade-base
+ * já (pra preview consistente com o backend); o componente exposto pra
+ * fora aceita rows com `displayUnit` e converte internamente.
  */
 export function RecipeBuilder({
   availableIngredients,
@@ -53,12 +63,15 @@ export function RecipeBuilder({
     [availableIngredients, excludeIngredientId],
   );
 
+  /** Subtotal em REAIS de cada linha, considerando a unidade display. */
   const subtotals = rows.map((row) => {
     const ing = ingredientById.get(row.ingredientId);
     if (!ing) return 0;
     const qty = parseFloat(row.quantity) || 0;
+    const displayUnit = row.displayUnit ?? ing.unit;
+    const qtyInBase = tryConvertToBase(qty, displayUnit, ing.unit) ?? qty;
     const cost = parseFloat(ing.costPerUnit) || 0;
-    return qty * cost;
+    return qtyInBase * cost;
   });
 
   const totalCost = subtotals.reduce((a, b) => a + b, 0);
@@ -71,12 +84,31 @@ export function RecipeBuilder({
     );
     onChange([
       ...rows,
-      { ingredientId: firstAvailable?.id ?? '', quantity: '' },
+      {
+        ingredientId: firstAvailable?.id ?? '',
+        quantity: '',
+        displayUnit: firstAvailable?.unit,
+      },
     ]);
   };
 
   const updateRow = (idx: number, patch: Partial<RecipeBuilderRow>) => {
-    onChange(rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    onChange(
+      rows.map((r, i) => {
+        if (i !== idx) return r;
+        // Quando troca de ingrediente, reseta displayUnit pra unidade-base
+        // do novo ingrediente.
+        if (patch.ingredientId && patch.ingredientId !== r.ingredientId) {
+          const ing = ingredientById.get(patch.ingredientId);
+          return {
+            ...r,
+            ...patch,
+            displayUnit: ing?.unit,
+          };
+        }
+        return { ...r, ...patch };
+      }),
+    );
   };
 
   const removeRow = (idx: number) => {
@@ -91,8 +123,8 @@ export function RecipeBuilder({
             <tr>
               <th className="px-3 py-2 text-left">Insumo</th>
               <th className="px-3 py-2 text-right">Quantidade</th>
-              <th className="px-3 py-2 text-right">Unidade</th>
-              <th className="px-3 py-2 text-right">Custo</th>
+              <th className="px-3 py-2 text-left">Unidade</th>
+              <th className="px-3 py-2 text-right">Custo base</th>
               <th className="px-3 py-2 text-right">Subtotal</th>
               <th className="w-10 px-2"></th>
             </tr>
@@ -107,12 +139,18 @@ export function RecipeBuilder({
             )}
             {rows.map((row, idx) => {
               const ing = ingredientById.get(row.ingredientId);
+              const compatibleUnits: IngredientUnit[] = ing
+                ? getCompatibleUnits(ing.unit)
+                : [];
+              const displayUnit = row.displayUnit ?? ing?.unit;
               return (
                 <tr key={idx} className="bg-surface-raised">
                   <td className="px-3 py-2">
                     <select
                       value={row.ingredientId}
-                      onChange={(e) => updateRow(idx, { ingredientId: e.target.value })}
+                      onChange={(e) =>
+                        updateRow(idx, { ingredientId: e.target.value })
+                      }
                       className="w-full rounded-md border border-surface-border bg-surface-raised px-2 py-1 text-sm outline-none focus:border-brand-500"
                     >
                       <option value="">— selecione —</option>
@@ -134,11 +172,31 @@ export function RecipeBuilder({
                       className="w-24 rounded-md border border-surface-border bg-surface-raised px-2 py-1 text-right text-sm tabular outline-none focus:border-brand-500"
                     />
                   </td>
-                  <td className="px-3 py-2 text-right text-ink-tertiary">
-                    {ing ? UNIT[ing.unit] : '—'}
+                  <td className="px-3 py-2">
+                    {ing ? (
+                      <select
+                        value={displayUnit}
+                        onChange={(e) =>
+                          updateRow(idx, {
+                            displayUnit: e.target.value as IngredientUnit,
+                          })
+                        }
+                        className="rounded-md border border-surface-border bg-surface-raised px-2 py-1 text-sm outline-none focus:border-brand-500"
+                      >
+                        {compatibleUnits.map((u) => (
+                          <option key={u} value={u}>
+                            {UNIT[u]}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-ink-tertiary">—</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right tabular text-ink-secondary">
-                    {ing ? `R$ ${parseFloat(ing.costPerUnit).toFixed(4)}` : '—'}
+                    {ing
+                      ? `R$ ${parseFloat(ing.costPerUnit).toFixed(4)}/${UNIT[ing.unit]}`
+                      : '—'}
                   </td>
                   <td className="px-3 py-2 text-right tabular font-medium text-ink-primary">
                     R$ {subtotals[idx]!.toFixed(2)}
@@ -195,4 +253,38 @@ export function RecipeBuilder({
       </div>
     </div>
   );
+}
+
+/**
+ * Helper exportado: converte linhas do builder pra payload da API,
+ * normalizando quantity pra unidade-base do ingrediente.
+ */
+export function rowsToApiPayload(
+  rows: RecipeBuilderRow[],
+  ingredients: Ingredient[],
+): {
+  ingredientId: string;
+  quantity: string;
+  displayUnit?: IngredientUnit;
+  sortOrder: number;
+}[] {
+  const byId = new Map(ingredients.map((i) => [i.id, i]));
+  return rows
+    .filter((r) => r.ingredientId && parseFloat(r.quantity) > 0)
+    .map((r, idx) => {
+      const ing = byId.get(r.ingredientId);
+      const displayUnit = r.displayUnit ?? ing?.unit;
+      const qty = parseFloat(r.quantity);
+      const qtyInBase =
+        ing && displayUnit
+          ? (tryConvertToBase(qty, displayUnit, ing.unit) ?? qty)
+          : qty;
+      return {
+        ingredientId: r.ingredientId,
+        // Backend espera string; preserva precisão decimal.
+        quantity: qtyInBase.toFixed(8).replace(/\.?0+$/, ''),
+        displayUnit,
+        sortOrder: idx,
+      };
+    });
 }

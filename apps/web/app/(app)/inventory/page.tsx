@@ -74,8 +74,11 @@ export default function InventoryPage() {
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1>Estoque</h1>
-          <p className="mt-1 text-sm text-ink-secondary">
-            Insumos, sub-receitas e movimentação de estoque por loja.
+          <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
+            Cadastre <b>insumos</b> (matéria-prima comprada de fornecedores) e{' '}
+            <b>sub-receitas</b> (preparos internos, como molho da casa). Estes
+            são os <i>componentes</i> usados nas receitas dos produtos do{' '}
+            <a href="/menu" className="text-brand-500 hover:underline">cardápio</a>.
           </p>
         </div>
         <Link

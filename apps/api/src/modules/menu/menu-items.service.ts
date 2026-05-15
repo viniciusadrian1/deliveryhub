@@ -23,6 +23,8 @@ export class MenuItemsService {
         organizationId: auth.orgId,
         storeId: query.storeId,
         categoryId: query.categoryId ?? undefined,
+        salesKind: query.salesKind ?? undefined,
+        productKind: query.productKind ?? undefined,
         archivedAt: query.archived === true ? { not: null } : null,
       },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -53,6 +55,7 @@ export class MenuItemsService {
       await this.assertCategoryInStore(auth.orgId, input.storeId, input.categoryId);
     }
 
+    const productKind = input.productKind ?? 'single';
     const created = await this.prisma.menuItem.create({
       data: {
         organizationId: auth.orgId,
@@ -62,10 +65,16 @@ export class MenuItemsService {
         description: input.description ?? null,
         imageUrl: input.imageUrl ?? null,
         prepTimeMinutes: input.prepTimeMinutes ?? null,
-        costMode: input.costMode ?? 'manual',
-        // Em recipe mode, costCents é gerenciado pelo RecipeCostService;
-        // ainda é seguro persistir 0 inicialmente (recipe vazia = custo 0).
-        costCents: input.costMode === 'recipe' ? 0 : (input.costCents ?? 0),
+        // Combo: CMV é sempre derivado dos componentes (controlado pelo
+        // ComboService). Recipe: gerenciado pelo RecipeCostService.
+        // Manual: usuário digita.
+        costMode: productKind === 'combo' ? 'recipe' : (input.costMode ?? 'manual'),
+        costCents:
+          productKind === 'combo' || input.costMode === 'recipe'
+            ? 0
+            : (input.costCents ?? 0),
+        productKind,
+        salesKind: input.salesKind ?? 'main',
         allergens: input.allergens ?? [],
         sortOrder: input.sortOrder ?? 0,
       },
@@ -107,6 +116,8 @@ export class MenuItemsService {
           input.prepTimeMinutes === undefined ? undefined : input.prepTimeMinutes,
         costMode: input.costMode ?? undefined,
         costCents: costCentsUpdate,
+        productKind: input.productKind ?? undefined,
+        salesKind: input.salesKind ?? undefined,
         allergens: input.allergens ?? undefined,
         sortOrder: input.sortOrder ?? undefined,
       },

@@ -149,7 +149,13 @@ export type BalanceQuery = z.infer<typeof balanceQuerySchema>;
 
 const recipeComponentSchema = z.object({
   ingredientId: z.string().uuid(),
+  /** Quantidade SEMPRE na unidade-base do ingrediente (convertida no client). */
   quantity: positiveDecimal,
+  /**
+   * Opcional: unidade em que o usuário digitou (preserva display). Quando
+   * presente, deve ser compatível com `ingredient.unit` — o backend valida.
+   */
+  displayUnit: z.enum(INGREDIENT_UNITS).optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 

@@ -110,32 +110,45 @@ model Category {
 }
 
 model MenuItem {
-  id              String   @id @default(uuid(7))
-  organizationId  String   @map("organization_id")
-  storeId         String   @map("store_id")
-  categoryId      String?  @map("category_id")
+  id              String      @id @default(uuid(7))
+  organizationId  String      @map("organization_id")
+  storeId         String      @map("store_id")
+  categoryId      String?     @map("category_id")
   name            String
   description     String?
-  imageUrl        String?  @map("image_url")
-  prepTimeMinutes Int?     @map("prep_time_minutes")
-  costCents       Int      @default(0) @map("cost_cents")
+  imageUrl        String?     @map("image_url")
+  prepTimeMinutes Int?        @map("prep_time_minutes")
+  costCents       Int         @default(0) @map("cost_cents")
   /// Como o `costCents` é definido: `manual` = usuário digita o CMV;
   /// `recipe` = calculado a partir de RecipeComponent (read-only via API).
-  costMode        CostMode @default(manual) @map("cost_mode")
-  allergens       String[] @default([])
-  sortOrder       Int      @default(0) @map("sort_order")
-  archivedAt      DateTime? @map("archived_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  costMode        CostMode    @default(manual) @map("cost_mode")
+  /// Tipo do produto: `single` = item simples; `combo` = composto de outros
+  /// MenuItems via ComboComponent.
+  productKind     ProductKind @default(single) @map("product_kind")
+  /// Categoria de venda — diferente de Category (que é taxonomia visual no
+  /// cardápio). salesKind define o PAPEL do item: principal, sobremesa,
+  /// bebida, acompanhamento, ou adicional (cross-sell-ready).
+  salesKind       SalesKind   @default(main) @map("sales_kind")
+  allergens       String[]    @default([])
+  sortOrder       Int         @default(0) @map("sort_order")
+  archivedAt      DateTime?   @map("archived_at")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
 
-  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  store            Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  category         Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  modifierGroups   ModifierGroup[]
-  platformConfigs  MenuItemPlatformConfig[]
-  orderItems       OrderItem[]
-  pauses           Pause[]
-  recipeComponents RecipeComponent[]
+  organization      Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store             Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category          Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  modifierGroups    ModifierGroup[]
+  platformConfigs   MenuItemPlatformConfig[]
+  orderItems        OrderItem[]
+  pauses            Pause[]
+  recipeComponents  RecipeComponent[]
+  /// Quando este item É um combo: as linhas de composição.
+  comboComponents   ComboComponent[]         @relation("combo_owner")
+  /// Quando este item entra em algum combo: as linhas onde ele aparece.
+  usedInCombos      ComboComponent[]         @relation("combo_component_item")
+  /// Quando este item é referenciado como complemento (Modifier.linkedMenuItem).
+  usedAsModifier    Modifier[]               @relation("modifier_links_item")
 
   @@index([organizationId, storeId])
   @@index([categoryId])
@@ -143,16 +156,21 @@ model MenuItem {
 }
 
 model ModifierGroup {
-  id             String   @id @default(uuid(7))
-  organizationId String   @map("organization_id")
-  menuItemId     String   @map("menu_item_id")
+  id             String            @id @default(uuid(7))
+  organizationId String            @map("organization_id")
+  menuItemId     String            @map("menu_item_id")
+  /// Categoria do grupo (iFood-style): `ingredients` (escolha do molho,
+  /// adicionais que vão no item), `specifications` (perguntas: ponto da carne),
+  /// `cross_sell` (sugestões: quer uma sobremesa?), `disposables` (talheres,
+  /// sachês). Define o papel do grupo na UI do cliente final.
+  kind           ModifierGroupKind @default(ingredients)
   name           String
-  minSelect      Int      @default(0) @map("min_select")
-  maxSelect      Int      @default(1) @map("max_select")
-  required       Boolean  @default(false)
-  sortOrder      Int      @default(0) @map("sort_order")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  minSelect      Int               @default(0) @map("min_select")
+  maxSelect      Int               @default(1) @map("max_select")
+  required       Boolean           @default(false)
+  sortOrder      Int               @default(0) @map("sort_order")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   menuItem     MenuItem     @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
@@ -167,16 +185,27 @@ model Modifier {
   organizationId  String   @map("organization_id")
   modifierGroupId String   @map("modifier_group_id")
   name            String
+  description     String?
+  imageUrl        String?  @map("image_url")
+  /// Delta de preço aplicado ao pedido quando este modifier é escolhido.
+  /// Em centavos (BRL). Pode ser 0 ou negativo.
   costDeltaCents  Int      @default(0) @map("cost_delta_cents")
   sortOrder       Int      @default(0) @map("sort_order")
+  /// Quando preenchido, este modifier referencia um MenuItem existente
+  /// (estilo "Copiar complemento" do iFood). O preço/imagem podem
+  /// sobrescrever os do MenuItem original; baixa de estoque expande pela
+  /// receita do MenuItem linkado.
+  linkedMenuItemId String? @map("linked_menu_item_id")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   modifierGroup      ModifierGroup       @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+  linkedMenuItem     MenuItem?           @relation("modifier_links_item", fields: [linkedMenuItemId], references: [id], onDelete: SetNull)
   orderItemModifiers OrderItemModifier[]
 
   @@index([modifierGroupId])
+  @@index([linkedMenuItemId])
   @@map("modifier")
 }
 
@@ -614,6 +643,7 @@ model Organization {
   ingredientPurchases     IngredientPurchase[]
   stockMovements          StockMovement[]
   recipeComponents        RecipeComponent[]
+  comboComponents         ComboComponent[]
 
   @@map("organization")
 }
@@ -960,18 +990,23 @@ model StockMovement {
 }
 
 model RecipeComponent {
-  id                 String   @id @default(uuid(7))
-  organizationId     String   @map("organization_id")
+  id                 String          @id @default(uuid(7))
+  organizationId     String          @map("organization_id")
   /// "Pai" da linha de receita: exatamente UM destes dois preenchido (CHECK enforca).
-  menuItemId         String?  @map("menu_item_id")
-  parentIngredientId String?  @map("parent_ingredient_id")
+  menuItemId         String?         @map("menu_item_id")
+  parentIngredientId String?         @map("parent_ingredient_id")
   /// Componente: insumo (kind=raw) ou sub-receita (kind=sub_recipe) consumido.
-  ingredientId       String   @map("ingredient_id")
-  /// Quantidade necessaria, na unidade-base do `ingredient`.
-  quantity           Decimal  @db.Decimal(18, 8)
-  sortOrder          Int      @default(0) @map("sort_order")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  ingredientId       String          @map("ingredient_id")
+  /// Quantidade necessaria, na unidade-base do `ingredient`. Sempre normalizado.
+  quantity           Decimal         @db.Decimal(18, 8)
+  /// Unidade em que o usuario digitou (display only). Se preenchido, deve
+  /// ser da mesma familia do ingredient.unit (g↔kg, ml↔L). Quando null,
+  /// usamos o ingredient.unit. NAO afeta calculos — apenas preserva a
+  /// preferencia visual na hora do edit.
+  displayUnit        IngredientUnit? @map("display_unit")
+  sortOrder          Int             @default(0) @map("sort_order")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
 
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   menuItem         MenuItem?    @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
@@ -982,4 +1017,70 @@ model RecipeComponent {
   @@index([parentIngredientId])
   @@index([ingredientId])
   @@map("recipe_component")
+}
+
+// ============================================================
+// Catálogo: enums e modelos extras (combo, sales kind, modifier groups)
+// ============================================================
+
+enum ProductKind {
+  /// MenuItem comum, vendido individualmente. Receita aponta para insumos.
+  single
+  /// MenuItem composto de outros MenuItems (X-Bacon + Coca + Batata).
+  /// Não tem receita própria — o CMV é a soma dos CMVs dos componentes.
+  combo
+
+  @@map("product_kind")
+}
+
+enum SalesKind {
+  /// Produto principal (lanche, prato, pizza). Aparece como destaque.
+  main
+  /// Acompanhamento (batata, arroz). Pode ser vendido sozinho ou em combo.
+  side
+  /// Bebida. Ótimo candidato a cross-sell.
+  drink
+  /// Sobremesa. Ótimo candidato a cross-sell.
+  dessert
+  /// Adicional / extra. Tipicamente vendido como complemento, raramente sozinho.
+  addon
+
+  @@map("sales_kind")
+}
+
+enum ModifierGroupKind {
+  /// "Escolha o molho", "Adicionais (cheddar extra, bacon)"
+  ingredients
+  /// "Ponto da carne", "Sem cebola?"
+  specifications
+  /// "Quer uma bebida com desconto?", "Sobremesa por mais R$X?"
+  cross_sell
+  /// "Precisa de talher plástico?", "Precisa de sachê?"
+  disposables
+
+  @@map("modifier_group_kind")
+}
+
+model ComboComponent {
+  id                    String   @id @default(uuid(7))
+  organizationId        String   @map("organization_id")
+  /// O combo "dono" desta linha (productKind=combo).
+  comboMenuItemId       String   @map("combo_menu_item_id")
+  /// O item simples (productKind=single) que entra como componente.
+  componentMenuItemId   String   @map("component_menu_item_id")
+  /// Quantas vezes este componente entra no combo (geralmente 1).
+  quantity              Int      @default(1)
+  sortOrder             Int      @default(0) @map("sort_order")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  combo            MenuItem     @relation("combo_owner", fields: [comboMenuItemId], references: [id], onDelete: Cascade)
+  componentItem    MenuItem     @relation("combo_component_item", fields: [componentMenuItemId], references: [id], onDelete: Restrict)
+
+  /// Cada componente aparece no máximo uma vez em um combo (a "qtd" já
+  /// expressa multiplicação).
+  @@unique([comboMenuItemId, componentMenuItemId])
+  @@index([componentMenuItemId])
+  @@map("combo_component")
 }

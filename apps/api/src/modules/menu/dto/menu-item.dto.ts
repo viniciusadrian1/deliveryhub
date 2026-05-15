@@ -5,6 +5,9 @@ const allergensSchema = z
   .max(20)
   .transform((list) => Array.from(new Set(list.map((a) => a.toLowerCase()))));
 
+const SALES_KINDS = ['main', 'side', 'drink', 'dessert', 'addon'] as const;
+const PRODUCT_KINDS = ['single', 'combo'] as const;
+
 export const createMenuItemSchema = z.object({
   storeId: z.string().uuid(),
   categoryId: z.string().uuid().nullable().optional(),
@@ -16,13 +19,19 @@ export const createMenuItemSchema = z.object({
    * Como o CMV é gerenciado: `manual` (usuário digita) ou `recipe`
    * (calculado pelo RecipeCostService a partir de RecipeComponent).
    * Padrão `manual` preserva comportamento dos itens existentes.
+   *
+   * Para `productKind='combo'`, o CMV é sempre derivado da soma dos
+   * componentes — costMode é ignorado.
    */
   costMode: z.enum(['manual', 'recipe']).default('manual'),
   /**
-   * Custo manual em centavos. Ignorado em `costMode='recipe'` — o engine
-   * de cascata sobrescreve sempre que a receita ou um insumo muda.
+   * Custo manual em centavos. Ignorado em `costMode='recipe'` e em combos.
    */
   costCents: z.number().int().min(0).default(0),
+  /** Tipo do produto: `single` (item simples) ou `combo` (composto). */
+  productKind: z.enum(PRODUCT_KINDS).default('single'),
+  /** Papel de venda do item — ortogonal à Category. */
+  salesKind: z.enum(SALES_KINDS).default('main'),
   allergens: allergensSchema.optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
@@ -37,6 +46,8 @@ export const updateMenuItemSchema = z.object({
   prepTimeMinutes: z.number().int().min(0).max(600).nullable().optional(),
   costMode: z.enum(['manual', 'recipe']).optional(),
   costCents: z.number().int().min(0).optional(),
+  productKind: z.enum(PRODUCT_KINDS).optional(),
+  salesKind: z.enum(SALES_KINDS).optional(),
   allergens: allergensSchema.optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
@@ -46,6 +57,8 @@ export type UpdateMenuItemInput = z.infer<typeof updateMenuItemSchema>;
 export const listMenuItemsQuerySchema = z.object({
   storeId: z.string().uuid(),
   categoryId: z.string().uuid().optional(),
+  salesKind: z.enum(SALES_KINDS).optional(),
+  productKind: z.enum(PRODUCT_KINDS).optional(),
   archived: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')

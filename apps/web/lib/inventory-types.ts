@@ -128,6 +128,7 @@ export interface RecipeComponentResponse {
   parentIngredientId: string | null;
   ingredientId: string;
   quantity: string;
+  displayUnit: IngredientUnit | null;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -159,6 +160,11 @@ export interface SubRecipeResponse {
 /** Linha em edição no RecipeBuilder (não-persistida). */
 export interface RecipeBuilderRow {
   ingredientId: string;
-  /** Sempre string pra UI; convertemos pra Decimal no payload. */
+  /**
+   * Quantidade na unidade `displayUnit` (não na unidade-base). Sempre
+   * string pra UI. Conversão pra unidade-base é feita no submit.
+   */
   quantity: string;
+  /** Unidade em que o usuário está digitando. */
+  displayUnit?: IngredientUnit;
 }

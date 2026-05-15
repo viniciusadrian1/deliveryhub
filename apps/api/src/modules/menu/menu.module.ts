@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { IntegrationsModule } from '../integrations/integrations.module.js';
 import { CategoriesController } from './categories.controller.js';
 import { CategoriesService } from './categories.service.js';
+import { CombosController } from './combos.controller.js';
+import { CombosService } from './combos.service.js';
 import { MenuItemsController } from './menu-items.controller.js';
 import { MenuItemsService } from './menu-items.service.js';
 import { MenuPlatformConfigController } from './menu-platform-config.controller.js';
@@ -20,6 +22,7 @@ import { ModifiersService } from './modifiers.service.js';
     MenuPlatformConfigController,
     MenuSyncController,
     ModifiersController,
+    CombosController,
   ],
   providers: [
     CategoriesService,
@@ -27,6 +30,7 @@ import { ModifiersService } from './modifiers.service.js';
     MenuPlatformConfigService,
     MenuSyncService,
     ModifiersService,
+    CombosService,
   ],
   exports: [
     CategoriesService,
@@ -34,6 +38,7 @@ import { ModifiersService } from './modifiers.service.js';
     MenuPlatformConfigService,
     MenuSyncService,
     ModifiersService,
+    CombosService,
   ],
 })
 export class MenuModule {}

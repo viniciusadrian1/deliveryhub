@@ -9,9 +9,10 @@ import type {
   RecipeBuilderRow,
   SubRecipeResponse,
 } from '../../lib/inventory-types';
+import { convertFromBase } from '../../lib/units';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
-import { RecipeBuilder } from './recipe-builder';
+import { RecipeBuilder, rowsToApiPayload } from './recipe-builder';
 
 interface SubRecipeFormDialogProps {
   open: boolean;
@@ -56,10 +57,20 @@ export function SubRecipeFormDialog({
     setError(null);
     if (current) {
       setRows(
-        current.components.map((c) => ({
-          ingredientId: c.ingredientId,
-          quantity: c.quantity,
-        })),
+        current.components.map((c) => {
+          const displayUnit = c.displayUnit ?? c.ingredient.unit;
+          // quantity vem em unidade-base; converte pra display
+          const qtyBase = parseFloat(c.quantity);
+          const qtyDisplay =
+            displayUnit !== c.ingredient.unit
+              ? convertFromBase(qtyBase, c.ingredient.unit, displayUnit)
+              : qtyBase;
+          return {
+            ingredientId: c.ingredientId,
+            quantity: String(qtyDisplay),
+            displayUnit,
+          };
+        }),
       );
     } else {
       setRows([]);
@@ -72,13 +83,7 @@ export function SubRecipeFormDialog({
       return api(`/inventory/recipes/sub-recipe/${subRecipe.id}`, {
         method: 'PUT',
         body: {
-          components: rows
-            .filter((r) => r.ingredientId && parseFloat(r.quantity) > 0)
-            .map((r, idx) => ({
-              ingredientId: r.ingredientId,
-              quantity: r.quantity,
-              sortOrder: idx,
-            })),
+          components: rowsToApiPayload(rows, ingredients),
         },
       });
     },

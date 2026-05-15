@@ -113,6 +113,7 @@ export class RecipesService {
             parentIngredientId: null,
             ingredientId: c.ingredientId,
             quantity: new Prisma.Decimal(c.quantity),
+            displayUnit: c.displayUnit ?? null,
             sortOrder: c.sortOrder ?? idx,
           })),
         });
@@ -170,6 +171,7 @@ export class RecipesService {
             parentIngredientId: subRecipeIngredientId,
             ingredientId: c.ingredientId,
             quantity: new Prisma.Decimal(c.quantity),
+            displayUnit: c.displayUnit ?? null,
             sortOrder: c.sortOrder ?? idx,
           })),
         });

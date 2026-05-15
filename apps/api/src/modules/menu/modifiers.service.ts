@@ -35,6 +35,7 @@ export class ModifiersService {
       data: {
         organizationId: auth.orgId,
         menuItemId: input.menuItemId,
+        kind: input.kind,
         name: input.name,
         minSelect: input.minSelect,
         maxSelect: input.maxSelect,
@@ -60,6 +61,7 @@ export class ModifiersService {
     const updated = await this.prisma.modifierGroup.update({
       where: { id },
       data: {
+        kind: input.kind ?? undefined,
         name: input.name ?? undefined,
         minSelect: input.minSelect ?? undefined,
         maxSelect: input.maxSelect ?? undefined,
@@ -100,7 +102,10 @@ export class ModifiersService {
         organizationId: auth.orgId,
         modifierGroupId: input.modifierGroupId,
         name: input.name,
+        description: input.description ?? null,
+        imageUrl: input.imageUrl ?? null,
         costDeltaCents: input.costDeltaCents,
+        linkedMenuItemId: input.linkedMenuItemId ?? null,
         sortOrder: input.sortOrder ?? 0,
       },
     });
@@ -127,7 +132,11 @@ export class ModifiersService {
       where: { id },
       data: {
         name: input.name ?? undefined,
+        description: input.description === undefined ? undefined : input.description,
+        imageUrl: input.imageUrl === undefined ? undefined : input.imageUrl,
         costDeltaCents: input.costDeltaCents ?? undefined,
+        linkedMenuItemId:
+          input.linkedMenuItemId === undefined ? undefined : input.linkedMenuItemId,
         sortOrder: input.sortOrder ?? undefined,
       },
     });
