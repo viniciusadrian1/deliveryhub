@@ -89,14 +89,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const finalize = (data: AuthResultDto, firstStoreId?: string | null) => {
+  /**
+   * Salva tokens, popula o estado e carrega o `storeId` default via /me.
+   * Usado por login E signup — concentrar os dois aqui evita o bug de um
+   * fluxo esquecer de buscar a loja (o signup tinha exatamente esse
+   * problema: criava a conta + loja mas não lia o /me, então a UI pedia
+   * "crie uma loja" até o usuário recarregar a página).
+   */
+  const establishSession = async (data: AuthResultDto) => {
     writeTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
     setState({
       user: data.user,
       organization: data.organization,
       role: data.role,
-      storeId: firstStoreId ?? null,
+      storeId: null,
     });
+    try {
+      const me = await api<MeDto>('/me');
+      setState((s) => (s ? { ...s, storeId: me.stores[0]?.id ?? null } : s));
+    } catch {
+      // se /me falhar agora, o bootstrap recarrega na próxima visita; não fatal
+    }
   };
 
   const login = async (email: string, password: string) => {
@@ -105,14 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: { email, password },
       skipAuth: true,
     });
-    // Após login, pega lojas via /me para guardar o storeId default.
-    finalize(data);
-    try {
-      const me = await api<MeDto>('/me');
-      setState((s) => (s ? { ...s, storeId: me.stores[0]?.id ?? null } : s));
-    } catch {
-      // se /me falhar agora, o usuário pode recarregar; não fatal
-    }
+    await establishSession(data);
     router.push(r('/hub'));
   };
 
@@ -122,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: input,
       skipAuth: true,
     });
-    finalize(data);
+    await establishSession(data);
     router.push(r('/hub'));
   };
 
