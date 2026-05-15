@@ -313,6 +313,30 @@ export class IntegrationsService {
   }
 
   /**
+   * Resolve a conexão ATIVA de uma loja numa plataforma e devolve os
+   * tokens decifrados. Usado por ações que precisam chamar o adapter
+   * fora do fluxo de transição de pedido (ex.: confirmar dinheiro,
+   * responder pedido de cancelamento/reembolso).
+   */
+  async getActiveConnectionWithTokens(
+    organizationId: string,
+    storeId: string,
+    platformId: string,
+  ): Promise<{ connectionId: string; externalMerchantId: string; tokens: StoredTokens } | null> {
+    const connection = await this.prisma.platformConnection.findFirst({
+      where: { organizationId, storeId, platformId, status: 'active' },
+    });
+    if (!connection?.externalMerchantId) return null;
+    const tokens = await this.getTokens(connection.id);
+    if (!tokens) return null;
+    return {
+      connectionId: connection.id,
+      externalMerchantId: connection.externalMerchantId,
+      tokens,
+    };
+  }
+
+  /**
    * Persiste novos tokens (usado pelo poller após `adapter.refreshAuth`).
    */
   async saveTokens(connectionId: string, tokens: StoredTokens): Promise<void> {

@@ -8,12 +8,14 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 
+import { DidifoodAdapter, type DidifoodActionRequest } from '@deliveryhub/didifood';
 import type { PlatformCode } from '@deliveryhub/shared';
 
 import { Public } from '../../common/auth/public.decorator.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AdapterRegistry } from '../integrations/adapter.registry.js';
 import { OrdersService } from './orders.service.js';
+import { PlatformActionRequestsService } from './platform-action-requests.service.js';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -23,6 +25,7 @@ export class WebhooksController {
     private readonly prisma: PrismaService,
     private readonly registry: AdapterRegistry,
     private readonly orders: OrdersService,
+    private readonly actionRequests: PlatformActionRequestsService,
   ) {}
 
   @Public()
@@ -95,6 +98,28 @@ export class WebhooksController {
     if (!adapter.verifyWebhookSignature(headers, rawBody)) {
       this.logger.warn({ platformCode }, 'webhook_invalid_signature');
       throw new UnauthorizedException('invalid_signature');
+    }
+
+    // ── 99Food: cancelamento/reembolso pedido pelo cliente ────────
+    // Têm fluxo próprio (apply_id, lista de motivos) e NÃO viram evento
+    // de status de pedido. A idempotência fica no PlatformActionRequest.
+    if (adapter instanceof DidifoodAdapter) {
+      let action: DidifoodActionRequest | null = null;
+      try {
+        action = adapter.parseActionRequest(req.body, rawBody);
+      } catch (err) {
+        this.logger.warn({ err, platformCode }, 'webhook_action_parse_failed');
+        return { status: 'ignored' };
+      }
+      if (action) {
+        try {
+          await this.actionRequests.ingestFromWebhook(platformCode, action);
+          return { status: 'processed' };
+        } catch (err) {
+          this.logger.error({ err, platformCode }, 'webhook_action_processing_failed');
+          return { status: 'error' };
+        }
+      }
     }
 
     let envelope;

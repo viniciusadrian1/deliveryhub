@@ -30,6 +30,7 @@ model Platform {
   orders          Order[]
   webhookEvents   WebhookEvent[]
   payouts         Payout[]
+  actionRequests  PlatformActionRequest[]
 
   @@map("platform")
 }
@@ -251,6 +252,7 @@ enum NotificationKind {
   payout_mismatch
   daily_goal
   stock_low
+  order_action_request
   system
 
   @@map("notification_kind")
@@ -359,15 +361,22 @@ model Order {
   deliveredAt        DateTime?   @map("delivered_at")
   cancelledAt        DateTime?   @map("cancelled_at")
   cancellationReason String?     @map("cancellation_reason")
+  // Forma de pagamento informada pela plataforma: 'online' | 'cash' | 'other'.
+  paymentMethod          String?   @map("payment_method")
+  // Quem entrega: 'platform' (entregador da plataforma) | 'store' (loja).
+  deliveryBy             String?   @map("delivery_by")
+  // Marcado quando a loja confirma o recebimento do dinheiro (pedidos cash).
+  cashPaymentConfirmedAt DateTime? @map("cash_payment_confirmed_at")
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  store        Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  platform     Platform           @relation(fields: [platformId], references: [id])
-  customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  items        OrderItem[]
-  statusEvents OrderStatusEvent[]
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store          Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  platform       Platform                @relation(fields: [platformId], references: [id])
+  customer       Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items          OrderItem[]
+  statusEvents   OrderStatusEvent[]
+  actionRequests PlatformActionRequest[]
 
   @@unique([platformId, externalId])
   @@index([organizationId, storeId, placedAt(sort: Desc)])
@@ -440,6 +449,59 @@ model WebhookEvent {
   @@unique([platformId, externalId])
   @@index([receivedAt(sort: Desc)])
   @@map("webhook_event")
+}
+
+// ============================================================
+// Pedidos de ação do cliente (cancelamento / reembolso)
+// 99Food: o cliente abre via atendimento; a loja aprova/recusa.
+// ============================================================
+
+enum PlatformActionRequestKind {
+  cancellation
+  refund
+
+  @@map("platform_action_request_kind")
+}
+
+enum PlatformActionRequestStatus {
+  pending
+  approved
+  declined
+
+  @@map("platform_action_request_status")
+}
+
+model PlatformActionRequest {
+  id               String                      @id @default(uuid(7))
+  organizationId   String                      @map("organization_id")
+  storeId          String                      @map("store_id")
+  platformId       String                      @map("platform_id")
+  orderId          String?                     @map("order_id")
+  kind             PlatformActionRequestKind
+  status           PlatformActionRequestStatus @default(pending)
+  // IDs externos da plataforma — long 64-bit, guardados como string.
+  externalOrderId  String                      @map("external_order_id")
+  externalApplyId  String                      @map("external_apply_id")
+  customerReason   String?                     @map("customer_reason")
+  // Opções de motivo que a loja pode escolher ao responder (JSON da plataforma).
+  reasonOptions    Json?                       @map("reason_options")
+  // Imagens anexadas pelo cliente como evidência (reembolso).
+  evidenceImages   Json?                       @map("evidence_images")
+  resolvedByUserId String?                     @map("resolved_by_user_id")
+  resolvedReason   String?                     @map("resolved_reason")
+  resolvedAt       DateTime?                   @map("resolved_at")
+  createdAt        DateTime                    @default(now()) @map("created_at")
+  updatedAt        DateTime                    @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  platform     Platform     @relation(fields: [platformId], references: [id])
+  order        Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([platformId, externalApplyId])
+  @@index([organizationId, status])
+  @@index([orderId])
+  @@map("platform_action_request")
 }
 
 // ============================================================
@@ -646,6 +708,7 @@ model Organization {
   recipeComponents        RecipeComponent[]
   comboComponents         ComboComponent[]
   expenses                Expense[]
+  platformActionRequests  PlatformActionRequest[]
 
   @@map("organization")
 }
@@ -722,6 +785,7 @@ model Store {
   ingredientPurchases IngredientPurchase[]
   stockMovements      StockMovement[]
   expenses            Expense[]
+  actionRequests      PlatformActionRequest[]
 
   @@index([organizationId])
   @@map("store")

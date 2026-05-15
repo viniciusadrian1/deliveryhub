@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { DidifoodAdapter } from '@deliveryhub/didifood';
 import type { PlatformCode } from '@deliveryhub/shared';
 import type { RemoteOrder } from '@deliveryhub/ifood';
 
@@ -117,6 +118,12 @@ export class OrdersService {
               include: { modifiers: true },
             }
           : false,
+        // Indicador leve p/ o card do Hub destacar pedidos com
+        // cancelamento/reembolso aguardando resposta da loja.
+        actionRequests: {
+          where: { status: 'pending' },
+          select: { id: true, kind: true },
+        },
       },
     });
   }
@@ -132,6 +139,7 @@ export class OrdersService {
           orderBy: { unitPriceCents: 'desc' },
         },
         statusEvents: { orderBy: { at: 'desc' } },
+        actionRequests: { orderBy: { createdAt: 'desc' } },
       },
     });
     if (!order) throw new NotFoundException('order_not_found');
@@ -174,6 +182,57 @@ export class OrdersService {
       },
       reason,
     );
+  }
+
+  /**
+   * Confirma o recebimento em dinheiro de um pedido 99Food entregue por
+   * entregador da plataforma (Order API — Confirm Cash Payment). Não muda
+   * o status do pedido; só marca `cashPaymentConfirmedAt`.
+   */
+  async confirmCashPayment(auth: AuthContext, id: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id, organizationId: auth.orgId },
+      include: { platform: true },
+    });
+    if (!order) throw new NotFoundException('order_not_found');
+    if (order.cashPaymentConfirmedAt) return this.findOne(auth, id);
+    if (order.paymentMethod !== 'cash') {
+      throw new BadRequestException('order_not_cash');
+    }
+
+    const conn = await this.integrations.getActiveConnectionWithTokens(
+      auth.orgId,
+      order.storeId,
+      order.platformId,
+    );
+    if (!conn) throw new BadRequestException('no_active_connection');
+
+    const adapter = this.registry.get(order.platform.code as PlatformCode);
+    if (!(adapter instanceof DidifoodAdapter)) {
+      throw new BadRequestException('cash_confirmation_unsupported');
+    }
+
+    try {
+      await adapter.confirmCashPayment(conn.tokens, order.externalId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'cash_confirmation_failed';
+      this.logger.error({ err, orderId: order.id }, 'cash_confirmation_failed');
+      throw new BadRequestException(message.slice(0, 200));
+    }
+
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: { cashPaymentConfirmedAt: new Date() },
+    });
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'order',
+      entityId: order.id,
+      action: 'update',
+      diff: { cashPaymentConfirmed: true },
+    });
+    return this.findOne(auth, id);
   }
 
   // ============== Helpers ==============
@@ -235,6 +294,8 @@ export class OrdersService {
           flatFeeCents: remote.flatFeeCents,
           netCents,
           customerId: customer.id,
+          paymentMethod: remote.paymentMethod ?? undefined,
+          deliveryBy: remote.deliveryBy ?? undefined,
           ...stampStatusTimestamp(newStatus),
         },
       });
@@ -267,6 +328,8 @@ export class OrdersService {
           netCents,
           notes: remote.notes ?? null,
           placedAt: remote.placedAt,
+          paymentMethod: remote.paymentMethod ?? null,
+          deliveryBy: remote.deliveryBy ?? null,
           ...stampStatusTimestamp(remote.status),
         },
       });

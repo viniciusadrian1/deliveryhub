@@ -7,6 +7,37 @@ export type OrderStatus =
   | 'delivered'
   | 'cancelled';
 
+export type PaymentMethod = 'online' | 'cash' | 'other';
+export type DeliveryBy = 'platform' | 'store';
+
+export type ActionRequestKind = 'cancellation' | 'refund';
+export type ActionRequestStatus = 'pending' | 'approved' | 'declined';
+
+export interface ActionReasonOption {
+  /** Só o reembolso traz id (base_reason_id); cancelamento traz só o texto. */
+  id?: string;
+  label: string;
+}
+
+/** Resumo leve de pedido de ação — usado no card do Hub. */
+export interface ActionRequestSummary {
+  id: string;
+  kind: ActionRequestKind;
+}
+
+/** Pedido de cancelamento/reembolso aberto pelo cliente na plataforma. */
+export interface OrderActionRequest {
+  id: string;
+  kind: ActionRequestKind;
+  status: ActionRequestStatus;
+  customerReason: string | null;
+  reasonOptions: ActionReasonOption[] | null;
+  evidenceImages: string[] | null;
+  resolvedReason: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 export interface OrderListItem {
   id: string;
   externalId: string;
@@ -18,6 +49,8 @@ export interface OrderListItem {
   notes: string | null;
   platform: { code: string; name: string; colorHex: string };
   customer: { id: string; name: string } | null;
+  /** Pedidos de cancelamento/reembolso pendentes (selo no card). */
+  actionRequests: ActionRequestSummary[];
 }
 
 export interface OrderItemDetail {
@@ -41,6 +74,9 @@ export interface OrderDetail extends OrderListItem {
   processingFeeCents: number;
   flatFeeCents: number;
   cancellationReason: string | null;
+  paymentMethod: PaymentMethod | null;
+  deliveryBy: DeliveryBy | null;
+  cashPaymentConfirmedAt: string | null;
   acceptedAt: string | null;
   dispatchedAt: string | null;
   deliveredAt: string | null;
@@ -53,6 +89,8 @@ export interface OrderDetail extends OrderListItem {
     source: string;
     at: string;
   }>;
+  /** Pedidos de ação completos (banner no drawer). */
+  actionRequests: OrderActionRequest[];
 }
 
 export interface OrderEventPayload {

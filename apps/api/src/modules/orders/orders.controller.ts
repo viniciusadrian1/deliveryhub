@@ -74,4 +74,12 @@ export class OrdersController {
   ) {
     return this.orders.reject(auth, id, body.reason);
   }
+
+  /** Confirma o recebimento em dinheiro (pedidos cash do 99Food). */
+  @Post(':id/confirm-cash')
+  @Roles('owner', 'manager', 'staff')
+  @HttpCode(200)
+  confirmCash(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
+    return this.orders.confirmCashPayment(auth, id);
+  }
 }

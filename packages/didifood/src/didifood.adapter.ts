@@ -4,6 +4,7 @@ import {
   AdapterApiError,
   ConnectionPendingError,
   type FinalizeConnectionResult,
+  type OrderPaymentMethod,
   type PlatformAdapter,
   type PolledEvent,
   type RemoteCategory,
@@ -60,7 +61,7 @@ import {
  * ════════════════════════════════════════════════════════════════════
  *  STATUS
  * ════════════════════════════════════════════════════════════════════
- *  ✅ verifyWebhookSignature, parseWebhook
+ *  ✅ verifyWebhookSignature, parseWebhook, parseActionRequest
  *  ✅ getAuthtoken / refreshAuthtoken
  *  ✅ fetchOrder, acceptOrder, rejectOrder, dispatchOrder
  *  ✅ confirmCashPayment, handleCancellation/RefundRequest, verifyOrder
@@ -109,6 +110,33 @@ export interface DidifoodVerifyResult {
   offlineGoodsPriceCents: number;
 }
 
+/** Opção de motivo que a loja escolhe ao responder um pedido de ação. */
+export interface DidifoodActionReasonOption {
+  /** id — só o reembolso traz (base_reason_id); cancelamento traz só texto. */
+  id?: string;
+  label: string;
+}
+
+/**
+ * Pedido de cancelamento/reembolso aberto pelo cliente via atendimento
+ * do 99Food (webhooks orderCancelApply / orderRefundApply).
+ */
+export interface DidifoodActionRequest {
+  kind: 'cancellation' | 'refund';
+  /** order_id 64-bit como string. */
+  externalOrderId: string;
+  externalMerchantId: string;
+  /** apply_id 64-bit como string — vai no /order/apply/{cancel,refund}. */
+  applyId: string;
+  /** Motivo informado pelo cliente. */
+  customerReason?: string;
+  /** Opções que a loja escolhe ao responder (obrigatório p/ recusar reembolso). */
+  reasonOptions: DidifoodActionReasonOption[];
+  /** Imagens anexadas pelo cliente como evidência (reembolso). */
+  images: string[];
+  occurredAt: Date;
+}
+
 interface DidifoodEnvelope<T> {
   errno: number;
   errmsg: string;
@@ -117,7 +145,11 @@ interface DidifoodEnvelope<T> {
   data: T;
 }
 
-/** Tipos de evento de pedido do webhook 99Food. */
+/**
+ * Tipos de evento de STATUS de pedido do webhook 99Food.
+ * `orderCancelApply` / `orderRefundApply` NÃO entram aqui — são pedidos de
+ * ação do cliente, tratados por `parseActionRequest` (fluxo próprio).
+ */
 const ORDER_EVENT_TYPES = new Set([
   'orderNew',
   'orderConfirm',
@@ -125,8 +157,6 @@ const ORDER_EVENT_TYPES = new Set([
   'orderCancel',
   'orderPartialCancel',
   'orderFinish',
-  'orderCancelApply',
-  'orderRefundApply',
 ]);
 
 /**
@@ -199,6 +229,7 @@ interface RawOrderInfo {
   remark?: string;
   create_time?: number;
   delivery_type?: number;
+  pay_type?: number;
   price?: {
     order_price?: number;
     delivery_price?: number;
@@ -331,6 +362,68 @@ export class DidifoodAdapter implements PlatformAdapter {
       externalOrderId: orderId,
       externalMerchantId: merchantId,
       occurredAt,
+    };
+  }
+
+  /**
+   * Parseia os webhooks `orderCancelApply` / `orderRefundApply` — pedidos de
+   * cancelamento/reembolso abertos pelo cliente. Devolve `null` se o webhook
+   * não for um desses (o controller segue pro fluxo normal de pedido).
+   *
+   * order_id e apply_id são `long` 64-bit — extraídos do corpo cru. Os
+   * demais campos (motivo, listas de motivo, imagens) são strings/arrays,
+   * lidos com segurança do JSON parseado.
+   */
+  parseActionRequest(payload: unknown, rawBody?: Buffer): DidifoodActionRequest | null {
+    const p = (payload ?? {}) as {
+      type?: string;
+      app_shop_id?: string;
+      timestamp?: number;
+      data?: {
+        apply_reason?: string;
+        reason_list?: { reason?: string }[];
+        base_reason_list?: { base_reason_id?: string; base_reason?: string }[];
+        images?: unknown;
+      };
+    };
+
+    const kind =
+      p.type === 'orderCancelApply'
+        ? 'cancellation'
+        : p.type === 'orderRefundApply'
+          ? 'refund'
+          : null;
+    if (!kind) return null;
+
+    const raw = rawBody?.toString('utf8') ?? JSON.stringify(payload ?? {});
+    const externalOrderId = matchBigIntField(raw, 'order_id') ?? '';
+    const applyId = matchBigIntField(raw, 'apply_id') ?? '';
+    if (!externalOrderId || !applyId) {
+      throw new AdapterApiError('99food_action_request_missing_ids', 400, payload);
+    }
+
+    const data = p.data ?? {};
+    const reasonOptions: DidifoodActionReasonOption[] =
+      kind === 'cancellation'
+        ? (data.reason_list ?? [])
+            .map((r) => ({ label: r.reason ?? '' }))
+            .filter((r) => r.label)
+        : (data.base_reason_list ?? [])
+            .map((r) => ({ id: r.base_reason_id, label: r.base_reason ?? '' }))
+            .filter((r) => r.label && r.id);
+
+    return {
+      kind,
+      externalOrderId,
+      externalMerchantId:
+        p.app_shop_id ?? matchStringField(raw, 'app_shop_id') ?? '',
+      applyId,
+      customerReason: data.apply_reason || undefined,
+      reasonOptions,
+      images: Array.isArray(data.images)
+        ? data.images.filter((i): i is string => typeof i === 'string')
+        : [],
+      occurredAt: p.timestamp ? new Date(p.timestamp * 1000) : new Date(),
     };
   }
 
@@ -950,7 +1043,26 @@ function mapOrderInfoToRemote(info: RawOrderInfo, externalOrderId: string): Remo
     flatFeeCents: 0,
     notes: info.remark || undefined,
     placedAt: info.create_time ? new Date(info.create_time * 1000) : new Date(),
+    paymentMethod: mapPaymentMethod(info.pay_type),
+    deliveryBy: info.delivery_type === 2 ? 'store' : info.delivery_type === 1 ? 'platform' : undefined,
   };
+}
+
+/**
+ * pay_type do 99Food → forma de pagamento interna.
+ *  1 = Online · 2 = Cash · 3 = POS · 4 = Wallet · 5/6 = PayPay.
+ */
+function mapPaymentMethod(payType: number | undefined): OrderPaymentMethod | undefined {
+  switch (payType) {
+    case 1:
+      return 'online';
+    case 2:
+      return 'cash';
+    case undefined:
+      return undefined;
+    default:
+      return 'other';
+  }
 }
 
 /** Nome do cliente, lidando com valores mascarados de privacidade. */

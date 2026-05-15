@@ -11,6 +11,7 @@
 export const NOTIFICATION_KINDS = [
   'new_order',
   'stock_low',
+  'order_action_request',
   'integration_error',
   'platform_disconnected',
   'payout_mismatch',
@@ -51,6 +52,11 @@ export const NOTIFICATION_KIND_META: Record<
   stock_low: {
     label: 'Estoque baixo',
     description: 'Algum insumo caiu abaixo do estoque mínimo configurado.',
+    group: 'operacional',
+  },
+  order_action_request: {
+    label: 'Cancelamento / reembolso',
+    description: 'Cliente pediu cancelamento ou reembolso e a loja precisa responder.',
     group: 'operacional',
   },
   daily_goal: {

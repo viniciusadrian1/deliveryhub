@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
   ArrowRight,
+  Banknote,
   CheckCircle2,
   ChefHat,
   Clock,
@@ -18,9 +19,10 @@ import { useState } from 'react';
 
 import { api, ApiError } from '../../lib/api';
 import { formatCents, timeAgo } from '../../lib/format';
-import type { OrderDetail, OrderStatus } from '../../lib/hub-types';
+import type { OrderDetail, OrderStatus, PaymentMethod } from '../../lib/hub-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { OrderActionRequests } from './order-action-requests';
 
 interface OrderDrawerProps {
   orderId: string | null;
@@ -66,6 +68,12 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   cancelled: 'Cancelado',
 };
 
+const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  online: 'Online',
+  cash: 'Dinheiro',
+  other: 'Outro',
+};
+
 export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   const qc = useQueryClient();
   const [rejectReason, setRejectReason] = useState('');
@@ -95,6 +103,15 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
     onSuccess: () => {
       setShowRejectForm(false);
       setRejectReason('');
+      void qc.invalidateQueries({ queryKey: ['orders'] });
+      void qc.invalidateQueries({ queryKey: ['order', orderId] });
+    },
+  });
+
+  const confirmCash = useMutation({
+    mutationFn: async () =>
+      api<OrderDetail>(`/orders/${orderId}/confirm-cash`, { method: 'POST' }),
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['orders'] });
       void qc.invalidateQueries({ queryKey: ['order', orderId] });
     },
@@ -157,6 +174,33 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                   {timeAgo(data.placedAt)}
                 </span>
               </div>
+
+              {(data.paymentMethod || data.deliveryBy) && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-tertiary">
+                  {data.paymentMethod && (
+                    <span>
+                      Pagamento:{' '}
+                      <b className="text-ink-secondary">
+                        {PAYMENT_LABELS[data.paymentMethod]}
+                      </b>
+                    </span>
+                  )}
+                  {data.deliveryBy && (
+                    <span>
+                      Entrega:{' '}
+                      <b className="text-ink-secondary">
+                        {data.deliveryBy === 'platform'
+                          ? data.platform.name
+                          : 'Loja própria'}
+                      </b>
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {data.actionRequests.length > 0 && (
+                <OrderActionRequests orderId={data.id} requests={data.actionRequests} />
+              )}
 
               {data.customer && (
                 <div className="surface-card flex items-center gap-3 p-3">
@@ -247,6 +291,45 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                   tone="success"
                 />
               </div>
+
+              {data.platform.code === '99food' && data.paymentMethod === 'cash' && (
+                <div className="rounded-lg border border-info/30 bg-info-soft p-3">
+                  {data.cashPaymentConfirmedAt ? (
+                    <p className="flex items-center gap-2 text-sm text-info">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      Recebimento em dinheiro confirmado.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="flex items-center gap-2 text-sm font-medium text-ink-primary">
+                        <Banknote className="h-4 w-4 shrink-0 text-info" />
+                        Pedido pago em dinheiro
+                      </p>
+                      <p className="mt-1 text-xs text-ink-secondary">
+                        Confirme quando receber o valor em mãos do entregador 99Food.
+                      </p>
+                      {confirmCash.error != null && (
+                        <p className="mt-2 text-xs text-danger-bright">
+                          {(confirmCash.error as ApiError).status === 400
+                            ? 'Não foi possível confirmar agora — verifique o status do pedido.'
+                            : 'Erro ao confirmar o recebimento.'}
+                        </p>
+                      )}
+                      <Button
+                        size="sm"
+                        className="mt-2"
+                        loading={confirmCash.isPending}
+                        leftIcon={
+                          !confirmCash.isPending && <Banknote className="h-3.5 w-3.5" />
+                        }
+                        onClick={() => confirmCash.mutate()}
+                      >
+                        Confirmar recebimento
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
 
               {data.notes && (
                 <div className="rounded-lg border border-warning/30 bg-warning-soft p-3 text-sm">

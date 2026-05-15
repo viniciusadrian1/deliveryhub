@@ -47,3 +47,17 @@ export const rejectOrderSchema = z.object({
 });
 
 export type RejectOrderInput = z.infer<typeof rejectOrderSchema>;
+
+/**
+ * Resposta a um pedido de cancelamento/reembolso do cliente
+ * (PlatformActionRequest). `baseReasonId`/`baseReason` são obrigatórios
+ * ao RECUSAR um reembolso — escolhidos da lista enviada pela plataforma.
+ */
+export const resolveActionRequestSchema = z.object({
+  approve: z.boolean(),
+  reason: z.string().max(300).trim().optional(),
+  baseReasonId: z.string().min(1).max(50).optional(),
+  baseReason: z.string().min(1).max(300).trim().optional(),
+});
+
+export type ResolveActionRequestInput = z.infer<typeof resolveActionRequestSchema>;

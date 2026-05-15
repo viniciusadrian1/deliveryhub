@@ -2,7 +2,8 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Inbox, Radio, Volume2 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 
 import { OrderCard } from '../../../components/hub/order-card';
 import { OrderDrawer } from '../../../components/hub/order-drawer';
@@ -18,12 +19,25 @@ const COLUMNS: { status: OrderStatus | OrderStatus[]; title: string; accent?: bo
   { status: 'dispatched', title: 'Despachados' },
 ];
 
-export default function HubPage() {
+function HubBoard() {
   const qc = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { state } = useAuth();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const orderParam = searchParams.get('order');
+  const [selectedId, setSelectedId] = useState<string | null>(orderParam);
   const [soundOn, setSoundOn] = useState(true);
   const storeId = state?.storeId ?? null;
+
+  // Deep-link: notificações de cancelamento/reembolso abrem o pedido direto.
+  useEffect(() => {
+    if (orderParam) setSelectedId(orderParam);
+  }, [orderParam]);
+
+  const closeDrawer = () => {
+    setSelectedId(null);
+    if (orderParam) router.replace('/hub');
+  };
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['orders', storeId],
@@ -168,9 +182,15 @@ export default function HubPage() {
         })}
       </div>
 
-      {selectedId && (
-        <OrderDrawer orderId={selectedId} onClose={() => setSelectedId(null)} />
-      )}
+      {selectedId && <OrderDrawer orderId={selectedId} onClose={closeDrawer} />}
     </div>
+  );
+}
+
+export default function HubPage() {
+  return (
+    <Suspense fallback={null}>
+      <HubBoard />
+    </Suspense>
   );
 }

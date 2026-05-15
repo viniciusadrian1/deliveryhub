@@ -76,6 +76,12 @@ export interface RemoteOrderItem {
   modifiers?: RemoteOrderModifier[];
 }
 
+/** Forma de pagamento informada pela plataforma. */
+export type OrderPaymentMethod = 'online' | 'cash' | 'other';
+
+/** Quem faz a entrega: a plataforma (entregador dela) ou a própria loja. */
+export type OrderDeliveryBy = 'platform' | 'store';
+
 export interface RemoteOrder {
   externalId: string;
   externalMerchantId: string;
@@ -90,6 +96,10 @@ export interface RemoteOrder {
   flatFeeCents: number;
   notes?: string;
   placedAt: Date;
+  /** Forma de pagamento, quando a plataforma informa. */
+  paymentMethod?: OrderPaymentMethod;
+  /** Quem entrega, quando a plataforma informa. */
+  deliveryBy?: OrderDeliveryBy;
 }
 
 export interface WebhookEnvelope {
