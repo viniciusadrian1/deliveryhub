@@ -63,6 +63,7 @@ import {
  *  ✅ verifyWebhookSignature, parseWebhook
  *  ✅ getAuthtoken / refreshAuthtoken
  *  ✅ fetchOrder, acceptOrder, rejectOrder, dispatchOrder
+ *  ✅ confirmCashPayment, handleCancellation/RefundRequest, verifyOrder
  *  ✅ startConnection / finalizeConnection (bind self-service via web page)
  *  ✅ pushStorePause (Store API — setStatus)
  *  ✅ fetchMenu / pushItemPrice / pushItemAvailability (Menu API)
@@ -88,6 +89,24 @@ export interface DidifoodRequestLogger {
     ok: boolean;
     errno?: number;
   }): void;
+}
+
+/** Motivo de recusa de um pedido de reembolso (`handleRefundRequest`). */
+export interface DidifoodRefundRefusal {
+  /** base_reason_id — da lista enviada no webhook orderRefundApply. */
+  baseReasonId: string;
+  /** base_reason — texto correspondente, da mesma lista. */
+  baseReason: string;
+  /** Observação livre opcional da loja. */
+  customReason?: string;
+}
+
+/** Resultado de `verifyOrder` (verificação de pedido de retirada). */
+export interface DidifoodVerifyResult {
+  /** true se o total escaneado offline bate com o online dentro da margem. */
+  passed: boolean;
+  onlineGoodsPriceCents: number;
+  offlineGoodsPriceCents: number;
 }
 
 interface DidifoodEnvelope<T> {
@@ -150,7 +169,14 @@ const PAUSE_REASON_OTHER = 1006;
  * Campos `long` 64-bit emitidos como literal numérico cru no corpo JSON
  * (sem aspas, sem passar por Number) — senão perdem precisão.
  */
-const RAW_NUMERIC_KEYS = ['order_id', 'app_id', 'shop_id'];
+const RAW_NUMERIC_KEYS = [
+  'order_id',
+  'app_id',
+  'shop_id',
+  'apply_id',
+  'picker_id',
+  'cashier_id',
+];
 
 // Shapes parciais da resposta de Get Order Details (só o que usamos).
 interface RawSubItem {
@@ -404,6 +430,116 @@ export class DidifoodAdapter implements PlatformAdapter {
       auth_token: tokens.accessToken,
       order_id: externalOrderId,
     });
+  }
+
+  // ===================================================================
+  // Order API — extras 99Food (fora do PlatformAdapter; só o
+  // DidifoodAdapter expõe — o caller resolve via `instanceof`)
+  // ===================================================================
+
+  /**
+   * POST /v1/order/order/payConfirm — confirma o recebimento do dinheiro
+   * de um pedido pago em espécie (a maquininha do entregador 99Food).
+   *
+   * Vale só p/ entrega feita por entregador 99Food (não loja-própria) e
+   * com o pedido em status 200 (aceito). É obrigatório nesse fluxo — sem
+   * a confirmação o entregador não enxerga o endereço do cliente.
+   */
+  async confirmCashPayment(tokens: StoredTokens, externalOrderId: string): Promise<void> {
+    await this.post('/v1/order/order/payConfirm', {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+    });
+  }
+
+  /**
+   * POST /v1/order/apply/cancel — aprova ou recusa um pedido de
+   * CANCELAMENTO aberto pelo cliente via atendimento do 99Food.
+   *
+   * O `applyId` chega no webhook `orderCancelApply`. Sem resposta da loja
+   * em ~10 min, o 99Food recusa por padrão. Exige que a loja tenha
+   * habilitado o recebimento desses pedidos (Store API setApply).
+   */
+  async handleCancellationRequest(
+    tokens: StoredTokens,
+    externalOrderId: string,
+    applyId: string,
+    agree: boolean,
+    reason?: string,
+  ): Promise<void> {
+    const body: Record<string, string | number | boolean> = {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+      apply_id: applyId,
+      agree,
+    };
+    if (reason) body.reason = reason;
+    await this.post('/v1/order/apply/cancel', body);
+  }
+
+  /**
+   * POST /v1/order/apply/refund — aprova ou recusa um pedido de REEMBOLSO
+   * aberto pelo cliente via atendimento do 99Food.
+   *
+   * O `applyId` chega no webhook `orderRefundApply`. Ao recusar, o 99Food
+   * exige motivo (`baseReasonId` + `baseReason`, da lista do webhook). Sem
+   * resposta da loja em ~24 h, o 99Food aprova o reembolso por padrão.
+   */
+  async handleRefundRequest(
+    tokens: StoredTokens,
+    externalOrderId: string,
+    applyId: string,
+    agree: boolean,
+    refusal?: DidifoodRefundRefusal,
+  ): Promise<void> {
+    const body: Record<string, string | number | boolean> = {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+      apply_id: applyId,
+      agree,
+    };
+    if (!agree) {
+      if (!refusal?.baseReasonId || !refusal.baseReason) {
+        throw new AdapterApiError('99food_refund_refusal_reason_required', 400);
+      }
+      body.base_reason_id = refusal.baseReasonId;
+      body.base_reason = refusal.baseReason;
+      if (refusal.customReason) body.custom_reason = refusal.customReason;
+    }
+    await this.post('/v1/order/apply/refund', body);
+  }
+
+  /**
+   * POST /v1/order/order/verify — confere se o total escaneado offline
+   * bate com o preço do pedido online (só pedidos de retirada/pickup).
+   *
+   * O 99Food levanta erro (errno != 0) quando a verificação falha ou o
+   * status do pedido não permite — então, se este método retornar sem
+   * lançar, a verificação passou.
+   */
+  async verifyOrder(
+    tokens: StoredTokens,
+    externalOrderId: string,
+    offlineGoodsPriceCents: number,
+    opts: { pickerId?: string; cashierId?: string } = {},
+  ): Promise<DidifoodVerifyResult> {
+    const body: Record<string, string | number | boolean> = {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+      offline_goods_price: offlineGoodsPriceCents,
+    };
+    if (opts.pickerId) body.picker_id = opts.pickerId;
+    if (opts.cashierId) body.cashier_id = opts.cashierId;
+    const data = await this.post<{
+      verification?: string;
+      online_goods_price?: number | string;
+      offline_goods_price?: number | string;
+    }>('/v1/order/order/verify', body);
+    return {
+      passed: data?.verification === 'passed',
+      onlineGoodsPriceCents: Number(data?.online_goods_price ?? 0),
+      offlineGoodsPriceCents: Number(data?.offline_goods_price ?? offlineGoodsPriceCents),
+    };
   }
 
   // ===================================================================
@@ -680,7 +816,7 @@ export class DidifoodAdapter implements PlatformAdapter {
    */
   private async post<T>(
     path: string,
-    fields: Record<string, string | number>,
+    fields: Record<string, string | number | boolean>,
   ): Promise<T> {
     return this.request<T>('POST', path, buildJsonBody(fields, RAW_NUMERIC_KEYS));
   }
@@ -923,7 +1059,7 @@ function buildUpdateItemBody(item: RawMenuItemFull): Record<string, unknown> {
  * pode passar por Number nem virar string sem mudar o tipo esperado.
  */
 function buildJsonBody(
-  fields: Record<string, string | number>,
+  fields: Record<string, string | number | boolean>,
   rawNumericKeys: string[],
 ): string {
   const parts = Object.entries(fields).map(([k, v]) => {
