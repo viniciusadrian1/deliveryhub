@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { DidifoodAdapter } from '@deliveryhub/didifood';
+import { DidifoodAdapter, type DidifoodDeliveryStatus } from '@deliveryhub/didifood';
 import type { PlatformCode } from '@deliveryhub/shared';
 import type { RemoteOrder } from '@deliveryhub/ifood';
 
@@ -17,7 +17,7 @@ import { IntegrationsService } from '../integrations/integrations.service.js';
 import { StockConsumptionService } from '../inventory/stock-consumption.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { CustomersService } from './customers.service.js';
-import type { ListOrdersQuery } from './dto/orders.dto.js';
+import type { DispatchSelfDeliveryInput, ListOrdersQuery } from './dto/orders.dto.js';
 import {
   InvalidTransitionError,
   type OrderStatus,
@@ -91,6 +91,82 @@ export class OrdersService {
 
     const remote = await adapter.fetchOrder(tokens, ctx.externalMerchantId, externalOrderId);
     await this.upsertOrder(ctx, remote, eventType);
+  }
+
+  /**
+   * Ingestão do webhook `deliveryStatus` (Logistics 99Food) — progresso do
+   * entregador. Atualiza o entregador no pedido e, em 140 (coletou) /
+   * 160 (entregue), avança o status.
+   */
+  async ingestDeliveryStatus(
+    platformCode: PlatformCode,
+    delivery: DidifoodDeliveryStatus,
+  ): Promise<void> {
+    const ctx = await this.resolveContext(platformCode, delivery.externalMerchantId);
+    if (!ctx) {
+      this.logger.warn({ platformCode }, 'delivery_status_no_connection');
+      return;
+    }
+    const order = await this.prisma.order.findUnique({
+      where: {
+        platformId_externalId: {
+          platformId: ctx.platformId,
+          externalId: delivery.externalOrderId,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        externalId: true,
+        totalCents: true,
+        netCents: true,
+        placedAt: true,
+      },
+    });
+    if (!order) {
+      this.logger.warn(
+        { platformCode, externalOrderId: delivery.externalOrderId },
+        'delivery_status_no_order',
+      );
+      return;
+    }
+
+    // 140 TAKEN → despachado · 160 FINISH → entregue. Demais códigos só
+    // atualizam o entregador, sem mexer no status.
+    const mapped: OrderStatus | null =
+      delivery.deliveryStatus === 140
+        ? 'dispatched'
+        : delivery.deliveryStatus === 160
+          ? 'delivered'
+          : null;
+    const nextStatus = mapped
+      ? reconcileFromPlatform(order.status, mapped)
+      : order.status;
+
+    const updated = await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        courierName: delivery.courierName ?? undefined,
+        courierPhone: delivery.courierPhone ?? undefined,
+        status: nextStatus,
+        ...(nextStatus !== order.status ? stampStatusTimestamp(nextStatus) : {}),
+      },
+    });
+
+    if (nextStatus !== order.status) {
+      await this.recordStatusEvent(order.id, nextStatus, 'platform', {
+        eventType: `deliveryStatus:${delivery.deliveryStatus}`,
+      });
+      if (nextStatus === 'delivered' && order.status !== 'delivered') {
+        await this.consumeStockSafely(order.id);
+      }
+    }
+
+    this.emit(
+      'order.updated',
+      { organizationId: ctx.organizationId, storeId: ctx.storeId, platformCode },
+      updated,
+    );
   }
 
   // ============== Listagem & detalhe ==============
@@ -169,7 +245,17 @@ export class OrdersService {
   }
 
   async markDelivered(auth: AuthContext, id: string) {
-    return this.userTransition(auth, id, 'delivered');
+    return this.userTransition(
+      auth,
+      id,
+      'delivered',
+      async (adapter, tokens, _merchantId, ext, order) => {
+        // Entrega própria no 99Food: avisa a plataforma da conclusão.
+        if (adapter instanceof DidifoodAdapter && order.deliveryBy === 'store') {
+          await adapter.selfDeliveryDelivered(tokens, ext);
+        }
+      },
+    );
   }
 
   async reject(auth: AuthContext, id: string, reason: string) {
@@ -232,6 +318,101 @@ export class OrdersService {
       action: 'update',
       diff: { cashPaymentConfirmed: true },
     });
+    return this.findOne(auth, id);
+  }
+
+  /**
+   * Despacha um pedido de ENTREGA PRÓPRIA do 99Food: registra o entregador,
+   * avisa a plataforma (Self Delivery) e transiciona o pedido pra
+   * "despachado". O `markDelivered` posterior chama selfDeliveryDelivered.
+   */
+  async dispatchSelfDelivery(
+    auth: AuthContext,
+    id: string,
+    input: DispatchSelfDeliveryInput,
+  ) {
+    const order = await this.prisma.order.findFirst({
+      where: { id, organizationId: auth.orgId },
+      include: { platform: true },
+    });
+    if (!order) throw new NotFoundException('order_not_found');
+    if (order.platform.code !== '99food' || order.deliveryBy !== 'store') {
+      throw new BadRequestException('not_a_self_delivery_order');
+    }
+
+    let nextStatus: OrderStatus;
+    try {
+      nextStatus = transition(order.status, 'dispatched');
+    } catch (err) {
+      if (err instanceof InvalidTransitionError) {
+        throw new BadRequestException(err.message);
+      }
+      throw err;
+    }
+
+    const conn = await this.integrations.getActiveConnectionWithTokens(
+      auth.orgId,
+      order.storeId,
+      order.platformId,
+    );
+    if (!conn) throw new BadRequestException('no_active_connection');
+
+    const adapter = this.registry.get('99food');
+    if (!(adapter instanceof DidifoodAdapter)) {
+      throw new BadRequestException('self_delivery_unsupported');
+    }
+
+    const [firstName, ...rest] = input.courierName.trim().split(/\s+/);
+    const nowSec = Math.floor(Date.now() / 1000);
+    try {
+      await adapter.selfDeliveryDispatch(conn.tokens, order.externalId, {
+        courier: {
+          name: input.courierName,
+          firstName: firstName ?? input.courierName,
+          lastName: rest.join(' ') || (firstName ?? input.courierName),
+          phoneCode: input.courierPhoneCode,
+          phone: input.courierPhone,
+          vehicleType: input.vehicleType,
+        },
+        pickupTime: nowSec,
+        deliveryTime: nowSec + input.etaMinutes * 60,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'self_delivery_dispatch_failed';
+      this.logger.error({ err, orderId: order.id }, 'self_delivery_dispatch_failed');
+      throw new BadRequestException(message.slice(0, 200));
+    }
+
+    const updated = await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: nextStatus,
+        courierName: input.courierName,
+        courierPhone: `${input.courierPhoneCode} ${input.courierPhone}`,
+        ...stampStatusTimestamp(nextStatus),
+      },
+    });
+    await this.recordStatusEvent(order.id, nextStatus, 'user', {
+      actorUserId: auth.userId,
+    });
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'order',
+      entityId: order.id,
+      action: 'update',
+      diff: { from: order.status, to: nextStatus, selfDelivery: true },
+    });
+    this.emit(
+      'order.updated',
+      {
+        platformCode: order.platform.code as PlatformCode,
+        storeId: order.storeId,
+        organizationId: order.organizationId,
+      },
+      updated,
+    );
     return this.findOne(auth, id);
   }
 
@@ -413,6 +594,7 @@ export class OrdersService {
       tokens: NonNullable<Awaited<ReturnType<IntegrationsService['getTokens']>>>,
       externalMerchantId: string,
       externalOrderId: string,
+      order: { deliveryBy: string | null },
     ) => Promise<void>,
     reason?: string,
   ) {
@@ -446,7 +628,13 @@ export class OrdersService {
         if (tokens) {
           const adapter = this.registry.get(order.platform.code as PlatformCode);
           try {
-            await sideEffect(adapter, tokens, connection.externalMerchantId, order.externalId);
+            await sideEffect(
+              adapter,
+              tokens,
+              connection.externalMerchantId,
+              order.externalId,
+              order,
+            );
           } catch (err) {
             this.logger.error(
               { err, orderId: order.id, next },

@@ -68,6 +68,7 @@ import {
  *  ✅ startConnection / finalizeConnection (bind self-service via web page)
  *  ✅ pushStorePause (Store API — setStatus)
  *  ✅ fetchMenu / pushItemPrice / pushItemAvailability (Menu API)
+ *  ✅ parseDeliveryStatus + Self Delivery + delivery areas (Logistics API)
  */
 export interface DidifoodAdapterConfig {
   /** app_id (long, string pra não perder precisão). */
@@ -135,6 +136,75 @@ export interface DidifoodActionRequest {
   /** Imagens anexadas pelo cliente como evidência (reembolso). */
   images: string[];
   occurredAt: Date;
+}
+
+/**
+ * Atualização de status de entrega do webhook `deliveryStatus` (Logistics).
+ * delivery_status: 120 atribuído · 130 chegou na loja · 140 coletou ·
+ * 150 chegou no cliente · 160 entregue · 170 cancelado · 180 reatribuído ·
+ * 190 abortado.
+ */
+export interface DidifoodDeliveryStatus {
+  externalOrderId: string;
+  externalMerchantId: string;
+  deliveryStatus: number;
+  courierName?: string;
+  courierPhone?: string;
+  occurredAt: Date;
+}
+
+/** Dados do entregador da loja para o Self Delivery (entrega própria). */
+export interface DidifoodCourier {
+  /** Nome completo exibido ao cliente. */
+  name: string;
+  firstName: string;
+  lastName: string;
+  /** Código do país, ex.: "+55". */
+  phoneCode: string;
+  phone: string;
+  id?: string;
+  imageUrl?: string;
+  /** 100 a pé · 101 e-bike · 102 moto · 103 bike · 104 carro · 105 moto 125cc. */
+  vehicleType?: number;
+  vehicleNumber?: string;
+}
+
+/** Entrada do Self Delivery dispatch / updateCourierInfo. */
+export interface DidifoodSelfDeliveryInput {
+  courier: DidifoodCourier;
+  /** Unix segundos — chegada estimada na loja p/ coleta. */
+  pickupTime: number;
+  /** Unix segundos — entrega estimada ao cliente. */
+  deliveryTime: number;
+}
+
+/** Entrada de uma área de entrega (Add/Update Delivery Area). */
+export interface DidifoodDeliveryAreaInput {
+  /** 0 = círculo (usa radiusKm) · 1 = polígono (usa points). */
+  areaType: 0 | 1;
+  /** Raio em km — obrigatório p/ círculo. */
+  radiusKm?: number;
+  /** Pontos do polígono — obrigatório p/ polígono. */
+  points?: { lat: number; lng: number }[];
+  /** ETA médio de entrega, em segundos. */
+  avgDeliveryEtaSeconds: number;
+  /** Janelas de horário ativas (HH:mm). */
+  enableTimes: { start: string; end: string }[];
+  /** Preço da entrega, em centavos. */
+  priceCents: number;
+}
+
+/** Uma área de entrega já configurada (Get Delivery Area). */
+export interface DidifoodDeliveryArea {
+  /** IDs 64-bit (string) — usados em update/delete. */
+  areaIds: string[];
+  areaType: number;
+  radiusKm: number;
+  priceCents: number;
+  avgDeliveryEtaSeconds: number;
+  /** Texto pronto das janelas, ex.: "00:50-05:00 06:50-10:00". */
+  enableTimesLabel: string;
+  pointCount: number;
 }
 
 interface DidifoodEnvelope<T> {
@@ -427,6 +497,40 @@ export class DidifoodAdapter implements PlatformAdapter {
     };
   }
 
+  /**
+   * Parseia o webhook `deliveryStatus` (Logistics) — progresso do
+   * entregador. Devolve `null` se não for esse tipo. `order_id` é long
+   * 64-bit, extraído do corpo cru.
+   */
+  parseDeliveryStatus(payload: unknown, rawBody?: Buffer): DidifoodDeliveryStatus | null {
+    const p = (payload ?? {}) as {
+      type?: string;
+      app_shop_id?: string;
+      timestamp?: number;
+      data?: {
+        delivery_status?: number;
+        rider_name?: string;
+        rider_phone?: string;
+      };
+    };
+    if (p.type !== 'deliveryStatus') return null;
+
+    const raw = rawBody?.toString('utf8') ?? JSON.stringify(payload ?? {});
+    const externalOrderId = matchBigIntField(raw, 'order_id') ?? '';
+    if (!externalOrderId) {
+      throw new AdapterApiError('99food_delivery_status_missing_order_id', 400, payload);
+    }
+    const data = p.data ?? {};
+    return {
+      externalOrderId,
+      externalMerchantId: p.app_shop_id ?? matchStringField(raw, 'app_shop_id') ?? '',
+      deliveryStatus: typeof data.delivery_status === 'number' ? data.delivery_status : 0,
+      courierName: data.rider_name || undefined,
+      courierPhone: data.rider_phone || undefined,
+      occurredAt: p.timestamp ? new Date(p.timestamp * 1000) : new Date(),
+    };
+  }
+
   // ===================================================================
   // Authtoken (DOCUMENTADO ✅)
   // ===================================================================
@@ -633,6 +737,127 @@ export class DidifoodAdapter implements PlatformAdapter {
       onlineGoodsPriceCents: Number(data?.online_goods_price ?? 0),
       offlineGoodsPriceCents: Number(data?.offline_goods_price ?? offlineGoodsPriceCents),
     };
+  }
+
+  // ===================================================================
+  // Logistics API — entrega própria (Self Delivery) (DOCUMENTADO ✅)
+  // ===================================================================
+
+  /**
+   * POST /v1/order/selfdelivery/dispatch — avisa o 99Food que um pedido de
+   * ENTREGA PRÓPRIA saiu pra entrega, com os dados do entregador da loja.
+   */
+  async selfDeliveryDispatch(
+    tokens: StoredTokens,
+    externalOrderId: string,
+    input: DidifoodSelfDeliveryInput,
+  ): Promise<void> {
+    await this.postWithOrderId('/v1/order/selfdelivery/dispatch', externalOrderId, {
+      auth_token: tokens.accessToken,
+      courier_info: buildCourierInfo(input.courier),
+      ...buildVehicle(input.courier),
+      limit_time: { pickup_time: input.pickupTime, delivery_time: input.deliveryTime },
+    });
+  }
+
+  /** POST /v1/order/selfdelivery/delivered — pedido de entrega própria entregue. */
+  async selfDeliveryDelivered(
+    tokens: StoredTokens,
+    externalOrderId: string,
+  ): Promise<void> {
+    await this.post('/v1/order/selfdelivery/delivered', {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+    });
+  }
+
+  /** POST /v1/order/selfdelivery/updateCourierInfo — atualiza o entregador. */
+  async updateCourierInfo(
+    tokens: StoredTokens,
+    externalOrderId: string,
+    input: DidifoodSelfDeliveryInput,
+  ): Promise<void> {
+    await this.postWithOrderId(
+      '/v1/order/selfdelivery/updateCourierInfo',
+      externalOrderId,
+      {
+        auth_token: tokens.accessToken,
+        courier_info: buildCourierInfo(input.courier),
+        ...buildVehicle(input.courier),
+        limit_time: { pickup_time: input.pickupTime, delivery_time: input.deliveryTime },
+      },
+    );
+  }
+
+  /**
+   * POST /v1/order/selfdelivery/updateCourierTrack — posição GPS do
+   * entregador (precisa de um app de entregador como fonte de coordenadas).
+   */
+  async updateCourierTrack(
+    tokens: StoredTokens,
+    externalOrderId: string,
+    limitTime: { pickupTime: number; deliveryTime: number },
+    coordinate: { longitude: number; latitude: number; timestamp: number },
+  ): Promise<void> {
+    await this.postWithOrderId(
+      '/v1/order/selfdelivery/updateCourierTrack',
+      externalOrderId,
+      {
+        auth_token: tokens.accessToken,
+        limit_time: {
+          pickup_time: limitTime.pickupTime,
+          delivery_time: limitTime.deliveryTime,
+        },
+        coordinate,
+      },
+    );
+  }
+
+  // ===================================================================
+  // Logistics API — áreas de entrega (DOCUMENTADO ✅)
+  // ===================================================================
+
+  /** GET /v1/shop/deliveryArea/list — áreas de entrega configuradas. */
+  async getDeliveryAreas(tokens: StoredTokens): Promise<DidifoodDeliveryArea[]> {
+    const qs = new URLSearchParams({ auth_token: tokens.accessToken }).toString();
+    const text = await this.requestRaw('GET', `/v1/shop/deliveryArea/list?${qs}`);
+    return parseDeliveryAreas(text);
+  }
+
+  /**
+   * POST /v1/shop/deliveryArea/add — adiciona uma área de entrega
+   * (círculo por raio ou polígono por pontos).
+   */
+  async addDeliveryArea(
+    tokens: StoredTokens,
+    input: DidifoodDeliveryAreaInput,
+  ): Promise<void> {
+    await this.postJson('/v1/shop/deliveryArea/add', {
+      auth_token: tokens.accessToken,
+      ...deliveryAreaBody(input),
+    });
+  }
+
+  /** POST /v1/shop/deliveryArea/update — atualiza áreas existentes. */
+  async updateDeliveryArea(
+    tokens: StoredTokens,
+    areaIds: string[],
+    input: DidifoodDeliveryAreaInput,
+  ): Promise<void> {
+    await this.request(
+      'POST',
+      '/v1/shop/deliveryArea/update',
+      buildDeliveryAreaIdBody(tokens.accessToken, areaIds, deliveryAreaBody(input)),
+    );
+  }
+
+  /** POST /v1/shop/deliveryArea/delete — remove áreas de entrega. */
+  async deleteDeliveryArea(tokens: StoredTokens, areaIds: string[]): Promise<void> {
+    await this.request(
+      'POST',
+      '/v1/shop/deliveryArea/delete',
+      buildDeliveryAreaIdBody(tokens.accessToken, areaIds),
+    );
   }
 
   // ===================================================================
@@ -923,6 +1148,77 @@ export class DidifoodAdapter implements PlatformAdapter {
     return this.request<T>('POST', path, JSON.stringify(body));
   }
 
+  /**
+   * POST com body JSON aninhado + `order_id` long 64-bit como literal cru.
+   * Usado pelo Self Delivery (corpo tem objetos courier_info/vehicle/
+   * limit_time, mas `order_id` não pode passar por JSON.stringify).
+   */
+  private async postWithOrderId<T>(
+    path: string,
+    orderId: string,
+    rest: object,
+  ): Promise<T> {
+    const restJson = JSON.stringify(rest);
+    const idPart = /^\d+$/.test(orderId) ? orderId : JSON.stringify(orderId);
+    const body =
+      restJson === '{}'
+        ? `{"order_id":${idPart}}`
+        : `{"order_id":${idPart},${restJson.slice(1)}`;
+    return this.request<T>('POST', path, body);
+  }
+
+  /**
+   * Igual a `request`, mas devolve o corpo CRU — usado quando a resposta
+   * tem IDs `long` 64-bit (ex.: area_id_list) que JSON.parse corromperia.
+   */
+  private async requestRaw(
+    method: string,
+    pathWithQuery: string,
+    rawJsonBody?: string,
+  ): Promise<string> {
+    const start = Date.now();
+    const url = this.config.apiBaseUrl.replace(/\/$/, '') + pathWithQuery;
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: rawJsonBody ? { 'Content-Type': 'application/json' } : {},
+        body: rawJsonBody,
+      });
+    } catch (err) {
+      throw new AdapterApiError(
+        `99food_network_error ${method} ${stripQuery(pathWithQuery)}`,
+        0,
+        err instanceof Error ? err.message : 'network_error',
+      );
+    }
+    const text = await res.text();
+    const errno = (safeJson(text) as { errno?: number } | undefined)?.errno;
+    this.log?.({
+      method,
+      path: stripQuery(pathWithQuery),
+      status: res.status,
+      durationMs: Date.now() - start,
+      ok: res.ok && errno === 0,
+      errno,
+    });
+    if (!res.ok) {
+      throw new AdapterApiError(
+        `99food_http_error ${res.status} ${method} ${stripQuery(pathWithQuery)}`,
+        res.status,
+        text,
+      );
+    }
+    if (errno !== 0) {
+      throw new AdapterApiError(
+        `99food_api_error errno=${errno} ${stripQuery(pathWithQuery)}`,
+        res.status,
+        text,
+      );
+    }
+    return text;
+  }
+
   private async request<T>(
     method: string,
     pathWithQuery: string,
@@ -1092,6 +1388,94 @@ export function signParams(
     .sort();
   const joined = sorted.map((k) => `${k}=${params[k]}`).join('&');
   return createHash('md5').update(joined + appSecret, 'utf8').digest('hex');
+}
+
+/** Monta o objeto `courier_info` do Self Delivery. */
+function buildCourierInfo(c: DidifoodCourier): Record<string, unknown> {
+  const info: Record<string, unknown> = {
+    courier_name: c.name,
+    courier_first_name: c.firstName,
+    courier_last_name: c.lastName,
+    courier_phone_code: c.phoneCode,
+    courier_phone: c.phone,
+  };
+  if (c.id) info.courier_id = c.id;
+  if (c.imageUrl) info.courier_image_url = c.imageUrl;
+  return info;
+}
+
+/** Monta o objeto `vehicle` do Self Delivery (vazio se não houver dados). */
+function buildVehicle(c: DidifoodCourier): { vehicle?: Record<string, unknown> } {
+  if (c.vehicleType == null && !c.vehicleNumber) return {};
+  const vehicle: Record<string, unknown> = {};
+  if (c.vehicleType != null) vehicle.vehicle_type = c.vehicleType;
+  if (c.vehicleNumber) vehicle.vehicle_number = c.vehicleNumber;
+  return { vehicle };
+}
+
+/** Campos comuns de área de entrega (add / update). */
+function deliveryAreaBody(input: DidifoodDeliveryAreaInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    area_type: input.areaType,
+    avg_delivery_eta: input.avgDeliveryEtaSeconds,
+    enable_time_list: input.enableTimes,
+    price: input.priceCents,
+  };
+  if (input.areaType === 0) body.radius = input.radiusKm ?? 0;
+  else body.points = input.points ?? [];
+  return body;
+}
+
+/**
+ * Monta o corpo de update/delete de área de entrega — `area_id_list` é
+ * lista de `long` 64-bit, emitida como literais numéricos crus.
+ */
+function buildDeliveryAreaIdBody(
+  authToken: string,
+  areaIds: string[],
+  rest: Record<string, unknown> = {},
+): string {
+  const ids = areaIds.filter((id) => /^\d+$/.test(id)).join(',');
+  const head = JSON.stringify({ auth_token: authToken, ...rest });
+  return `${head.slice(0, -1)},"area_id_list":[${ids}]}`;
+}
+
+interface RawDeliveryAreaGroup {
+  area_type?: number;
+  radius?: number;
+  price?: number;
+  avg_delivery_eta?: number;
+  display_enable_times?: string;
+  points?: unknown[];
+}
+
+/** Parseia a resposta de Get Delivery Area (area_id_list é long 64-bit). */
+function parseDeliveryAreas(rawText: string): DidifoodDeliveryArea[] {
+  const json = safeJson(rawText) as
+    | { data?: { areaGroup?: RawDeliveryAreaGroup[] } }
+    | undefined;
+  const groups = json?.data?.areaGroup ?? [];
+  const idArrays = matchBigIntArrays(rawText, 'area_id_list');
+  return groups.map((g, i) => ({
+    areaIds: idArrays[i] ?? [],
+    areaType: g.area_type ?? 0,
+    radiusKm: g.radius ?? 0,
+    priceCents: g.price ?? 0,
+    avgDeliveryEtaSeconds: g.avg_delivery_eta ?? 0,
+    enableTimesLabel: g.display_enable_times ?? '',
+    pointCount: Array.isArray(g.points) ? g.points.length : 0,
+  }));
+}
+
+/** Extrai todos os arrays de um campo numérico 64-bit do JSON cru. */
+function matchBigIntArrays(raw: string, field: string): string[][] {
+  const out: string[][] = [];
+  const re = new RegExp(`"${field}"\\s*:\\s*\\[([^\\]]*)\\]`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    out.push(m[1]!.match(/\d+/g) ?? []);
+  }
+  return out;
 }
 
 /** Serializa o pendingHandle (snapshot de bind) em base64url. */

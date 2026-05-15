@@ -8,7 +8,11 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 
-import { DidifoodAdapter, type DidifoodActionRequest } from '@deliveryhub/didifood';
+import {
+  DidifoodAdapter,
+  type DidifoodActionRequest,
+  type DidifoodDeliveryStatus,
+} from '@deliveryhub/didifood';
 import type { PlatformCode } from '@deliveryhub/shared';
 
 import { Public } from '../../common/auth/public.decorator.js';
@@ -117,6 +121,24 @@ export class WebhooksController {
           return { status: 'processed' };
         } catch (err) {
           this.logger.error({ err, platformCode }, 'webhook_action_processing_failed');
+          return { status: 'error' };
+        }
+      }
+
+      // Webhook deliveryStatus (Logistics) — progresso do entregador.
+      let delivery: DidifoodDeliveryStatus | null = null;
+      try {
+        delivery = adapter.parseDeliveryStatus(req.body, rawBody);
+      } catch (err) {
+        this.logger.warn({ err, platformCode }, 'webhook_delivery_parse_failed');
+        return { status: 'ignored' };
+      }
+      if (delivery) {
+        try {
+          await this.orders.ingestDeliveryStatus(platformCode, delivery);
+          return { status: 'processed' };
+        } catch (err) {
+          this.logger.error({ err, platformCode }, 'webhook_delivery_processing_failed');
           return { status: 'error' };
         }
       }

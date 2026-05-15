@@ -5,6 +5,8 @@ import { Roles } from '../../common/auth/roles.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
 import {
+  type DispatchSelfDeliveryInput,
+  dispatchSelfDeliverySchema,
   type ListOrdersQuery,
   listOrdersQuerySchema,
   type RejectOrderInput,
@@ -81,5 +83,17 @@ export class OrdersController {
   @HttpCode(200)
   confirmCash(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
     return this.orders.confirmCashPayment(auth, id);
+  }
+
+  /** Despacha um pedido de entrega própria do 99Food com os dados do entregador. */
+  @Post(':id/dispatch-self')
+  @Roles('owner', 'manager', 'staff')
+  @HttpCode(200)
+  dispatchSelf(
+    @CurrentUser() auth: AuthContext,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(dispatchSelfDeliverySchema)) body: DispatchSelfDeliveryInput,
+  ) {
+    return this.orders.dispatchSelfDelivery(auth, id, body);
   }
 }

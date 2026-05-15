@@ -367,6 +367,10 @@ model Order {
   deliveryBy             String?   @map("delivery_by")
   // Marcado quando a loja confirma o recebimento do dinheiro (pedidos cash).
   cashPaymentConfirmedAt DateTime? @map("cash_payment_confirmed_at")
+  // Entregador do pedido — vem do webhook deliveryStatus (entrega da
+  // plataforma) ou é informado pela loja na entrega própria.
+  courierName            String?   @map("courier_name")
+  courierPhone           String?   @map("courier_phone")
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
 

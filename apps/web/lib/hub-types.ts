@@ -77,6 +77,8 @@ export interface OrderDetail extends OrderListItem {
   paymentMethod: PaymentMethod | null;
   deliveryBy: DeliveryBy | null;
   cashPaymentConfirmedAt: string | null;
+  courierName: string | null;
+  courierPhone: string | null;
   acceptedAt: string | null;
   dispatchedAt: string | null;
   deliveredAt: string | null;

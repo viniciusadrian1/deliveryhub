@@ -22,6 +22,7 @@ import { formatCents, timeAgo } from '../../lib/format';
 import type { OrderDetail, OrderStatus, PaymentMethod } from '../../lib/hub-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { CourierDispatchDialog } from './courier-dispatch-dialog';
 import { OrderActionRequests } from './order-action-requests';
 
 interface OrderDrawerProps {
@@ -78,6 +79,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   const qc = useQueryClient();
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showCourier, setShowCourier] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['order', orderId],
@@ -123,6 +125,13 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   const canReject = data && !['delivered', 'cancelled'].includes(data.status);
   const apiErr = (advance.error ?? reject.error) as ApiError | null;
   const NextIcon = nextAction?.icon;
+  // Despacho de pedido 99Food de entrega própria precisa dos dados do
+  // entregador — abre um diálogo em vez do POST /dispatch direto.
+  const needsCourierDialog =
+    !!data &&
+    nextAction?.path === 'dispatch' &&
+    data.platform.code === '99food' &&
+    data.deliveryBy === 'store';
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
@@ -175,7 +184,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                 </span>
               </div>
 
-              {(data.paymentMethod || data.deliveryBy) && (
+              {(data.paymentMethod || data.deliveryBy || data.courierName) && (
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-tertiary">
                   {data.paymentMethod && (
                     <span>
@@ -192,6 +201,15 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                         {data.deliveryBy === 'platform'
                           ? data.platform.name
                           : 'Loja própria'}
+                      </b>
+                    </span>
+                  )}
+                  {data.courierName && (
+                    <span>
+                      Entregador:{' '}
+                      <b className="text-ink-secondary">
+                        {data.courierName}
+                        {data.courierPhone ? ` · ${data.courierPhone}` : ''}
                       </b>
                     </span>
                   )}
@@ -419,7 +437,10 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
             {nextAction && (
               <Button
                 className="ml-auto"
-                onClick={() => advance.mutate(nextAction.path)}
+                onClick={() => {
+                  if (needsCourierDialog) setShowCourier(true);
+                  else advance.mutate(nextAction.path);
+                }}
                 loading={advance.isPending}
                 leftIcon={NextIcon && <NextIcon className="h-4 w-4" />}
                 rightIcon={!advance.isPending && <ArrowRight className="h-4 w-4" />}
@@ -428,6 +449,13 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
               </Button>
             )}
           </footer>
+        )}
+
+        {data && showCourier && (
+          <CourierDispatchDialog
+            orderId={data.id}
+            onClose={() => setShowCourier(false)}
+          />
         )}
       </div>
     </div>

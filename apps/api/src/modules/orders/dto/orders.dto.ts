@@ -61,3 +61,19 @@ export const resolveActionRequestSchema = z.object({
 });
 
 export type ResolveActionRequestInput = z.infer<typeof resolveActionRequestSchema>;
+
+/**
+ * Despacho de pedido de ENTREGA PRÓPRIA do 99Food — dados do entregador
+ * da loja, enviados à plataforma via Self Delivery.
+ */
+export const dispatchSelfDeliverySchema = z.object({
+  courierName: z.string().min(1).max(120).trim(),
+  courierPhone: z.string().min(1).max(40).trim(),
+  courierPhoneCode: z.string().min(1).max(8).trim().default('+55'),
+  /** 100 a pé · 101 e-bike · 102 moto · 103 bike · 104 carro · 105 moto 125cc. */
+  vehicleType: z.coerce.number().int().min(100).max(105).optional(),
+  /** Minutos estimados até a entrega, a partir de agora. */
+  etaMinutes: z.coerce.number().int().min(5).max(180).default(40),
+});
+
+export type DispatchSelfDeliveryInput = z.infer<typeof dispatchSelfDeliverySchema>;
