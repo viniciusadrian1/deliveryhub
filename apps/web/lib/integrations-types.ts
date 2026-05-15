@@ -12,6 +12,20 @@ export interface PlatformConnection {
   lastErrorMessage: string | null;
 }
 
+/** Área de entrega de uma loja no 99Food (Logistics API). */
+export interface DeliveryArea {
+  /** IDs 64-bit (string) — usados para excluir a área. */
+  areaIds: string[];
+  /** 0 = círculo · 1 = polígono. */
+  areaType: number;
+  radiusKm: number;
+  priceCents: number;
+  avgDeliveryEtaSeconds: number;
+  /** Texto pronto das janelas de horário, ex.: "00:00-23:59". */
+  enableTimesLabel: string;
+  pointCount: number;
+}
+
 export interface StartConnectionResponse {
   connectionId: string;
   platformCode: string;

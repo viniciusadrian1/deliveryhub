@@ -5,17 +5,20 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  MapPin,
   Power,
   RefreshCw,
   XCircle,
 } from 'lucide-react';
 import Image from 'next/image';
+import { useState } from 'react';
 
 import { api } from '../../lib/api';
 import type { PlatformConnection, PlatformMeta } from '../../lib/integrations-types';
 import { PLATFORM_META } from '../../lib/integrations-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { DeliveryAreasDialog } from './delivery-areas-dialog';
 
 interface PlatformCardProps {
   code: string;
@@ -34,6 +37,7 @@ const FALLBACK_META: PlatformMeta = {
 export function PlatformCard({ code, connection, onConnect }: PlatformCardProps) {
   const qc = useQueryClient();
   const meta = PLATFORM_META[code] ?? { ...FALLBACK_META, name: code };
+  const [showAreas, setShowAreas] = useState(false);
 
   const disconnect = useMutation({
     mutationFn: async (id: string) => {
@@ -184,6 +188,16 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
             >
               Reconectar
             </Button>
+            {code === '99food' && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setShowAreas(true)}
+                leftIcon={<MapPin className="h-3.5 w-3.5" />}
+              >
+                Áreas de entrega
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -208,6 +222,13 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
           </Button>
         )}
       </div>
+
+      {showAreas && connection && (
+        <DeliveryAreasDialog
+          storeId={connection.storeId}
+          onClose={() => setShowAreas(false)}
+        />
+      )}
     </div>
   );
 }
