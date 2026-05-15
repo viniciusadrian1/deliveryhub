@@ -8,6 +8,8 @@ import {
   type PolledEvent,
   type RemoteMenu,
   type RemoteOrder,
+  type RemoteOrderItem,
+  type RemoteOrderStatus,
   type StartConnectionResult,
   type StoredTokens,
   type WebhookEnvelope,
@@ -21,64 +23,57 @@ import {
  * ════════════════════════════════════════════════════════════════════
  *  MODELO DE INTEGRAÇÃO (difere bastante do iFood)
  * ════════════════════════════════════════════════════════════════════
- *
  *  - Credenciais de NÍVEL DE APP: `app_id` + `app_secret`.
- *  - Cada loja é vinculada (bind) ao app por um `app_shop_id` — um
- *    identificador que NÓS escolhemos pra loja no nosso sistema.
- *  - Com (app_id, app_secret, app_shop_id) pegamos um `auth_token` por
- *    loja via `GET /v1/auth/authtoken/get`. Esse token vai em todas as
- *    chamadas seguintes e expira (refresh via `/v1/auth/authtoken/refresh`).
- *  - NÃO existe OAuth Device Flow. O fluxo de "conectar" usa a página de
- *    autorização (`/auth/authorizationpage/getUrl`) ou bind direto
- *    (`v3/auth/authorization/shopBind`).
+ *  - Cada loja é vinculada (bind) ao app por um `app_shop_id`.
+ *  - Com (app_id, app_secret, app_shop_id) pegamos `auth_token` por loja
+ *    via GET /v1/auth/authtoken/get. O auth_token vai em todas as chamadas
+ *    de pedido e expira (refresh via /v1/auth/authtoken/refresh).
+ *  - NÃO existe OAuth Device Flow.
  *
- *  Como encaixamos no `PlatformAdapter` (que assume device flow):
- *    - StoredTokens.accessToken  = auth_token do 99Food
- *    - StoredTokens.refreshToken = app_shop_id (reaproveitado pra carregar
- *      qual loja renovar — 99Food não tem refresh token, renova por shop)
- *    - StoredTokens.expiresAt    = token_expiration_time
+ *  Mapeamento no `PlatformAdapter`:
+ *    StoredTokens.accessToken  = auth_token
+ *    StoredTokens.refreshToken = app_shop_id (99Food renova por loja)
+ *    StoredTokens.expiresAt    = token_expiration_time
  *
  * ════════════════════════════════════════════════════════════════════
  *  ASSINATURA
  * ════════════════════════════════════════════════════════════════════
- *
  *  Webhook (entrada): header `didi-header-sign` = MD5(rawBody + app_secret).
- *  Request à API (saída): MD5( params ordenados "k=v" juntados por "&" +
- *                              app_secret ).
+ *  Endpoints de pedido autenticam por `auth_token` (sem sign extra).
  *
  * ════════════════════════════════════════════════════════════════════
  *  ⚠️ ID 64-bit
  * ════════════════════════════════════════════════════════════════════
- *  app_id / order_id / shop_id são `long`. JSON.parse padrão corrompe
- *  (5764607801871631353 vira ...1631000). parseWebhook extrai esses IDs
- *  do corpo cru via regex pra preservar precisão.
+ *  order_id / app_id / shop_id são `long`. JSON.parse corrompe. Tratamos:
+ *   - webhook: order_id extraído do corpo cru via regex
+ *   - request POST: order_id emitido como literal numérico cru no JSON
+ *   - GET detail: order_id vai na query string (texto, sem perda); a
+ *     resposta é parseada com JSON.parse normal, mas só lemos campos
+ *     seguros (status, preços, strings) — nunca o order_id numérico da
+ *     resposta (usamos o que entrou como parâmetro).
  *
  * ════════════════════════════════════════════════════════════════════
- *  STATUS DA IMPLEMENTAÇÃO
+ *  STATUS
  * ════════════════════════════════════════════════════════════════════
- *  ✅ verifyWebhookSignature  — documentado e implementado
- *  ✅ parseWebhook            — envelope documentado, implementado
- *  ✅ getAuthtoken / refreshAuthtoken — endpoints documentados
- *  ⏳ fetchOrder / accept / reject / dispatch — falta doc do "Order API"
- *  ⏳ startConnection / finalizeConnection   — falta doc do "Store API" (bind)
- *  ⏳ fetchMenu / pushItemPrice / pushItemAvailability — falta doc "Menu API"
- *  ⏳ pushStorePause          — falta doc do "Store API" (setStatus)
+ *  ✅ verifyWebhookSignature, parseWebhook
+ *  ✅ getAuthtoken / refreshAuthtoken
+ *  ✅ fetchOrder, acceptOrder, rejectOrder, dispatchOrder
+ *  ⏳ startConnection / finalizeConnection — falta doc do Store API (bind)
+ *  ⏳ fetchMenu / pushItemPrice / pushItemAvailability — falta Menu API
+ *  ⏳ pushStorePause — falta Store API (setStatus)
  */
 export interface DidifoodAdapterConfig {
-  /** app_id (long, mantido como string pra não perder precisão). */
+  /** app_id (long, string pra não perder precisão). */
   clientId: string;
   /** app_secret. */
   clientSecret: string;
   /** Base da API. Default https://openapi.99food.com */
   apiBaseUrl: string;
-  /**
-   * Secret de verificação do webhook. No 99Food é IGUAL ao app_secret —
-   * a config aceita separado por consistência com os outros adapters.
-   */
+  /** Secret de verificação do webhook (= app_secret no 99Food). */
   webhookSecret: string;
 }
 
-/** Hook opcional de log de request (sem PII — método/path/status/ms). */
+/** Hook opcional de log de request (sem PII). */
 export interface DidifoodRequestLogger {
   (info: {
     method: string;
@@ -90,7 +85,6 @@ export interface DidifoodRequestLogger {
   }): void;
 }
 
-/** Resposta padrão de toda API 99Food. */
 interface DidifoodEnvelope<T> {
   errno: number;
   errmsg: string;
@@ -99,18 +93,95 @@ interface DidifoodEnvelope<T> {
   data: T;
 }
 
-/** Mapeia o `type` do webhook 99Food → status interno de pedido. */
+/** Tipos de evento de pedido do webhook 99Food. */
 const ORDER_EVENT_TYPES = new Set([
   'orderNew',
+  'orderConfirm',
+  'orderReady',
   'orderCancel',
+  'orderPartialCancel',
   'orderFinish',
-  'deliveryStatus',
   'orderCancelApply',
   'orderRefundApply',
-  'orderPartialCancel',
 ]);
 
+/**
+ * Status 99Food (int) → status interno.
+ *  100 criado · 200 aceito (loja confirmou) · 400 saiu p/ entrega ·
+ *  500 entregador chegou · 600 concluído · 9xx cancelado.
+ */
+function map99FoodStatus(status: number | undefined): RemoteOrderStatus {
+  switch (status) {
+    case 100:
+      return 'placed';
+    case 200:
+      return 'accepted';
+    case 400:
+    case 500:
+      return 'dispatched';
+    case 600:
+      return 'delivered';
+    case 901:
+    case 902:
+    case 921:
+    case 922:
+    case 923:
+    case 961:
+    case 971:
+    case 981:
+      return 'cancelled';
+    default:
+      return 'placed';
+  }
+}
+
+/** reason_id padrão pra cancelamento (1080 = "Other reason"; sempre com texto). */
+const CANCEL_REASON_OTHER = 1080;
+
 const NOT_IMPLEMENTED = '99food_endpoint_not_implemented_yet';
+
+// Shapes parciais da resposta de Get Order Details (só o que usamos).
+interface RawSubItem {
+  app_item_id?: string;
+  name?: string;
+  amount?: number;
+  sku_price?: number;
+}
+interface RawOrderItem {
+  app_item_id?: string;
+  name?: string;
+  amount?: number;
+  sku_price?: number;
+  total_price?: number;
+  remark?: string;
+  sub_item_list?: RawSubItem[];
+}
+interface RawOrderInfo {
+  status?: number;
+  remark?: string;
+  create_time?: number;
+  delivery_type?: number;
+  price?: {
+    order_price?: number;
+    delivery_price?: number;
+    real_pay_price?: number;
+    customer_need_paying_money?: number;
+  };
+  shop?: { app_shop_id?: string };
+  receive_address?: {
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+    calling_code?: string;
+    phone?: string;
+    cpf?: number | string;
+  };
+  order_items?: RawOrderItem[];
+}
+interface RawOrderDetail {
+  order_id?: number;
+  order_info?: RawOrderInfo;
+}
 
 export class DidifoodAdapter implements PlatformAdapter {
   readonly code = '99food' as const;
@@ -124,13 +195,9 @@ export class DidifoodAdapter implements PlatformAdapter {
   }
 
   // ===================================================================
-  // Webhook — verificação de assinatura (DOCUMENTADO ✅)
+  // Webhook — assinatura (DOCUMENTADO ✅)
   // ===================================================================
 
-  /**
-   * `didi-header-sign` = MD5(rawBody + app_secret). Comparação
-   * case-insensitive (MD5 hex). Sem o header → rejeita.
-   */
   verifyWebhookSignature(headers: Record<string, string>, rawBody: Buffer): boolean {
     const provided = headers['didi-header-sign'] ?? headers['Didi-Header-Sign'];
     if (!provided) return false;
@@ -141,50 +208,38 @@ export class DidifoodAdapter implements PlatformAdapter {
   }
 
   // ===================================================================
-  // Webhook — parsing do envelope (DOCUMENTADO ✅)
+  // Webhook — parsing (DOCUMENTADO ✅)
   // ===================================================================
 
   /**
    * Envelope 99Food: { app_id, app_shop_id, type, timestamp, data }.
-   * `type` é o evento (orderNew, orderCancel, ...). `data` carrega o
-   * detalhe — pra eventos de pedido, contém `order_id` (long).
-   *
-   * Extraímos `order_id` direto do corpo cru via regex pra não perder
-   * precisão do 64-bit. `app_shop_id` é string (seguro via JSON).
+   * `orderNew` traz data.order_info completo; demais eventos só data.order_id.
+   * Extraímos order_id do corpo cru pra preservar o 64-bit.
    */
   parseWebhook(payload: unknown, rawBody?: Buffer): WebhookEnvelope {
     const p = (payload ?? {}) as {
-      app_id?: unknown;
       app_shop_id?: string;
       type?: string;
       timestamp?: number;
-      data?: unknown;
     };
 
     const type = p.type ?? 'unknown';
     if (!ORDER_EVENT_TYPES.has(type)) {
-      // shopStatus / imageAuditStatus / uploadMenuTaskStatus etc. — não
-      // viram pedido. O controller captura esse throw e responde "ignored".
+      // shopStatus / imageAuditStatus / uploadMenuTaskStatus — não viram
+      // pedido. O controller captura o throw e responde "ignored".
       throw new AdapterApiError(`unsupported_event_type:${type}`, 200, payload);
     }
 
     const raw = rawBody?.toString('utf8') ?? JSON.stringify(payload ?? {});
-    // order_id pode estar no topo do `data` ou aninhado — pega o 1º match.
-    const orderId =
-      matchBigIntField(raw, 'order_id') ??
-      matchBigIntField(raw, 'orderId') ??
-      '';
+    const orderId = matchBigIntField(raw, 'order_id') ?? '';
     const merchantId = p.app_shop_id ?? matchStringField(raw, 'app_shop_id') ?? '';
-    const occurredAt = p.timestamp
-      ? new Date(p.timestamp * 1000)
-      : new Date();
+    const occurredAt = p.timestamp ? new Date(p.timestamp * 1000) : new Date();
 
     if (!orderId) {
       throw new AdapterApiError('webhook_missing_order_id', 400, payload);
     }
 
     return {
-      // 99Food não manda eventId — sintetizamos pra idempotência.
       eventId: `${type}:${orderId}:${p.timestamp ?? Date.now()}`,
       eventType: type,
       externalOrderId: orderId,
@@ -197,14 +252,8 @@ export class DidifoodAdapter implements PlatformAdapter {
   // Authtoken (DOCUMENTADO ✅)
   // ===================================================================
 
-  /**
-   * GET /v1/auth/authtoken/get — obtém auth_token de uma loja vinculada.
-   * Os endpoints de authtoken usam `app_secret` direto (não exigem sign).
-   */
   async getAuthtoken(appShopId: string): Promise<StoredTokens> {
     const data = await this.get<{
-      app_id: number;
-      app_shop_id: string;
       auth_token: string;
       token_expiration_time: number;
     }>('/v1/auth/authtoken/get', {
@@ -214,16 +263,11 @@ export class DidifoodAdapter implements PlatformAdapter {
     });
     return {
       accessToken: data.auth_token,
-      refreshToken: appShopId, // 99Food renova por loja, não por refresh token
+      refreshToken: appShopId,
       expiresAt: new Date(data.token_expiration_time * 1000),
     };
   }
 
-  /**
-   * GET /v1/auth/authtoken/refresh — renova o auth_token expirado.
-   * Após renovar, é preciso chamar getAuthtoken de novo (a doc diz isso).
-   * Cooldown de 2 min entre refreshes da mesma loja.
-   */
   async refreshAuthtoken(appShopId: string): Promise<void> {
     await this.get<boolean>('/v1/auth/authtoken/refresh', {
       app_id: this.config.clientId,
@@ -232,128 +276,139 @@ export class DidifoodAdapter implements PlatformAdapter {
     });
   }
 
-  /**
-   * Implementa `PlatformAdapter.refreshAuth`. Aqui `refreshToken` carrega
-   * o `app_shop_id` (ver nota no topo). Renova e devolve o token novo.
-   */
+  /** `refreshToken` carrega o app_shop_id (ver nota no topo). */
   async refreshAuth(refreshToken: string): Promise<StoredTokens> {
-    const appShopId = refreshToken;
-    await this.refreshAuthtoken(appShopId);
-    return this.getAuthtoken(appShopId);
+    await this.refreshAuthtoken(refreshToken);
+    return this.getAuthtoken(refreshToken);
   }
 
   // ===================================================================
-  // Conexão de loja — PENDENTE (falta doc do "Store API" / bind)
+  // Pedidos (DOCUMENTADO ✅)
+  // ===================================================================
+
+  /**
+   * GET /v1/order/order/detail — busca o pedido completo e mapeia pro
+   * formato interno (RemoteOrder).
+   */
+  async fetchOrder(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalOrderId: string,
+  ): Promise<RemoteOrder> {
+    const data = await this.get<RawOrderDetail>('/v1/order/order/detail', {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+    });
+    const info = data.order_info ?? {};
+    return mapOrderInfoToRemote(info, externalOrderId);
+  }
+
+  /** POST /v1/order/order/confirm — confirma o pedido (loja aceitou). */
+  async acceptOrder(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalOrderId: string,
+  ): Promise<void> {
+    await this.post('/v1/order/order/confirm', {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+    });
+  }
+
+  /** POST /v1/order/order/cancel — cancela o pedido com motivo. */
+  async rejectOrder(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalOrderId: string,
+    reason: string,
+  ): Promise<void> {
+    await this.post('/v1/order/order/cancel', {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+      reason_id: CANCEL_REASON_OTHER,
+      reason: reason || 'Cancelado pela loja',
+    });
+  }
+
+  /**
+   * POST /v1/order/order/ready — sinaliza que a refeição está pronta.
+   * É a ação universal da loja (no 99Food-courier, o despacho real é do
+   * entregador; "ready" é o sinal do lado da loja).
+   */
+  async dispatchOrder(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalOrderId: string,
+  ): Promise<void> {
+    await this.post('/v1/order/order/ready', {
+      auth_token: tokens.accessToken,
+      order_id: externalOrderId,
+    });
+  }
+
+  // ===================================================================
+  // Conexão de loja — PENDENTE (falta doc do Store API / bind)
   // ===================================================================
 
   async startConnection(): Promise<StartConnectionResult> {
-    // TODO: usar GET /v1/auth/authorizationpage/getUrl pra gerar a URL de
-    // self-service binding; OU v3/auth/authorization/shopBind direto.
     throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      hint: 'Falta doc do Store API (bind/authorization page).',
+      hint: 'Falta doc do Store API (bind / authorization page).',
     });
   }
 
   async finalizeConnection(_pendingHandle: string): Promise<FinalizeConnectionResult> {
-    // TODO: após o bind, chamar getAuthtoken(app_shop_id).
     throw new ConnectionPendingError();
   }
 
   // ===================================================================
-  // Pedidos — PENDENTE (falta doc detalhada do "Order API")
-  // ===================================================================
-
-  async fetchOrder(
-    _tokens: StoredTokens,
-    _externalMerchantId: string,
-    _externalOrderId: string,
-  ): Promise<RemoteOrder> {
-    // TODO: GET v1/order/order/detail — falta o shape da resposta.
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      endpoint: 'v1/order/order/detail',
-    });
-  }
-
-  async acceptOrder(): Promise<void> {
-    // TODO: POST v1/order/order/confirm
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      endpoint: 'v1/order/order/confirm',
-    });
-  }
-
-  async rejectOrder(): Promise<void> {
-    // TODO: POST v1/order/order/cancel
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      endpoint: 'v1/order/order/cancel',
-    });
-  }
-
-  async dispatchOrder(): Promise<void> {
-    // TODO: POST v1/order/order/ready (preparado) ou /delivered (entregue)
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      endpoint: 'v1/order/order/ready',
-    });
-  }
-
-  // ===================================================================
-  // Cardápio — PENDENTE (falta doc do "Menu API")
+  // Cardápio / pausa — PENDENTE (falta doc Menu API / Store API setStatus)
   // ===================================================================
 
   async fetchMenu(): Promise<RemoteMenu> {
-    // TODO: POST v3/item/item/list
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      endpoint: 'v3/item/item/list',
-    });
+    throw new AdapterApiError(NOT_IMPLEMENTED, 501, { endpoint: 'v3/item/item/list' });
   }
-
   async pushItemPrice(): Promise<void> {
-    // TODO: POST v3/item/item/updateItem
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501);
+    throw new AdapterApiError(NOT_IMPLEMENTED, 501, { endpoint: 'v3/item/item/updateItem' });
   }
-
   async pushItemAvailability(): Promise<void> {
-    // TODO: POST v3/item/item/updateItemStatus
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501);
-  }
-
-  // ===================================================================
-  // Pausa de loja — PENDENTE (falta doc do "Store API" / setStatus)
-  // ===================================================================
-
-  async pushStorePause(): Promise<void> {
-    // TODO: POST v1/shop/shop/setStatus
     throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      endpoint: 'v1/shop/shop/setStatus',
+      endpoint: 'v3/item/item/updateItemStatus',
     });
   }
+  async pushStorePause(): Promise<void> {
+    throw new AdapterApiError(NOT_IMPLEMENTED, 501, { endpoint: 'v1/shop/shop/setStatus' });
+  }
 
-  // ===================================================================
-  // Polling — 99Food é webhook-only, sem polling.
-  // ===================================================================
-
+  // 99Food é webhook-only.
   async pollEvents(): Promise<PolledEvent[]> {
     return [];
   }
-
   async acknowledgeEvents(): Promise<void> {}
 
   // ===================================================================
-  // HTTP + assinatura (DOCUMENTADO ✅)
+  // HTTP
   // ===================================================================
 
-  /**
-   * GET com query params. Endpoints de authtoken não exigem sign.
-   * Outros endpoints (a implementar) usarão `signParams` antes de chamar.
-   */
   private async get<T>(path: string, params: Record<string, string>): Promise<T> {
     const qs = new URLSearchParams(params).toString();
     return this.request<T>('GET', `${path}?${qs}`);
   }
 
+  /**
+   * POST com body JSON. `order_id` (se presente) é emitido como literal
+   * numérico cru pra preservar o 64-bit (ver nota no topo).
+   */
+  private async post<T>(
+    path: string,
+    fields: Record<string, string | number>,
+  ): Promise<T> {
+    return this.request<T>('POST', path, buildJsonBody(fields, ['order_id']));
+  }
+
   private async request<T>(
     method: string,
     pathWithQuery: string,
-    body?: unknown,
+    rawJsonBody?: string,
   ): Promise<T> {
     const start = Date.now();
     const url = this.config.apiBaseUrl.replace(/\/$/, '') + pathWithQuery;
@@ -361,8 +416,8 @@ export class DidifoodAdapter implements PlatformAdapter {
     try {
       res = await fetch(url, {
         method,
-        headers: body ? { 'Content-Type': 'application/json' } : {},
-        body: body ? JSON.stringify(body) : undefined,
+        headers: rawJsonBody ? { 'Content-Type': 'application/json' } : {},
+        body: rawJsonBody,
       });
     } catch (err) {
       this.log?.({
@@ -400,7 +455,6 @@ export class DidifoodAdapter implements PlatformAdapter {
         json ?? text,
       );
     }
-    // errno != 0 é erro de negócio mesmo com HTTP 200.
     if (errno !== 0) {
       throw new AdapterApiError(
         `99food_api_error errno=${errno} ${json?.errmsg ?? ''} ${stripQuery(pathWithQuery)}`,
@@ -411,21 +465,92 @@ export class DidifoodAdapter implements PlatformAdapter {
     return json!.data;
   }
 
-  /**
-   * Assinatura de request à API (pra endpoints que exigem — não os de
-   * authtoken). Params ordenados ASCII, "k=v" juntos por "&", app_secret
-   * concatenado no fim, MD5. Exportável pra testes.
-   */
+  /** Assinatura MD5 de request (pra endpoints que exigem — Store/Menu API). */
   signParams(params: Record<string, string | number>): string {
     return signParams(params, this.config.clientSecret);
   }
 }
 
 // =====================================================================
+// Mapeamento de pedido
+// =====================================================================
+
+/** Converte o `order_info` do 99Food no RemoteOrder interno. */
+function mapOrderInfoToRemote(info: RawOrderInfo, externalOrderId: string): RemoteOrder {
+  const price = info.price ?? {};
+  const orderPrice = price.order_price ?? 0;
+  const deliveryPrice = price.delivery_price ?? 0;
+  // total: preferimos real_pay_price; fallback p/ customer_need_paying_money;
+  // por último order_price + delivery_price.
+  const totalCents =
+    price.real_pay_price ??
+    price.customer_need_paying_money ??
+    orderPrice + deliveryPrice;
+
+  const items: RemoteOrderItem[] = (info.order_items ?? []).map((it) => ({
+    externalId: it.app_item_id ?? '',
+    name: it.name ?? 'Item',
+    qty: it.amount ?? 1,
+    unitPriceCents: it.sku_price ?? 0,
+    totalCents: it.total_price ?? 0,
+    notes: it.remark || undefined,
+    modifiers: (it.sub_item_list ?? []).map((sub) => ({
+      externalId: sub.app_item_id ?? '',
+      name: sub.name ?? '',
+      qty: sub.amount ?? 1,
+      unitPriceCents: sub.sku_price ?? 0,
+    })),
+  }));
+
+  const addr = info.receive_address ?? {};
+  const customerName = pickCustomerName(addr);
+  const phone =
+    addr.phone && addr.calling_code
+      ? `${addr.calling_code}${addr.phone}`
+      : addr.phone || undefined;
+
+  return {
+    externalId: externalOrderId,
+    externalMerchantId: info.shop?.app_shop_id ?? '',
+    status: map99FoodStatus(info.status),
+    customer: {
+      name: customerName,
+      phone,
+      document: addr.cpf ? String(addr.cpf) : undefined,
+    },
+    items,
+    subtotalCents: orderPrice,
+    deliveryFeeCents: deliveryPrice,
+    totalCents,
+    // 99Food não expõe a comissão no detalhe do pedido — ela vem na
+    // Financial API (settlements). Mantemos 0 aqui; o líquido exato é
+    // reconciliado depois.
+    platformFeeCents: 0,
+    processingFeeCents: 0,
+    flatFeeCents: 0,
+    notes: info.remark || undefined,
+    placedAt: info.create_time ? new Date(info.create_time * 1000) : new Date(),
+  };
+}
+
+/** Nome do cliente, lidando com valores mascarados de privacidade. */
+function pickCustomerName(addr: {
+  name?: string;
+  first_name?: string;
+  last_name?: string;
+}): string {
+  const masked = (v?: string) =>
+    !v || v === '' || v === 'privacy protection' || /^\*+$/.test(v);
+  if (!masked(addr.name)) return addr.name!;
+  const full = [addr.first_name, addr.last_name].filter((p) => !masked(p)).join(' ');
+  return full.trim() || 'Cliente 99Food';
+}
+
+// =====================================================================
 // Helpers puros
 // =====================================================================
 
-/** Assinatura MD5 de params (sorted "k=v"&... + secret). Documentado pela 99Food. */
+/** Assinatura MD5 de params (sorted "k=v"&... + secret). */
 export function signParams(
   params: Record<string, string | number>,
   appSecret: string,
@@ -437,7 +562,25 @@ export function signParams(
   return createHash('md5').update(joined + appSecret, 'utf8').digest('hex');
 }
 
-/** Extrai um campo numérico 64-bit do JSON cru, como string (sem perda). */
+/**
+ * Monta JSON manualmente. Campos em `rawNumericKeys` são emitidos como
+ * literal numérico cru (sem aspas) — usado pro order_id 64-bit, que não
+ * pode passar por Number nem virar string sem mudar o tipo esperado.
+ */
+function buildJsonBody(
+  fields: Record<string, string | number>,
+  rawNumericKeys: string[],
+): string {
+  const parts = Object.entries(fields).map(([k, v]) => {
+    if (rawNumericKeys.includes(k) && /^\d+$/.test(String(v))) {
+      return `${JSON.stringify(k)}:${v}`;
+    }
+    return `${JSON.stringify(k)}:${JSON.stringify(v)}`;
+  });
+  return `{${parts.join(',')}}`;
+}
+
+/** Extrai um campo numérico 64-bit do JSON cru, como string. */
 function matchBigIntField(raw: string, field: string): string | null {
   const m = raw.match(new RegExp(`"${field}"\\s*:\\s*"?(\\d{1,25})"?`));
   return m ? m[1]! : null;
@@ -463,7 +606,7 @@ function stripQuery(pathWithQuery: string): string {
   return i >= 0 ? pathWithQuery.slice(0, i) : pathWithQuery;
 }
 
-/** Comparação de hex de tempo ~constante (evita timing attack na verificação). */
+/** Comparação de hex em tempo ~constante. */
 function safeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
