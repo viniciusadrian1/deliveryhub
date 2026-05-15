@@ -47,7 +47,7 @@ const envSchema = z.object({
   // 99Food / DiDi Food Open Platform (developer-food.99app.com)
   DIDIFOOD_CLIENT_ID: z.string().optional(),
   DIDIFOOD_CLIENT_SECRET: z.string().optional(),
-  DIDIFOOD_API_BASE_URL: z.string().url().default('https://developer-food.99app.com'),
+  DIDIFOOD_API_BASE_URL: z.string().url().default('https://openapi.99food.com'),
   DIDIFOOD_WEBHOOK_SECRET: z.string().optional(),
 
   // Keeta (Meituan Overseas) — developers.mykeeta.com

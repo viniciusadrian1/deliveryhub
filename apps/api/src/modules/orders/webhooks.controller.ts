@@ -99,7 +99,9 @@ export class WebhooksController {
 
     let envelope;
     try {
-      envelope = adapter.parseWebhook(req.body);
+      // Passamos o rawBody: plataformas com IDs long 64-bit (99Food)
+      // precisam dele pra extrair os IDs sem perda de precisão.
+      envelope = adapter.parseWebhook(req.body, rawBody);
     } catch (err) {
       this.logger.warn({ err }, 'webhook_parse_failed');
       return { status: 'ignored' };

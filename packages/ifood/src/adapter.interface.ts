@@ -128,7 +128,14 @@ export interface PlatformAdapter {
     externalOrderId: string,
   ): Promise<RemoteOrder>;
 
-  parseWebhook(payload: unknown): WebhookEnvelope;
+  /**
+   * Parseia o payload do webhook. `rawBody` (Buffer cru) é passado quando
+   * disponível — algumas plataformas (ex.: 99Food) usam IDs `long` 64-bit
+   * que `JSON.parse` corrompe; o adapter precisa do raw pra extrair esses
+   * IDs como string sem perda de precisão. Implementações que não precisam
+   * podem ignorar o segundo argumento.
+   */
+  parseWebhook(payload: unknown, rawBody?: Buffer): WebhookEnvelope;
 
   /**
    * Polling: consulta a plataforma por eventos pendentes (alternativa a
