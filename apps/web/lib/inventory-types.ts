@@ -59,6 +59,24 @@ export interface Supplier {
   updatedAt: string;
 }
 
+/** Resumo de estoque + alertas pra um ingrediente. */
+export interface StockAlertSummary {
+  ingredientId: string;
+  ingredientName: string;
+  unit: IngredientUnit;
+  storeId: string;
+  balance: string;
+  minLevel: string | null;
+  avgDailyConsumption: string;
+  /** Dias estimados que o saldo atual vai durar. Null = consumo zero. */
+  daysOfCover: number | null;
+  belowMinimum: boolean;
+  needsRestock: boolean;
+  /** Quantidade sugerida pra comprar (cobrir targetDays). */
+  suggestedPurchase: string;
+  targetDays: number;
+}
+
 export interface Ingredient {
   id: string;
   organizationId: string;
@@ -70,6 +88,10 @@ export interface Ingredient {
   costPerUnit: string;
   /** Decimal(18,8) — só para sub_recipe. */
   batchYield: string | null;
+  /** Estoque mínimo desejado (null = sem alerta). */
+  minLevel: string | null;
+  /** Dias de cobertura desejados pra sugestão de compra. */
+  targetDays: number | null;
   notes: string | null;
   archivedAt: string | null;
   createdAt: string;

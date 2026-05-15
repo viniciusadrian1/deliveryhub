@@ -74,6 +74,15 @@ export const createIngredientSchema = z.object({
    * Ex.: "molho da casa" rende 500g por preparo -> batchYield=500.
    */
   batchYield: positiveDecimal.optional(),
+  /**
+   * Estoque minimo (na unidade-base). Saldo abaixo dispara alerta +
+   * notificacao. Null = sem alerta configurado.
+   */
+  minLevel: nonNegativeDecimal.nullable().optional(),
+  /**
+   * Dias de cobertura desejados pra sugestao de compra. Default 7.
+   */
+  targetDays: z.number().int().min(1).max(90).nullable().optional(),
   notes: z.string().max(2000).optional(),
 });
 export type CreateIngredientInput = z.infer<typeof createIngredientSchema>;

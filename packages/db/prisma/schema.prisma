@@ -250,6 +250,7 @@ enum NotificationKind {
   platform_disconnected
   payout_mismatch
   daily_goal
+  stock_low
   system
 
   @@map("notification_kind")
@@ -911,6 +912,12 @@ model Ingredient {
   /// Para kind=sub_recipe: quantas unidades a receita produz por execucao.
   /// Custo unitario da sub-receita = custo total dos componentes / batchYield.
   batchYield     Decimal?       @db.Decimal(18, 8) @map("batch_yield")
+  /// Estoque minimo desejado. Quando saldo cai abaixo, gera alerta + notificacao.
+  /// Em unidade-base do ingrediente. Null = sem alerta configurado.
+  minLevel       Decimal?       @db.Decimal(18, 8) @map("min_level")
+  /// Dias desejados de cobertura ao gerar sugestao de compra. Default 7
+  /// (= comprar pra durar 1 semana). Null = sem sugestao automatica.
+  targetDays     Int?           @map("target_days")
   notes          String?
   archivedAt     DateTime?      @map("archived_at")
   createdAt      DateTime       @default(now()) @map("created_at")

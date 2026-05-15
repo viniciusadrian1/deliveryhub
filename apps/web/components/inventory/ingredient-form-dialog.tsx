@@ -35,6 +35,8 @@ export function IngredientFormDialog({
   const [unit, setUnit] = useState<IngredientUnit>('gram');
   const [costPerUnit, setCostPerUnit] = useState('');
   const [batchYield, setBatchYield] = useState('');
+  const [minLevel, setMinLevel] = useState('');
+  const [targetDays, setTargetDays] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -44,11 +46,15 @@ export function IngredientFormDialog({
     setUnit(editing?.unit ?? 'gram');
     setCostPerUnit(editing?.costPerUnit ?? '');
     setBatchYield(editing?.batchYield ?? '');
+    setMinLevel(editing?.minLevel ?? '');
+    setTargetDays(editing?.targetDays?.toString() ?? '');
     setNotes(editing?.notes ?? '');
   }, [open, editing, defaultKind]);
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const minLevelValue = minLevel.trim() ? minLevel : null;
+      const targetDaysValue = targetDays.trim() ? parseInt(targetDays, 10) : null;
       if (editing) {
         return api(`/inventory/ingredients/${editing.id}`, {
           method: 'PATCH',
@@ -57,6 +63,8 @@ export function IngredientFormDialog({
             unit,
             costPerUnit: kind === 'raw' ? costPerUnit : undefined,
             batchYield: kind === 'sub_recipe' ? batchYield : undefined,
+            minLevel: minLevelValue,
+            targetDays: targetDaysValue,
             notes,
           },
         });
@@ -70,6 +78,8 @@ export function IngredientFormDialog({
           unit,
           costPerUnit: kind === 'raw' ? costPerUnit : undefined,
           batchYield: kind === 'sub_recipe' ? batchYield : undefined,
+          minLevel: minLevelValue,
+          targetDays: targetDaysValue,
           notes,
         },
       });
@@ -180,6 +190,32 @@ export function IngredientFormDialog({
               hint="Quanto a receita rende a cada execução."
             />
           )}
+        </div>
+
+        <div className="rounded-md border border-surface-border-subtle bg-surface-base/40 p-3">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+            Alertas e sugestão de compra (opcional)
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label={`Estoque mínimo (${INGREDIENT_UNIT_LABELS[unit]})`}
+              value={minLevel}
+              onChange={(e) => setMinLevel(e.target.value)}
+              placeholder="500"
+              inputMode="decimal"
+              hint="Saldo abaixo dispara notificação."
+            />
+            <Input
+              label="Cobertura desejada (dias)"
+              value={targetDays}
+              onChange={(e) => setTargetDays(e.target.value)}
+              placeholder="7"
+              type="number"
+              min={1}
+              max={90}
+              hint="Compra sugerida = consumo × dias."
+            />
+          </div>
         </div>
 
         <Input

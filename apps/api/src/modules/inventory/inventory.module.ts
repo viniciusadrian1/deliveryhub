@@ -11,6 +11,7 @@ import { IngredientsService } from './ingredients.service.js';
 import { PurchasesService } from './purchases.service.js';
 import { RecipeCostService } from './recipe-cost.service.js';
 import { RecipesService } from './recipes.service.js';
+import { StockAlertsService } from './stock-alerts.service.js';
 import { StockConsumptionService } from './stock-consumption.service.js';
 import { StockService } from './stock.service.js';
 import { SuppliersService } from './suppliers.service.js';
@@ -45,7 +46,8 @@ import { SuppliersService } from './suppliers.service.js';
     RecipesService,
     RecipeCostService,
     StockConsumptionService,
+    StockAlertsService,
   ],
-  exports: [StockConsumptionService, RecipeCostService],
+  exports: [StockConsumptionService, RecipeCostService, StockAlertsService],
 })
 export class InventoryModule {}

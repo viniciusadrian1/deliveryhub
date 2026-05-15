@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
+  AlertTriangle,
   Archive,
+  Bell,
   Boxes,
   ChefHat,
   ChevronRight,
@@ -12,6 +14,7 @@ import {
   Plus,
   ShoppingCart,
   Sliders,
+  TrendingDown,
   Truck,
   type LucideIcon,
 } from 'lucide-react';
@@ -30,6 +33,7 @@ import { formatCents } from '../../../lib/format';
 import type {
   Ingredient,
   IngredientPurchase,
+  StockAlertSummary,
   StockBalance,
   StockMovement,
 } from '../../../lib/inventory-types';
@@ -39,7 +43,7 @@ import {
 } from '../../../lib/inventory-types';
 import { r } from '../../../lib/routes';
 
-type Tab = 'ingredients' | 'balance' | 'movements' | 'purchases';
+type Tab = 'ingredients' | 'balance' | 'alerts' | 'movements' | 'purchases';
 
 interface TabMeta {
   key: Tab;
@@ -50,6 +54,7 @@ interface TabMeta {
 const TABS: TabMeta[] = [
   { key: 'ingredients', label: 'Insumos & sub-receitas', icon: ChefHat },
   { key: 'balance', label: 'Saldo', icon: Package },
+  { key: 'alerts', label: 'Alertas & sugestões', icon: Bell },
   { key: 'movements', label: 'Movimentações', icon: Sliders },
   { key: 'purchases', label: 'Compras', icon: ShoppingCart },
 ];
@@ -115,8 +120,207 @@ export default function InventoryPage() {
 
       {tab === 'ingredients' && <IngredientsTab storeId={storeId} />}
       {tab === 'balance' && <BalanceTab storeId={storeId} />}
+      {tab === 'alerts' && <AlertsTab storeId={storeId} />}
       {tab === 'movements' && <MovementsTab storeId={storeId} />}
       {tab === 'purchases' && <PurchasesTab storeId={storeId} />}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------
+// Tab: Alertas & sugestões de compra
+// -------------------------------------------------------------------
+
+function AlertsTab({ storeId }: { storeId: string }) {
+  const [purchaseFor, setPurchaseFor] = useState<string | undefined>();
+
+  const { data: summary = [], isLoading } = useQuery({
+    queryKey: ['inventory', 'alerts', storeId],
+    queryFn: () =>
+      api<StockAlertSummary[]>(`/inventory/stock/alerts?storeId=${storeId}`),
+  });
+
+  // Ordena: belowMinimum primeiro, depois needsRestock, depois resto.
+  const sorted = [...summary].sort((a, b) => {
+    const score = (s: StockAlertSummary) =>
+      s.belowMinimum ? 0 : s.needsRestock ? 1 : 2;
+    return score(a) - score(b);
+  });
+
+  const belowCount = summary.filter((s) => s.belowMinimum).length;
+  const needsCount = summary.filter((s) => s.needsRestock && !s.belowMinimum).length;
+  const okCount = summary.filter((s) => !s.needsRestock).length;
+
+  return (
+    <>
+      <div className="mb-4 grid grid-cols-3 gap-3">
+        <SummaryCard
+          icon={AlertTriangle}
+          label="Abaixo do mínimo"
+          value={belowCount}
+          tone={belowCount > 0 ? 'danger' : 'neutral'}
+        />
+        <SummaryCard
+          icon={TrendingDown}
+          label="Precisa repor"
+          value={needsCount}
+          tone={needsCount > 0 ? 'warning' : 'neutral'}
+        />
+        <SummaryCard icon={Package} label="Sob controle" value={okCount} tone="success" />
+      </div>
+
+      <section className="surface-card overflow-hidden">
+        {isLoading ? (
+          <p className="px-5 py-6 text-sm text-ink-tertiary">Carregando…</p>
+        ) : summary.length === 0 ? (
+          <EmptyState
+            icon={Bell}
+            title="Nenhum insumo cadastrado"
+            description="Quando você cadastrar insumos e definir estoque mínimo, os alertas aparecem aqui."
+          />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-surface-base/20 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+              <tr>
+                <th className="px-5 py-2 text-left">Insumo</th>
+                <th className="px-5 py-2 text-right">Saldo</th>
+                <th className="px-5 py-2 text-right">Mínimo</th>
+                <th className="px-5 py-2 text-right">Consumo/dia</th>
+                <th className="px-5 py-2 text-right">Cobertura</th>
+                <th className="px-5 py-2 text-right">Sugestão compra</th>
+                <th className="w-28 px-5 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-border-subtle">
+              {sorted.map((s) => {
+                const balance = parseFloat(s.balance);
+                const minLevel = s.minLevel ? parseFloat(s.minLevel) : null;
+                const consumption = parseFloat(s.avgDailyConsumption);
+                const suggested = parseFloat(s.suggestedPurchase);
+                return (
+                  <tr key={s.ingredientId} className="hover:bg-surface-overlay/50">
+                    <td className="px-5 py-2.5">
+                      <div className="flex items-center gap-2">
+                        {s.belowMinimum && (
+                          <span
+                            className="inline-flex h-1.5 w-1.5 rounded-full bg-danger-bright"
+                            title="Abaixo do mínimo"
+                          />
+                        )}
+                        {!s.belowMinimum && s.needsRestock && (
+                          <span
+                            className="inline-flex h-1.5 w-1.5 rounded-full bg-warning"
+                            title="Precisa repor"
+                          />
+                        )}
+                        <span className="font-medium text-ink-primary">
+                          {s.ingredientName}
+                        </span>
+                      </div>
+                    </td>
+                    <td
+                      className={clsx(
+                        'px-5 py-2.5 text-right tabular',
+                        s.belowMinimum ? 'font-semibold text-danger-bright' : 'text-ink-secondary',
+                      )}
+                    >
+                      {balance.toFixed(2)} {INGREDIENT_UNIT_LABELS[s.unit]}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular text-ink-tertiary">
+                      {minLevel !== null
+                        ? `${minLevel.toFixed(2)} ${INGREDIENT_UNIT_LABELS[s.unit]}`
+                        : '—'}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular text-ink-tertiary">
+                      {consumption > 0
+                        ? `${consumption.toFixed(2)} ${INGREDIENT_UNIT_LABELS[s.unit]}`
+                        : '—'}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular text-ink-tertiary">
+                      {s.daysOfCover !== null ? (
+                        <span
+                          className={clsx(
+                            s.daysOfCover < 3
+                              ? 'text-danger-bright font-semibold'
+                              : s.daysOfCover < 7
+                                ? 'text-warning-bright'
+                                : 'text-ink-secondary',
+                          )}
+                        >
+                          {s.daysOfCover}d
+                        </span>
+                      ) : (
+                        '∞'
+                      )}
+                    </td>
+                    <td className="px-5 py-2.5 text-right tabular">
+                      {suggested > 0 ? (
+                        <span className="font-bold text-brand-500">
+                          {suggested.toFixed(2)} {INGREDIENT_UNIT_LABELS[s.unit]}
+                        </span>
+                      ) : (
+                        <span className="text-ink-tertiary">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-2.5 text-right">
+                      {suggested > 0 && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setPurchaseFor(s.ingredientId)}
+                        >
+                          Comprar
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      {purchaseFor && (
+        <PurchaseFormDialog
+          open
+          onClose={() => setPurchaseFor(undefined)}
+          storeId={storeId}
+          defaultIngredientId={purchaseFor}
+        />
+      )}
+    </>
+  );
+}
+
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  tone: 'danger' | 'warning' | 'success' | 'neutral';
+}) {
+  const toneClass = {
+    danger: 'bg-danger-soft text-danger-bright',
+    warning: 'bg-warning-soft text-warning-bright',
+    success: 'bg-success-soft text-success-bright',
+    neutral: 'bg-surface-base text-ink-secondary',
+  }[tone];
+  return (
+    <div className="surface-card flex items-center gap-3 p-4">
+      <span className={clsx('flex h-9 w-9 items-center justify-center rounded-lg', toneClass)}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+          {label}
+        </p>
+        <p className="text-xl font-bold tabular text-ink-primary">{value}</p>
+      </div>
     </div>
   );
 }

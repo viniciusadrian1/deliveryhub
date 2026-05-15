@@ -43,6 +43,7 @@ import {
 import { IngredientsService } from './ingredients.service.js';
 import { PurchasesService } from './purchases.service.js';
 import { RecipesService } from './recipes.service.js';
+import { StockAlertsService } from './stock-alerts.service.js';
 import { StockService } from './stock.service.js';
 import { SuppliersService } from './suppliers.service.js';
 
@@ -187,7 +188,10 @@ export class PurchasesController {
 
 @Controller('inventory/stock')
 export class StockController {
-  constructor(private readonly stock: StockService) {}
+  constructor(
+    private readonly stock: StockService,
+    private readonly alerts: StockAlertsService,
+  ) {}
 
   @Get('balance')
   balance(
@@ -203,6 +207,33 @@ export class StockController {
     @Query(new ZodValidationPipe(listMovementsQuerySchema)) query: ListMovementsQuery,
   ) {
     return this.stock.listMovements(auth, query);
+  }
+
+  /**
+   * Sumário com alertas + sugestões de compra por ingrediente.
+   * Computado live (consumo dos últimos 30 dias, sem cache).
+   */
+  @Get('alerts')
+  async alertsSummary(
+    @CurrentUser() auth: AuthContext,
+    @Query('storeId') storeId: string,
+  ) {
+    const summary = await this.alerts.summarize(auth.orgId, storeId);
+    // Serialização: Decimal vira string pra preservar precisão na response.
+    return summary.map((s) => ({
+      ingredientId: s.ingredientId,
+      ingredientName: s.ingredientName,
+      unit: s.unit,
+      storeId: s.storeId,
+      balance: s.balance.toString(),
+      minLevel: s.minLevel?.toString() ?? null,
+      avgDailyConsumption: s.avgDailyConsumption.toString(),
+      daysOfCover: s.daysOfCover,
+      belowMinimum: s.belowMinimum,
+      needsRestock: s.needsRestock,
+      suggestedPurchase: s.suggestedPurchase.toString(),
+      targetDays: s.targetDays,
+    }));
   }
 
   @Post('adjustments')

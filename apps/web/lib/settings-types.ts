@@ -10,6 +10,7 @@
 
 export const NOTIFICATION_KINDS = [
   'new_order',
+  'stock_low',
   'integration_error',
   'platform_disconnected',
   'payout_mismatch',
@@ -45,6 +46,11 @@ export const NOTIFICATION_KIND_META: Record<
   payout_mismatch: {
     label: 'Divergência de repasse',
     description: 'Conciliação bancária encontrou diferenças.',
+    group: 'operacional',
+  },
+  stock_low: {
+    label: 'Estoque baixo',
+    description: 'Algum insumo caiu abaixo do estoque mínimo configurado.',
     group: 'operacional',
   },
   daily_goal: {

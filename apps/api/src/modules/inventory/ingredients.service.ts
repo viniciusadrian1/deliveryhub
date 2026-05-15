@@ -69,6 +69,8 @@ export class IngredientsService {
             ? new Prisma.Decimal(0)
             : new Prisma.Decimal(input.costPerUnit ?? '0'),
         batchYield: input.batchYield ? new Prisma.Decimal(input.batchYield) : null,
+        minLevel: input.minLevel ? new Prisma.Decimal(input.minLevel) : null,
+        targetDays: input.targetDays ?? null,
         notes: input.notes ?? null,
       },
     });
@@ -110,6 +112,14 @@ export class IngredientsService {
           existing.kind === 'sub_recipe' && input.batchYield !== undefined
             ? new Prisma.Decimal(input.batchYield)
             : undefined,
+        minLevel:
+          input.minLevel === undefined
+            ? undefined
+            : input.minLevel === null
+              ? null
+              : new Prisma.Decimal(input.minLevel),
+        targetDays:
+          input.targetDays === undefined ? undefined : input.targetDays,
         notes: input.notes ?? undefined,
       },
     });

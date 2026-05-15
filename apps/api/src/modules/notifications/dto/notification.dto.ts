@@ -9,6 +9,7 @@ export const NOTIFICATION_KINDS = [
   'platform_disconnected',
   'payout_mismatch',
   'daily_goal',
+  'stock_low',
   'system',
 ] as const;
 
