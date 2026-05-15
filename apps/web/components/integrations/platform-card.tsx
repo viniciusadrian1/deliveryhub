@@ -169,14 +169,30 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
           </Button>
         )}
         {connection?.status === 'pending' && (
-          <Button
-            size="sm"
-            onClick={() => finalize.mutate(connection.id)}
-            loading={finalize.isPending}
-            leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
-          >
-            Já autorizei
-          </Button>
+          <>
+            <Button
+              size="sm"
+              onClick={() => finalize.mutate(connection.id)}
+              loading={finalize.isPending}
+              leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
+            >
+              Já autorizei
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onConnect}
+              leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+            >
+              Gerar novo link
+            </Button>
+            {finalize.isError && (
+              <p className="w-full text-xs text-warning-bright">
+                Ainda não autorizado. Conclua no portal da plataforma ou gere um
+                novo link.
+              </p>
+            )}
+          </>
         )}
         {connection?.status === 'active' && (
           <>
