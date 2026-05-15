@@ -6,7 +6,9 @@ import {
   type FinalizeConnectionResult,
   type PlatformAdapter,
   type PolledEvent,
+  type RemoteCategory,
   type RemoteMenu,
+  type RemoteMenuItem,
   type RemoteOrder,
   type RemoteOrderItem,
   type RemoteOrderStatus,
@@ -63,7 +65,7 @@ import {
  *  ✅ fetchOrder, acceptOrder, rejectOrder, dispatchOrder
  *  ✅ startConnection / finalizeConnection (bind self-service via web page)
  *  ✅ pushStorePause (Store API — setStatus)
- *  ⏳ fetchMenu / pushItemPrice / pushItemAvailability — falta Menu API
+ *  ✅ fetchMenu / pushItemPrice / pushItemAvailability (Menu API)
  */
 export interface DidifoodAdapterConfig {
   /** app_id (long, string pra não perder precisão). */
@@ -141,8 +143,6 @@ function map99FoodStatus(status: number | undefined): RemoteOrderStatus {
 /** reason_id padrão pra cancelamento (1080 = "Other reason"; sempre com texto). */
 const CANCEL_REASON_OTHER = 1080;
 
-const NOT_IMPLEMENTED = '99food_endpoint_not_implemented_yet';
-
 /** pause_reason_code 1006 = "Other reason" — pausa manual feita pelo Hub. */
 const PAUSE_REASON_OTHER = 1006;
 
@@ -211,6 +211,36 @@ interface DidifoodPendingHandle {
   /** app_shop_id já vinculados ANTES de iniciar a conexão. */
   knownShopIds: string[];
   startedAt: number;
+}
+
+// Shapes parciais de Get Store Menu Details (GET /v3/item/item/list).
+interface RawSoldInfo {
+  time?: { begin?: string; end?: string }[];
+  day?: number[];
+  specialDay?: string[];
+}
+interface RawMenuItemFull {
+  app_item_id?: string;
+  /** Campo livre do lojista — pode ser string OU objeto JSON. */
+  app_external_id?: unknown;
+  item_name?: string;
+  short_desc?: string;
+  head_img?: string;
+  sold_info_intl?: RawSoldInfo[];
+  price?: number;
+  priority?: number;
+  status?: number;
+  is_sold_separately?: boolean;
+}
+interface RawMenuCategory {
+  app_category_id?: string;
+  category_name?: string;
+  app_item_ids?: string[];
+  priority?: number;
+}
+interface RawMenuList {
+  categories?: RawMenuCategory[];
+  items?: RawMenuItemFull[];
 }
 
 export class DidifoodAdapter implements PlatformAdapter {
@@ -519,18 +549,113 @@ export class DidifoodAdapter implements PlatformAdapter {
   }
 
   // ===================================================================
-  // Cardápio — PENDENTE (falta doc do Menu API)
+  // Menu API — cardápio (DOCUMENTADO ✅)
   // ===================================================================
 
-  async fetchMenu(): Promise<RemoteMenu> {
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, { endpoint: 'v3/item/item/list' });
+  /**
+   * GET /v3/item/item/list — baixa o cardápio da loja e mapeia pro
+   * RemoteMenu interno (categorias + itens, formato plano).
+   *
+   * No 99Food a relação é invertida: a categoria lista os `app_item_ids`;
+   * o item não carrega a categoria. Reconstruímos iterando as categorias.
+   * Itens `is_sold_separately: false` são sub-itens de modifier group
+   * (não vendáveis sozinhos) — ficam fora do catálogo de produtos.
+   */
+  async fetchMenu(tokens: StoredTokens, _externalMerchantId: string): Promise<RemoteMenu> {
+    const menu = await this.fetchRawMenu(tokens);
+
+    const itemsById = new Map<string, RawMenuItemFull>();
+    for (const it of menu.items ?? []) {
+      if (it.app_item_id) itemsById.set(it.app_item_id, it);
+    }
+
+    const validCategories = (menu.categories ?? []).filter((c) => c.app_category_id);
+
+    const categories: RemoteCategory[] = validCategories.map((c) => ({
+      externalId: c.app_category_id!,
+      name: c.category_name ?? 'Categoria',
+      sortOrder: c.priority,
+    }));
+
+    const items: RemoteMenuItem[] = [];
+    const seen = new Set<string>();
+    for (const c of validCategories) {
+      for (const itemId of c.app_item_ids ?? []) {
+        if (seen.has(itemId)) continue;
+        const it = itemsById.get(itemId);
+        if (!it || it.is_sold_separately === false) continue;
+        seen.add(itemId);
+        items.push({
+          externalId: itemId,
+          externalCategoryId: c.app_category_id!,
+          name: it.item_name ?? itemId,
+          description: it.short_desc || undefined,
+          sellingPriceCents: it.price ?? 0,
+          isAvailable: (it.status ?? 1) === 1,
+          isPublished: true,
+          imageUrl: it.head_img || undefined,
+        });
+      }
+    }
+    return { categories, items };
   }
-  async pushItemPrice(): Promise<void> {
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, { endpoint: 'v3/item/item/updateItem' });
+
+  /**
+   * POST /v3/item/item/updateItem — atualiza o preço de um item.
+   *
+   * O 99Food não tem endpoint de "só preço": o updateItem exige item_name,
+   * status e is_sold_separately. Buscamos o item atual no /list e
+   * reenviamos os campos, sobrescrevendo só o preço (ver buildUpdateItemBody).
+   */
+  async pushItemPrice(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalId: string,
+    sellingPriceCents: number,
+  ): Promise<void> {
+    const menu = await this.fetchRawMenu(tokens);
+    const item = (menu.items ?? []).find((it) => it.app_item_id === externalId);
+    if (!item) {
+      throw new AdapterApiError('99food_menu_item_not_found', 404, {
+        app_item_id: externalId,
+      });
+    }
+    await this.postJson('/v3/item/item/updateItem', {
+      ...buildUpdateItemBody(item),
+      auth_token: tokens.accessToken,
+      price: sellingPriceCents,
+    });
   }
-  async pushItemAvailability(): Promise<void> {
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      endpoint: 'v3/item/item/updateItemStatus',
+
+  /**
+   * POST /v3/item/item/updateItemStatus — marca o item disponível (1) ou
+   * indisponível (2). A resposta traz success[]/failed[] por item.
+   */
+  async pushItemAvailability(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalId: string,
+    available: boolean,
+  ): Promise<void> {
+    const data = await this.postJson<{ failed?: string[] }>(
+      '/v3/item/item/updateItemStatus',
+      {
+        auth_token: tokens.accessToken,
+        app_item_ids: [externalId],
+        status: available ? 1 : 2,
+      },
+    );
+    if (data?.failed?.includes(externalId)) {
+      throw new AdapterApiError('99food_item_status_update_failed', 502, {
+        app_item_id: externalId,
+      });
+    }
+  }
+
+  /** GET /v3/item/item/list — cardápio cru da loja. */
+  private async fetchRawMenu(tokens: StoredTokens): Promise<RawMenuList> {
+    return this.get<RawMenuList>('/v3/item/item/list', {
+      auth_token: tokens.accessToken,
     });
   }
 
@@ -558,6 +683,15 @@ export class DidifoodAdapter implements PlatformAdapter {
     fields: Record<string, string | number>,
   ): Promise<T> {
     return this.request<T>('POST', path, buildJsonBody(fields, RAW_NUMERIC_KEYS));
+  }
+
+  /**
+   * POST com body JSON arbitrário (objetos/arrays aninhados). Usado pelos
+   * endpoints de cardápio — que não têm IDs `long` 64-bit, então o
+   * JSON.stringify padrão é seguro.
+   */
+  private async postJson<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>('POST', path, JSON.stringify(body));
   }
 
   private async request<T>(
@@ -755,6 +889,32 @@ function pauseTimeCode(until?: Date): number {
   if (minutes <= 25) return 2;
   if (minutes <= 45) return 3;
   return 4;
+}
+
+/**
+ * Monta o corpo do updateItem ecoando os campos atuais do item — o
+ * caller sobrescreve `auth_token` e `price`.
+ *
+ * `activity_price` (preço promocional) é omitido de propósito: se o novo
+ * preço-base cair abaixo da promo antiga, o 99Food rejeita (errno 100103).
+ * Omitir = vende pelo preço-base novo, sem promo (errno 100101). Promoções
+ * são gerenciadas à parte, não por edição de preço vinda do Hub.
+ */
+function buildUpdateItemBody(item: RawMenuItemFull): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    app_item_id: item.app_item_id,
+    item_name: item.item_name ?? item.app_item_id ?? '',
+    status: item.status ?? 1,
+    is_sold_separately: item.is_sold_separately ?? true,
+  };
+  if (item.app_external_id !== undefined) body.app_external_id = item.app_external_id;
+  if (item.short_desc) body.short_desc = item.short_desc;
+  if (item.head_img) body.head_img = item.head_img;
+  if (typeof item.priority === 'number') body.priority = item.priority;
+  if (item.sold_info_intl && item.sold_info_intl.length > 0) {
+    body.sold_info_intl = item.sold_info_intl;
+  }
+  return body;
 }
 
 /**

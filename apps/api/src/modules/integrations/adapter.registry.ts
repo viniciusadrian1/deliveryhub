@@ -133,7 +133,9 @@ export class AdapterRegistry {
           webhookSecret: env.DIDIFOOD_WEBHOOK_SECRET,
         }),
       );
-      this.logger.log('99Food adapter registered (real — Authorization + Order + Store API)');
+      this.logger.log(
+        '99Food adapter registered (real — Authorization + Order + Store + Menu API)',
+      );
     } else {
       this.adapters.set('99food', new MockAdapter('99food'));
       this.logger.warn('99Food adapter registered (MOCK)');
