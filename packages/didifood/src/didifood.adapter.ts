@@ -28,7 +28,10 @@ import {
  *  - Com (app_id, app_secret, app_shop_id) pegamos `auth_token` por loja
  *    via GET /v1/auth/authtoken/get. O auth_token vai em todas as chamadas
  *    de pedido e expira (refresh via /v1/auth/authtoken/refresh).
- *  - NÃO existe OAuth Device Flow.
+ *  - NÃO existe OAuth Device Flow. A loja é vinculada via página de
+ *    auto-serviço: POST getUrl devolve uma URL, o lojista autoriza no
+ *    portal 99Food, e `finalizeConnection` faz o diff do snapshot de
+ *    lojas vinculadas pra descobrir a recém-conectada.
  *
  *  Mapeamento no `PlatformAdapter`:
  *    StoredTokens.accessToken  = auth_token
@@ -58,9 +61,9 @@ import {
  *  ✅ verifyWebhookSignature, parseWebhook
  *  ✅ getAuthtoken / refreshAuthtoken
  *  ✅ fetchOrder, acceptOrder, rejectOrder, dispatchOrder
- *  ⏳ startConnection / finalizeConnection — falta doc do Store API (bind)
+ *  ✅ startConnection / finalizeConnection (bind self-service via web page)
+ *  ✅ pushStorePause (Store API — setStatus)
  *  ⏳ fetchMenu / pushItemPrice / pushItemAvailability — falta Menu API
- *  ⏳ pushStorePause — falta Store API (setStatus)
  */
 export interface DidifoodAdapterConfig {
   /** app_id (long, string pra não perder precisão). */
@@ -140,6 +143,15 @@ const CANCEL_REASON_OTHER = 1080;
 
 const NOT_IMPLEMENTED = '99food_endpoint_not_implemented_yet';
 
+/** pause_reason_code 1006 = "Other reason" — pausa manual feita pelo Hub. */
+const PAUSE_REASON_OTHER = 1006;
+
+/**
+ * Campos `long` 64-bit emitidos como literal numérico cru no corpo JSON
+ * (sem aspas, sem passar por Number) — senão perdem precisão.
+ */
+const RAW_NUMERIC_KEYS = ['order_id', 'app_id', 'shop_id'];
+
 // Shapes parciais da resposta de Get Order Details (só o que usamos).
 interface RawSubItem {
   app_item_id?: string;
@@ -181,6 +193,24 @@ interface RawOrderInfo {
 interface RawOrderDetail {
   order_id?: number;
   order_info?: RawOrderInfo;
+}
+
+// Shapes parciais de List Bind Stores / List Authorized Stores —
+// só os campos seguros (o `shop_id` long 64-bit da resposta é ignorado).
+interface RawShopListItem {
+  app_shop_id?: string;
+  bound_flag?: number;
+}
+interface RawShopList {
+  total_page?: number;
+  shops?: RawShopListItem[];
+}
+
+/** Conteúdo do `pendingHandle` do 99Food (snapshot pré-bind). */
+interface DidifoodPendingHandle {
+  /** app_shop_id já vinculados ANTES de iniciar a conexão. */
+  knownShopIds: string[];
+  startedAt: number;
 }
 
 export class DidifoodAdapter implements PlatformAdapter {
@@ -347,21 +377,149 @@ export class DidifoodAdapter implements PlatformAdapter {
   }
 
   // ===================================================================
-  // Conexão de loja — PENDENTE (falta doc do Store API / bind)
+  // Store API — conexão de loja (DOCUMENTADO ✅)
   // ===================================================================
 
+  /**
+   * Inicia a conexão de uma loja 99Food via bind self-service.
+   *
+   * Fluxo (≠ OAuth Device do iFood):
+   *  1. Snapshot das lojas já vinculadas ao app.
+   *  2. POST /v1/auth/authorizationpage/getUrl → URL de autorização.
+   *  3. O lojista abre a URL, loga no 99Food e clica "Authorize" na loja.
+   *  4. `finalizeConnection` faz o diff e descobre a loja recém-vinculada.
+   *
+   * 99Food não tem "user code" — a URL já é personalizada. Devolvemos
+   * `userCode` vazio e a mesma URL nos dois campos. A URL vale 7 dias.
+   */
   async startConnection(): Promise<StartConnectionResult> {
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
-      hint: 'Falta doc do Store API (bind / authorization page).',
+    const known = await this.listBoundShops();
+
+    const data = await this.post<{ url?: string }>('/v1/auth/authorizationpage/getUrl', {
+      app_id: this.config.clientId,
+    });
+    if (!data?.url) {
+      throw new AdapterApiError('99food_authorization_url_missing', 502, data);
+    }
+
+    const handle: DidifoodPendingHandle = {
+      knownShopIds: known,
+      startedAt: Date.now(),
+    };
+    return {
+      userCode: '',
+      verificationUrl: data.url,
+      verificationUrlComplete: data.url,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      pendingHandle: encodeHandle(handle),
+    };
+  }
+
+  /**
+   * Verifica se o lojista já concluiu o bind na página de autorização.
+   *
+   * Diff entre as lojas vinculadas AGORA e o snapshot do `startConnection`:
+   * a loja que apareceu é a recém-conectada. Sem loja nova →
+   * `ConnectionPendingError` (o lojista ainda não autorizou).
+   */
+  async finalizeConnection(pendingHandle: string): Promise<FinalizeConnectionResult> {
+    const { knownShopIds } = decodeHandle(pendingHandle);
+    const known = new Set(knownShopIds);
+
+    const current = await this.listBoundShops();
+    const fresh = current.filter((id) => !known.has(id));
+
+    if (fresh.length === 0) throw new ConnectionPendingError();
+
+    // Conexão é 1:1 loja↔plataforma. Se o lojista vinculou mais de uma na
+    // mesma janela, pegamos a primeira — as demais ele conecta depois.
+    const appShopId = fresh[0]!;
+    const tokens = await this.getAuthtoken(appShopId);
+    return { tokens, externalMerchantId: appShopId };
+  }
+
+  /**
+   * POST /v1/shop/shop/setStatus — pausa ou reabre a loja.
+   *
+   *  paused=true  → store_status 3 (Business Pause) + pause_time + reason.
+   *  paused=false → store_status 1 (Online).
+   *
+   * `pause_time` (enum 99Food): 1=10min · 2=20min · 3=30min · 4=fim do dia.
+   * A resposta é assíncrona — o status final é confirmado pelo webhook
+   * `shopStatus`. Aqui só garantimos que a requisição foi aceita (errno 0).
+   */
+  async pushStorePause(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    paused: boolean,
+    until?: Date,
+  ): Promise<void> {
+    if (!paused) {
+      await this.post('/v1/shop/shop/setStatus', {
+        auth_token: tokens.accessToken,
+        store_status: 1,
+      });
+      return;
+    }
+    await this.post('/v1/shop/shop/setStatus', {
+      auth_token: tokens.accessToken,
+      store_status: 3,
+      pause_time: pauseTimeCode(until),
+      pause_reason_code: PAUSE_REASON_OTHER,
     });
   }
 
-  async finalizeConnection(_pendingHandle: string): Promise<FinalizeConnectionResult> {
-    throw new ConnectionPendingError();
+  /**
+   * Lista as lojas vinculadas ao app (bound_flag = 1).
+   *
+   * Usa `/v1/shop/shop/list` (List Bind Stores). Se o app não tiver
+   * permissão nesse endpoint (errno 10006), cai pro v3 getAuthorizedShops
+   * (List Authorized Stores) — mesma assinatura e mesmo shape de resposta.
+   */
+  private async listBoundShops(): Promise<string[]> {
+    try {
+      return await this.fetchShopList('/v1/shop/shop/list');
+    } catch (err) {
+      if (errnoOf(err) === 10006) {
+        return this.fetchShopList('/v3/auth/authorization/getAuthorizedShops');
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Busca paginada de lojas num endpoint assinado. Body:
+   * `{ app_id, timestamp, sign, page_no, page_size }` — `sign` é MD5 dos
+   * params ordenados + app_secret.
+   *
+   * Só lemos campos seguros (app_shop_id, shop_name, bound_flag); o
+   * `shop_id` (long 64-bit) da resposta é ignorado de propósito.
+   */
+  private async fetchShopList(endpoint: string): Promise<string[]> {
+    const out: string[] = [];
+
+    for (let pageNo = 1; pageNo <= 20; pageNo++) {
+      const signed = {
+        app_id: this.config.clientId,
+        timestamp: Math.floor(Date.now() / 1000),
+        page_no: pageNo,
+        page_size: 50,
+      };
+      const data = await this.post<RawShopList>(endpoint, {
+        ...signed,
+        sign: signParams(signed, this.config.clientSecret),
+      });
+
+      for (const s of data?.shops ?? []) {
+        if (s.bound_flag === 1 && s.app_shop_id) out.push(s.app_shop_id);
+      }
+      if (pageNo >= (data?.total_page ?? 1)) break;
+    }
+    return out;
   }
 
   // ===================================================================
-  // Cardápio / pausa — PENDENTE (falta doc Menu API / Store API setStatus)
+  // Cardápio — PENDENTE (falta doc do Menu API)
   // ===================================================================
 
   async fetchMenu(): Promise<RemoteMenu> {
@@ -374,9 +532,6 @@ export class DidifoodAdapter implements PlatformAdapter {
     throw new AdapterApiError(NOT_IMPLEMENTED, 501, {
       endpoint: 'v3/item/item/updateItemStatus',
     });
-  }
-  async pushStorePause(): Promise<void> {
-    throw new AdapterApiError(NOT_IMPLEMENTED, 501, { endpoint: 'v1/shop/shop/setStatus' });
   }
 
   // 99Food é webhook-only.
@@ -395,14 +550,14 @@ export class DidifoodAdapter implements PlatformAdapter {
   }
 
   /**
-   * POST com body JSON. `order_id` (se presente) é emitido como literal
-   * numérico cru pra preservar o 64-bit (ver nota no topo).
+   * POST com body JSON. Campos `long` 64-bit (order_id, app_id, shop_id)
+   * são emitidos como literal numérico cru pra preservar a precisão.
    */
   private async post<T>(
     path: string,
     fields: Record<string, string | number>,
   ): Promise<T> {
-    return this.request<T>('POST', path, buildJsonBody(fields, ['order_id']));
+    return this.request<T>('POST', path, buildJsonBody(fields, RAW_NUMERIC_KEYS));
   }
 
   private async request<T>(
@@ -463,11 +618,6 @@ export class DidifoodAdapter implements PlatformAdapter {
       );
     }
     return json!.data;
-  }
-
-  /** Assinatura MD5 de request (pra endpoints que exigem — Store/Menu API). */
-  signParams(params: Record<string, string | number>): string {
-    return signParams(params, this.config.clientSecret);
   }
 }
 
@@ -560,6 +710,51 @@ export function signParams(
     .sort();
   const joined = sorted.map((k) => `${k}=${params[k]}`).join('&');
   return createHash('md5').update(joined + appSecret, 'utf8').digest('hex');
+}
+
+/** Serializa o pendingHandle (snapshot de bind) em base64url. */
+function encodeHandle(handle: DidifoodPendingHandle): string {
+  return Buffer.from(JSON.stringify(handle), 'utf8').toString('base64url');
+}
+
+/** Lê o pendingHandle; handle corrompido vira erro claro (não silencioso). */
+function decodeHandle(handle: string): DidifoodPendingHandle {
+  try {
+    const o = JSON.parse(
+      Buffer.from(handle, 'base64url').toString('utf8'),
+    ) as Partial<DidifoodPendingHandle>;
+    return {
+      knownShopIds: Array.isArray(o.knownShopIds)
+        ? o.knownShopIds.filter((x): x is string => typeof x === 'string')
+        : [],
+      startedAt: typeof o.startedAt === 'number' ? o.startedAt : 0,
+    };
+  } catch {
+    throw new AdapterApiError('99food_invalid_pending_handle', 400);
+  }
+}
+
+/** Extrai o `errno` de um AdapterApiError do 99Food (vem no `body`). */
+function errnoOf(err: unknown): number | undefined {
+  if (err instanceof AdapterApiError && err.body && typeof err.body === 'object') {
+    const errno = (err.body as { errno?: unknown }).errno;
+    if (typeof errno === 'number') return errno;
+  }
+  return undefined;
+}
+
+/**
+ * Converte um horário-alvo de reabertura no enum `pause_time` do 99Food:
+ *  1 = 10min · 2 = 20min · 3 = 30min · 4 = até o fim do dia.
+ * Sem `until` (pausa indefinida) → 4.
+ */
+function pauseTimeCode(until?: Date): number {
+  if (!until) return 4;
+  const minutes = (until.getTime() - Date.now()) / 60_000;
+  if (minutes <= 15) return 1;
+  if (minutes <= 25) return 2;
+  if (minutes <= 45) return 3;
+  return 4;
 }
 
 /**

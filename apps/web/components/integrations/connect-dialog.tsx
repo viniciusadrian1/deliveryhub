@@ -28,6 +28,14 @@ export function ConnectDialog({
   const qc = useQueryClient();
   const [started, setStarted] = useState<StartConnectionResponse | null>(null);
 
+  // iFood usa OAuth Device (mostra um código). 99Food não tem código — só
+  // uma URL de autorização. Sem userCode, exibimos o fluxo simplificado.
+  const hasCode = Boolean(started?.userCode);
+  const expiryMs = started ? new Date(started.expiresAt).getTime() - Date.now() : 0;
+  const expiryLabel = hasCode
+    ? `Código expira em ${Math.max(0, Math.round(expiryMs / 60_000))} min`
+    : `Link expira em ${Math.max(0, Math.round(expiryMs / 86_400_000))} dias`;
+
   const start = useMutation({
     mutationFn: async () =>
       api<StartConnectionResponse>('/integrations/connect', {
@@ -131,8 +139,8 @@ export function ConnectDialog({
               <div>
                 <Badge variant="warning">Sandbox mock</Badge>
                 <p className="mt-1 text-ink-secondary">
-                  Sem credenciais reais do iFood — usando o adapter simulado pra
-                  validar o fluxo.
+                  Sem credenciais reais da plataforma — usando o adapter
+                  simulado pra validar o fluxo.
                 </p>
               </div>
             </div>
@@ -158,37 +166,42 @@ export function ConnectDialog({
                 </a>
               </div>
             </li>
-            <li className="flex gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
-                2
-              </span>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-ink-primary">Digite este código</p>
-                <div className="mt-2 select-all rounded-xl border border-surface-border bg-surface-base px-5 py-4 text-center font-mono text-2xl font-bold tracking-[0.4em] text-ink-primary">
-                  {started.userCode}
+            {hasCode && (
+              <li className="flex gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
+                  2
+                </span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-ink-primary">
+                    Digite este código
+                  </p>
+                  <div className="mt-2 select-all rounded-xl border border-surface-border bg-surface-base px-5 py-4 text-center font-mono text-2xl font-bold tracking-[0.4em] text-ink-primary">
+                    {started.userCode}
+                  </div>
                 </div>
-              </div>
-            </li>
+              </li>
+            )}
             <li className="flex gap-3">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
-                3
+                {hasCode ? 3 : 2}
               </span>
               <div className="flex-1">
                 <p className="text-sm font-medium text-ink-primary">
-                  Volte e clique em <b className="text-brand-300">"Já autorizei"</b>
+                  {hasCode ? 'Volte e clique' : 'Autorize a loja e clique'} em{' '}
+                  <b className="text-brand-300">"Já autorizei"</b>
                 </p>
+                {!hasCode && (
+                  <p className="mt-1 text-xs text-ink-tertiary">
+                    O DeliveryHub detecta a loja vinculada automaticamente.
+                  </p>
+                )}
               </div>
             </li>
           </ol>
 
           <p className="flex items-center gap-1.5 text-xs text-ink-tertiary">
             <Loader2 className="h-3 w-3 animate-pulse" />
-            Código expira em{' '}
-            {Math.max(
-              0,
-              Math.round((new Date(started.expiresAt).getTime() - Date.now()) / 60000),
-            )}{' '}
-            min
+            {expiryLabel}
           </p>
         </div>
       )}

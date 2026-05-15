@@ -87,9 +87,8 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
   '99food': {
     name: '99Food',
     colorHex: '#FE3324',
-    enabled: false,
-    availability: 'roadmap',
-    reason: 'Cadastre-se no portal DiDi Food Open (developer-food.99app.com).',
+    enabled: true,
+    availability: 'available',
     logo: '/platforms/99food.svg',
     logoScale: 2.2,
   },
