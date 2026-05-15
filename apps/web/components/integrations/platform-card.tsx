@@ -163,11 +163,16 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {!connection && meta.availability === 'available' && (
-          <Button size="sm" onClick={onConnect} leftIcon={<Power className="h-3.5 w-3.5" />}>
-            Conectar
-          </Button>
-        )}
+        {(!connection || connection.status === 'revoked') &&
+          meta.availability === 'available' && (
+            <Button
+              size="sm"
+              onClick={onConnect}
+              leftIcon={<Power className="h-3.5 w-3.5" />}
+            >
+              Conectar
+            </Button>
+          )}
         {connection?.status === 'pending' && (
           <>
             <Button
