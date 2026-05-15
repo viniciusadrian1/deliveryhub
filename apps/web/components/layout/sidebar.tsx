@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import {
+  Boxes,
   LayoutGrid,
   UtensilsCrossed,
   TrendingUp,
@@ -28,7 +29,8 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { label: 'Hub de Pedidos', href: '/hub', icon: LayoutGrid },
   { label: 'Cardápio', href: '/menu', icon: UtensilsCrossed },
-  { label: 'Preço & Margem', href: '/pricing', icon: TrendingUp, badge: 'novo' },
+  { label: 'Estoque', href: '/inventory', icon: Boxes, badge: 'novo' },
+  { label: 'Preço & Margem', href: '/pricing', icon: TrendingUp },
   { label: 'Pausa', href: '/pause', icon: PauseCircle },
   { label: 'Financeiro', href: '/financial', icon: Wallet },
 ];

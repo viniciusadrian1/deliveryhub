@@ -19,6 +19,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { ComplianceModule } from './modules/compliance/compliance.module.js';
 import { FinancialModule } from './modules/financial/financial.module.js';
 import { IntegrationsModule } from './modules/integrations/integrations.module.js';
+import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { MenuModule } from './modules/menu/menu.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
@@ -57,6 +58,7 @@ import { UsersModule } from './modules/users/users.module.js';
     OrganizationsModule,
     IntegrationsModule,
     MenuModule,
+    InventoryModule,
     OrdersModule,
     PausesModule,
     PricingModule,

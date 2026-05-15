@@ -13,6 +13,7 @@ import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
 import { AdapterRegistry } from '../integrations/adapter.registry.js';
 import { IntegrationsService } from '../integrations/integrations.service.js';
+import { StockConsumptionService } from '../inventory/stock-consumption.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { CustomersService } from './customers.service.js';
 import type { ListOrdersQuery } from './dto/orders.dto.js';
@@ -44,7 +45,27 @@ export class OrdersService {
     private readonly audit: AuditLogService,
     private readonly notifications: NotificationsService,
     private readonly emitter: OrdersEmitter,
+    private readonly stockConsumption: StockConsumptionService,
   ) {}
+
+  /**
+   * Dispara baixa de estoque para um pedido recém-entregue.
+   * Não lança — falhas são silenciosas (logadas dentro do service).
+   * NÃO bloqueia a transição do pedido em nenhuma circunstância.
+   */
+  private async consumeStockSafely(orderId: string): Promise<void> {
+    try {
+      const result = await this.stockConsumption.consumeForOrder(orderId);
+      if (result.warnings.length > 0) {
+        this.logger.warn(
+          { orderId, warnings: result.warnings, movements: result.movementsCreated },
+          'stock_consume_completed_with_warnings',
+        );
+      }
+    } catch (err) {
+      this.logger.error({ err, orderId }, 'stock_consume_outer_failure');
+    }
+  }
 
   // ============== Ingestão via webhook ==============
 
@@ -211,6 +232,10 @@ export class OrdersService {
       });
       if (newStatus !== existing.status) {
         await this.recordStatusEvent(order.id, newStatus, 'platform', { eventType });
+        // Pedido transicionou via plataforma — se virou delivered, baixa estoque.
+        if (newStatus === 'delivered' && existing.status !== 'delivered') {
+          await this.consumeStockSafely(order.id);
+        }
         this.emit('order.updated', ctx, order);
       }
       return;
@@ -285,6 +310,11 @@ export class OrdersService {
     });
 
     this.emit('order.created', ctx, created);
+
+    // Catch-up: webhook trouxe o pedido já com status delivered. Baixa estoque.
+    if (created.status === 'delivered') {
+      await this.consumeStockSafely(created.id);
+    }
 
     // Notifica owners e managers da org sobre o novo pedido.
     const targets = await this.prisma.membership.findMany({
@@ -381,6 +411,11 @@ export class OrdersService {
       action: 'update',
       diff: { from: order.status, to: nextStatus, reason },
     });
+
+    // Baixa de estoque idempotente quando o pedido vira "delivered".
+    if (nextStatus === 'delivered' && order.status !== 'delivered') {
+      await this.consumeStockSafely(order.id);
+    }
 
     this.emit(
       'order.updated',

@@ -62,7 +62,10 @@ export class MenuItemsService {
         description: input.description ?? null,
         imageUrl: input.imageUrl ?? null,
         prepTimeMinutes: input.prepTimeMinutes ?? null,
-        costCents: input.costCents ?? 0,
+        costMode: input.costMode ?? 'manual',
+        // Em recipe mode, costCents é gerenciado pelo RecipeCostService;
+        // ainda é seguro persistir 0 inicialmente (recipe vazia = custo 0).
+        costCents: input.costMode === 'recipe' ? 0 : (input.costCents ?? 0),
         allergens: input.allergens ?? [],
         sortOrder: input.sortOrder ?? 0,
       },
@@ -87,6 +90,12 @@ export class MenuItemsService {
       await this.assertCategoryInStore(auth.orgId, existing.storeId, input.categoryId);
     }
 
+    // Em `recipe` mode, ignoramos costCents vindo do cliente. O valor é
+    // mantido pelo RecipeCostService a partir da receita.
+    const effectiveCostMode = input.costMode ?? existing.costMode;
+    const costCentsUpdate =
+      effectiveCostMode === 'recipe' ? undefined : (input.costCents ?? undefined);
+
     const updated = await this.prisma.menuItem.update({
       where: { id },
       data: {
@@ -96,7 +105,8 @@ export class MenuItemsService {
         imageUrl: input.imageUrl === undefined ? undefined : input.imageUrl,
         prepTimeMinutes:
           input.prepTimeMinutes === undefined ? undefined : input.prepTimeMinutes,
-        costCents: input.costCents ?? undefined,
+        costMode: input.costMode ?? undefined,
+        costCents: costCentsUpdate,
         allergens: input.allergens ?? undefined,
         sortOrder: input.sortOrder ?? undefined,
       },

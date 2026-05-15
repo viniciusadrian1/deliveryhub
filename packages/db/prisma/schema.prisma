@@ -119,19 +119,23 @@ model MenuItem {
   imageUrl        String?  @map("image_url")
   prepTimeMinutes Int?     @map("prep_time_minutes")
   costCents       Int      @default(0) @map("cost_cents")
+  /// Como o `costCents` é definido: `manual` = usuário digita o CMV;
+  /// `recipe` = calculado a partir de RecipeComponent (read-only via API).
+  costMode        CostMode @default(manual) @map("cost_mode")
   allergens       String[] @default([])
   sortOrder       Int      @default(0) @map("sort_order")
   archivedAt      DateTime? @map("archived_at")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  store           Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  category        Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  modifierGroups  ModifierGroup[]
-  platformConfigs MenuItemPlatformConfig[]
-  orderItems      OrderItem[]
-  pauses          Pause[]
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store            Store                    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  category         Category?                @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  modifierGroups   ModifierGroup[]
+  platformConfigs  MenuItemPlatformConfig[]
+  orderItems       OrderItem[]
+  pauses           Pause[]
+  recipeComponents RecipeComponent[]
 
   @@index([organizationId, storeId])
   @@index([categoryId])
@@ -605,6 +609,11 @@ model Organization {
   pauses                  Pause[]
   payouts                 Payout[]
   bankTransactions        BankTransaction[]
+  suppliers               Supplier[]
+  ingredients             Ingredient[]
+  ingredientPurchases     IngredientPurchase[]
+  stockMovements          StockMovement[]
+  recipeComponents        RecipeComponent[]
 
   @@map("organization")
 }
@@ -628,6 +637,8 @@ model User {
   notificationPreferences NotificationPreference[]
   pausesCreated           Pause[]                  @relation("pauses_created")
   pausesCancelled         Pause[]                  @relation("pauses_cancelled")
+  purchasesCreated        IngredientPurchase[]     @relation("purchases_created")
+  stockMovementsCreated   StockMovement[]          @relation("stock_movements_created")
 
   @@map("user")
 }
@@ -674,6 +685,9 @@ model Store {
   pauses              Pause[]
   payouts             Payout[]
   bankTransactions    BankTransaction[]
+  ingredients         Ingredient[]
+  ingredientPurchases IngredientPurchase[]
+  stockMovements      StockMovement[]
 
   @@index([organizationId])
   @@map("store")
@@ -773,4 +787,199 @@ model AuditLog {
   @@index([organizationId, entity, at(sort: Desc)])
   @@index([userId, at(sort: Desc)])
   @@map("audit_log")
+}
+
+// ============================================================
+// Inventory: insumos, sub-receitas, estoque, fornecedores
+// ============================================================
+//
+// Modelo geral:
+//   Supplier         -> fornecedor (fornece para Ingredient via IngredientPurchase)
+//   Ingredient       -> insumo (raw) OU sub-receita (sub_recipe).
+//                       custo unitario em Decimal(18,8) — precisao critica
+//                       (1g de carne = R$ 0,045 nao cabe em cents)
+//   IngredientPurchase -> compra que aumenta estoque + atualiza custo medio
+//   StockMovement    -> entrada/saida/ajuste; UNIQUE(refType, refId, ingredientId)
+//                       garante idempotencia das baixas por pedido
+//   RecipeComponent  -> linha de receita; polimorfica:
+//                       (menuItemId presente, parentIngredientId nulo) = receita de produto final
+//                       (menuItemId nulo, parentIngredientId presente)  = receita de sub-receita
+//                       CHECK enforca exatamente um pai (migration).
+//
+// Cascata de custo:
+//   Quando custo de um Ingredient muda, RecipeCostService recalcula
+//   recursivamente todos os MenuItem (costMode=recipe) e Ingredient
+//   (kind=sub_recipe) que dependem dele. Tudo em uma unica transacao.
+
+enum IngredientUnit {
+  gram
+  kilogram
+  milliliter
+  liter
+  unit
+
+  @@map("ingredient_unit")
+}
+
+enum IngredientKind {
+  raw
+  sub_recipe
+
+  @@map("ingredient_kind")
+}
+
+enum StockMovementReason {
+  purchase
+  sale
+  adjustment
+  waste
+  transfer_in
+  transfer_out
+  initial
+  recipe_consumption
+
+  @@map("stock_movement_reason")
+}
+
+enum CostMode {
+  manual
+  recipe
+
+  @@map("cost_mode")
+}
+
+model Supplier {
+  id             String    @id @default(uuid(7))
+  organizationId String    @map("organization_id")
+  name           String
+  document       String?
+  email          String?
+  phone          String?
+  address        Json?
+  notes          String?
+  archivedAt     DateTime? @map("archived_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ingredientPurchases IngredientPurchase[]
+
+  @@index([organizationId])
+  @@map("supplier")
+}
+
+model Ingredient {
+  id             String         @id @default(uuid(7))
+  organizationId String         @map("organization_id")
+  storeId        String         @map("store_id")
+  kind           IngredientKind @default(raw)
+  name           String
+  unit           IngredientUnit
+  /// Custo por unidade-base (gram/ml/unit). Decimal(18,8) preserva
+  /// precisao em insumos comprados em quantidade (R$0,045/g).
+  costPerUnit    Decimal        @default(0) @db.Decimal(18, 8) @map("cost_per_unit")
+  /// Para kind=sub_recipe: quantas unidades a receita produz por execucao.
+  /// Custo unitario da sub-receita = custo total dos componentes / batchYield.
+  batchYield     Decimal?       @db.Decimal(18, 8) @map("batch_yield")
+  notes          String?
+  archivedAt     DateTime?      @map("archived_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store          Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  purchases      IngredientPurchase[]
+  stockMovements StockMovement[]
+  /// Receita propria desta sub-receita (linhas RecipeComponent com parentIngredientId = este id).
+  /// Para kind=raw fica vazio.
+  recipeOf       RecipeComponent[]    @relation("recipe_of_subrecipe")
+  /// Onde este ingrediente aparece como componente (em MenuItem ou em outra sub-receita).
+  usedIn         RecipeComponent[]    @relation("used_as_component")
+
+  @@index([organizationId, storeId])
+  @@index([organizationId, kind])
+  @@map("ingredient")
+}
+
+model IngredientPurchase {
+  id             String   @id @default(uuid(7))
+  organizationId String   @map("organization_id")
+  storeId        String   @map("store_id")
+  ingredientId   String   @map("ingredient_id")
+  supplierId     String?  @map("supplier_id")
+  /// Quantidade comprada na unidade-base do Ingredient.
+  quantity       Decimal  @db.Decimal(18, 8)
+  /// Custo unitario nesta compra (pode diferir do costPerUnit "atual" do insumo).
+  unitCost       Decimal  @db.Decimal(18, 8) @map("unit_cost")
+  /// Custo total da nota (quantity * unitCost; armazenado pre-calculado pra relatorios).
+  totalCost      Decimal  @db.Decimal(18, 8) @map("total_cost")
+  invoiceNumber  String?  @map("invoice_number")
+  purchasedAt    DateTime @default(now()) @map("purchased_at")
+  notes          String?
+  createdById    String?  @map("created_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient   @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  supplier     Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdBy    User?        @relation("purchases_created", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, storeId, purchasedAt(sort: Desc)])
+  @@index([ingredientId, purchasedAt(sort: Desc)])
+  @@map("ingredient_purchase")
+}
+
+model StockMovement {
+  id             String              @id @default(uuid(7))
+  organizationId String              @map("organization_id")
+  storeId        String              @map("store_id")
+  ingredientId   String              @map("ingredient_id")
+  /// Positivo = entrada, negativo = saida. Saldo do estoque = SUM(quantity).
+  quantity       Decimal             @db.Decimal(18, 8)
+  reason         StockMovementReason
+  /// Referencia opcional: 'order'|'purchase'|'adjustment'|'recipe_consumption'.
+  /// Combinado com refId, identifica a operacao que originou o movimento.
+  refType        String?             @map("ref_type")
+  refId          String?             @map("ref_id")
+  notes          String?
+  createdById    String?             @map("created_by_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient   @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("stock_movements_created", fields: [createdById], references: [id], onDelete: SetNull)
+
+  /// Idempotencia: a baixa de um mesmo pedido (refType='order', refId=orderId)
+  /// nunca se aplica duas vezes — consumeForOrder faz pre-check disso.
+  @@unique([refType, refId, ingredientId], map: "stock_movement_ref_unique")
+  @@index([organizationId, storeId, ingredientId, createdAt(sort: Desc)])
+  @@index([ingredientId, createdAt(sort: Desc)])
+  @@map("stock_movement")
+}
+
+model RecipeComponent {
+  id                 String   @id @default(uuid(7))
+  organizationId     String   @map("organization_id")
+  /// "Pai" da linha de receita: exatamente UM destes dois preenchido (CHECK enforca).
+  menuItemId         String?  @map("menu_item_id")
+  parentIngredientId String?  @map("parent_ingredient_id")
+  /// Componente: insumo (kind=raw) ou sub-receita (kind=sub_recipe) consumido.
+  ingredientId       String   @map("ingredient_id")
+  /// Quantidade necessaria, na unidade-base do `ingredient`.
+  quantity           Decimal  @db.Decimal(18, 8)
+  sortOrder          Int      @default(0) @map("sort_order")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItem         MenuItem?    @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  parentIngredient Ingredient?  @relation("recipe_of_subrecipe", fields: [parentIngredientId], references: [id], onDelete: Cascade)
+  ingredient       Ingredient   @relation("used_as_component", fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@index([menuItemId])
+  @@index([parentIngredientId])
+  @@index([ingredientId])
+  @@map("recipe_component")
 }

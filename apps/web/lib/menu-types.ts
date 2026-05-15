@@ -10,6 +10,7 @@ export interface MenuItemSummary {
   name: string;
   description: string | null;
   costCents: number;
+  costMode: 'manual' | 'recipe';
   prepTimeMinutes: number | null;
   imageUrl: string | null;
   allergens: string[];
