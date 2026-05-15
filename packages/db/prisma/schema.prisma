@@ -645,6 +645,7 @@ model Organization {
   stockMovements          StockMovement[]
   recipeComponents        RecipeComponent[]
   comboComponents         ComboComponent[]
+  expenses                Expense[]
 
   @@map("organization")
 }
@@ -670,6 +671,7 @@ model User {
   pausesCancelled         Pause[]                  @relation("pauses_cancelled")
   purchasesCreated        IngredientPurchase[]     @relation("purchases_created")
   stockMovementsCreated   StockMovement[]          @relation("stock_movements_created")
+  expensesCreated         Expense[]                @relation("expenses_created")
 
   @@map("user")
 }
@@ -719,6 +721,7 @@ model Store {
   ingredients         Ingredient[]
   ingredientPurchases IngredientPurchase[]
   stockMovements      StockMovement[]
+  expenses            Expense[]
 
   @@index([organizationId])
   @@map("store")
@@ -1090,4 +1093,86 @@ model ComboComponent {
   @@unique([comboMenuItemId, componentMenuItemId])
   @@index([componentMenuItemId])
   @@map("combo_component")
+}
+
+// ============================================================
+// Despesas operacionais — alimentam o DRE real
+// ============================================================
+//
+// Sem despesas, o sistema só mostra receita. Com despesas + CMV (derivado
+// dos pedidos × custo do MenuItem), conseguimos calcular o lucro real
+// mensal:
+//
+//   Faturamento bruto         = SUM(order.totalCents)
+//   − Taxas das plataformas   = SUM(order.platformFeeCents + processingFeeCents + flatFeeCents)
+//   = Faturamento líquido
+//   − CMV                     = SUM(orderItem.qty × menuItem.costCents)
+//   = Margem bruta
+//   − Despesas operacionais   = SUM(expense.amountCents per period, expandindo recorrências)
+//   = Resultado operacional (lucro/prejuízo)
+//
+// O DREService gera esse cálculo dado um período (mês).
+
+enum ExpenseCategory {
+  rent              /// Aluguel
+  utilities         /// Água, luz, gás, internet
+  payroll           /// Salários + encargos
+  ingredients_misc  /// Insumos não cadastrados (compra avulsa, perecíveis)
+  marketing         /// Anúncios, panfletagem, redes sociais
+  taxes             /// Impostos (Simples, ICMS, IPTU…)
+  equipment         /// Compra/manutenção de equipamento
+  software          /// SaaS (DeliveryHub, PDV, etc.)
+  fuel              /// Combustível pra moto/entrega
+  packaging         /// Embalagem, sacolas, talheres descartáveis
+  cleaning          /// Limpeza, descartáveis sanitários
+  other             /// Catch-all
+
+  @@map("expense_category")
+}
+
+enum ExpenseRecurrence {
+  /// Pagamento único (uma compra de equipamento, um reparo, etc.)
+  one_time
+  /// Mesmo valor todo mês (aluguel, software). dueDay define o dia.
+  monthly
+  /// Mesmo valor toda semana.
+  weekly
+  /// Mesmo valor todo dia (raro — entregas de gelo, café).
+  daily
+
+  @@map("expense_recurrence")
+}
+
+model Expense {
+  id             String            @id @default(uuid(7))
+  organizationId String            @map("organization_id")
+  storeId        String            @map("store_id")
+  name           String
+  category       ExpenseCategory
+  /// Valor em centavos (BRL).
+  amountCents    Int               @map("amount_cents")
+  recurrence     ExpenseRecurrence @default(one_time)
+  /// Dia do mês (1-28) ou dia da semana (0-6) dependendo da recurrence.
+  /// Pra one_time é ignorado.
+  dueDay         Int?              @map("due_day")
+  /// Data em que a despesa ocorreu/foi paga (one_time) OU data de início
+  /// da recorrência (monthly/weekly/daily — usado pra calcular periodos).
+  occurredAt     DateTime          @default(now()) @map("occurred_at")
+  /// Quando a recorrência foi descontinuada (ex.: rescindiu o aluguel).
+  /// Despesas com endedAt < period.start não contam no DRE daquele mes.
+  endedAt        DateTime?         @map("ended_at")
+  /// Quem pagou (PIX, débito, dinheiro, transferencia).
+  paymentMethod  String?           @map("payment_method")
+  notes          String?
+  createdById    String?           @map("created_by_id")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("expenses_created", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, storeId, occurredAt(sort: Desc)])
+  @@index([organizationId, category])
+  @@map("expense")
 }

@@ -7,15 +7,21 @@ import {
   BarChart3,
   CheckCircle2,
   Clock,
+  Edit2,
   FileSpreadsheet,
+  LineChart,
   PiggyBank,
+  Plus,
   Receipt,
+  Trash2,
+  TrendingDown,
   TrendingUp,
   Wallet,
   Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 
+import { ExpenseFormDialog } from '../../../components/financial/expense-form-dialog';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Dialog } from '../../../components/ui/dialog';
@@ -23,7 +29,15 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { KpiCard } from '../../../components/ui/kpi-card';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
+import {
+  EXPENSE_CATEGORY_LABELS,
+  EXPENSE_RECURRENCE_LABELS,
+  type DreReport,
+  type Expense,
+} from '../../../lib/expense-types';
 import { formatCents } from '../../../lib/format';
+
+type FinTab = 'overview' | 'expenses' | 'dre';
 
 interface Summary {
   orderCount: number;
@@ -100,6 +114,7 @@ export default function FinancialPage() {
   const [to, setTo] = useState(todayISO());
   const [importOpen, setImportOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
+  const [tab, setTab] = useState<FinTab>('overview');
 
   const params = `storeId=${encodeURIComponent(storeId ?? '')}&from=${from}&to=${to}`;
 
@@ -197,6 +212,41 @@ export default function FinancialPage() {
         </div>
       </header>
 
+      <nav className="mb-6 flex gap-1 border-b border-surface-border-subtle">
+        {(
+          [
+            { key: 'overview', label: 'Visão geral', icon: BarChart3 },
+            { key: 'expenses', label: 'Despesas', icon: Receipt },
+            { key: 'dre', label: 'DRE do período', icon: LineChart },
+          ] as const
+        ).map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={clsx(
+                'flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors',
+                active
+                  ? 'border-brand-500 text-ink-primary'
+                  : 'border-transparent text-ink-tertiary hover:text-ink-secondary',
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      {tab === 'expenses' && storeId && <ExpensesTab storeId={storeId} />}
+      {tab === 'dre' && storeId && (
+        <DreTab storeId={storeId} from={from} to={to} />
+      )}
+
+      {tab === 'overview' && (
+        <>
       {/* KPIs */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -435,6 +485,8 @@ export default function FinancialPage() {
           </table>
         )}
       </section>
+        </>
+      )}
 
       <Dialog
         open={importOpen}
@@ -481,6 +533,332 @@ export default function FinancialPage() {
           )}
         </div>
       </Dialog>
+    </div>
+  );
+}
+
+// =====================================================================
+// Tab: Despesas
+// =====================================================================
+
+function ExpensesTab({ storeId }: { storeId: string }) {
+  const qc = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Expense | null>(null);
+
+  const { data: expenses = [], isLoading } = useQuery({
+    queryKey: ['expenses', storeId],
+    queryFn: () => api<Expense[]>(`/financial/expenses?storeId=${storeId}`),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      api(`/financial/expenses/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['expenses'] }),
+  });
+
+  const totalActive = expenses.reduce((s, e) => s + e.amountCents, 0);
+  const monthlyEstimate = expenses
+    .filter((e) => e.recurrence === 'monthly')
+    .reduce((s, e) => s + e.amountCents, 0);
+
+  return (
+    <>
+      <div className="mb-4 grid gap-3 sm:grid-cols-2">
+        <KpiCard
+          label="Total cadastrado"
+          value={formatCents(totalActive)}
+          icon={Receipt}
+          hint={`${expenses.length} ${expenses.length === 1 ? 'despesa' : 'despesas'}`}
+        />
+        <KpiCard
+          label="Mensal recorrente"
+          value={formatCents(monthlyEstimate)}
+          icon={LineChart}
+          tone="muted"
+          hint="Soma das despesas mensais"
+        />
+      </div>
+
+      <div className="mb-4 flex justify-end">
+        <Button
+          size="sm"
+          onClick={() => {
+            setEditing(null);
+            setDialogOpen(true);
+          }}
+          leftIcon={<Plus className="h-3.5 w-3.5" />}
+        >
+          Nova despesa
+        </Button>
+      </div>
+
+      <section className="surface-card overflow-hidden">
+        {isLoading ? (
+          <p className="px-5 py-6 text-sm text-ink-tertiary">Carregando…</p>
+        ) : expenses.length === 0 ? (
+          <EmptyState
+            icon={Receipt}
+            title="Nenhuma despesa cadastrada"
+            description="Cadastre aluguel, salários, energia e demais custos pra calcular o lucro real no DRE."
+          />
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-surface-base/20 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+              <tr>
+                <th className="px-5 py-2 text-left">Despesa</th>
+                <th className="px-5 py-2 text-left">Categoria</th>
+                <th className="px-5 py-2 text-left">Recorrência</th>
+                <th className="px-5 py-2 text-right">Valor</th>
+                <th className="w-20 px-5 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-border-subtle">
+              {expenses.map((e) => (
+                <tr key={e.id} className="hover:bg-surface-overlay/50">
+                  <td className="px-5 py-2.5">
+                    <p className="font-medium text-ink-primary">{e.name}</p>
+                    {e.endedAt && (
+                      <p className="text-[10px] text-ink-tertiary">
+                        Encerrada em {new Date(e.endedAt).toLocaleDateString('pt-BR')}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-5 py-2.5 text-ink-secondary">
+                    {EXPENSE_CATEGORY_LABELS[e.category]}
+                  </td>
+                  <td className="px-5 py-2.5 text-xs text-ink-tertiary">
+                    {EXPENSE_RECURRENCE_LABELS[e.recurrence]}
+                    {e.recurrence === 'monthly' && e.dueDay && ` · dia ${e.dueDay}`}
+                  </td>
+                  <td className="px-5 py-2.5 text-right tabular font-semibold text-ink-primary">
+                    {formatCents(e.amountCents)}
+                  </td>
+                  <td className="px-5 py-2.5">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        onClick={() => {
+                          setEditing(e);
+                          setDialogOpen(true);
+                        }}
+                        className="rounded-md p-1.5 text-ink-tertiary hover:bg-surface-overlay hover:text-ink-primary"
+                        aria-label="Editar"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Apagar "${e.name}"?`)) remove.mutate(e.id);
+                        }}
+                        className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
+                        aria-label="Apagar"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <ExpenseFormDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        storeId={storeId}
+        editing={editing}
+      />
+    </>
+  );
+}
+
+// =====================================================================
+// Tab: DRE (Demonstrativo de Resultado)
+// =====================================================================
+
+function DreTab({
+  storeId,
+  from,
+  to,
+}: {
+  storeId: string;
+  from: string;
+  to: string;
+}) {
+  const { data: dre, isLoading } = useQuery({
+    queryKey: ['dre', storeId, from, to],
+    queryFn: () =>
+      api<DreReport>(
+        `/financial/expenses/dre?storeId=${storeId}&from=${from}&to=${to}`,
+      ),
+  });
+
+  if (isLoading) {
+    return (
+      <p className="surface-card px-5 py-12 text-center text-sm text-ink-tertiary">
+        Calculando DRE…
+      </p>
+    );
+  }
+  if (!dre) return null;
+
+  const isProfit = dre.operatingResultCents >= 0;
+  const fmt = (cents: number) => formatCents(Math.abs(cents));
+  const sign = (cents: number) => (cents < 0 ? '−' : '');
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <section className="surface-card lg:col-span-2">
+        <header className="border-b border-surface-border-subtle px-5 py-3">
+          <h2 className="text-sm font-semibold">Demonstrativo de Resultado</h2>
+          <p className="mt-0.5 text-[11px] text-ink-tertiary">
+            Período: {new Date(dre.period.from).toLocaleDateString('pt-BR')} →{' '}
+            {new Date(dre.period.to).toLocaleDateString('pt-BR')}
+          </p>
+        </header>
+        <div className="divide-y divide-surface-border-subtle px-5">
+          <DreRow
+            label="Faturamento bruto"
+            cents={dre.grossRevenueCents}
+            hint={`${dre.ordersCount} pedidos · ticket médio ${formatCents(dre.averageTicketCents)}`}
+            emphasis
+          />
+          <DreRow
+            label="(−) Taxas das plataformas"
+            cents={-dre.platformFeesCents}
+            muted
+          />
+          <DreRow
+            label="= Faturamento líquido"
+            cents={dre.netRevenueCents}
+            emphasis
+          />
+          <DreRow label="(−) CMV (custo dos pedidos)" cents={-dre.cogsCents} muted />
+          <DreRow
+            label="= Margem bruta"
+            cents={dre.grossMarginCents}
+            emphasis
+            hint={`${(dre.grossMarginPct * 100).toFixed(1)}% da receita líquida`}
+          />
+          {dre.expenseLines.length > 0 && (
+            <div className="py-2.5">
+              <p className="mb-1 text-xs font-semibold text-ink-secondary">
+                (−) Despesas operacionais
+              </p>
+              <ul className="space-y-1">
+                {dre.expenseLines.map((l) => (
+                  <li
+                    key={l.category ?? l.label}
+                    className="flex items-baseline justify-between text-xs"
+                  >
+                    <span className="text-ink-tertiary">{l.label}</span>
+                    <span className="tabular text-ink-secondary">
+                      −{formatCents(l.cents)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-2 flex items-baseline justify-between border-t border-surface-border-subtle pt-2 text-sm">
+                <span className="font-semibold text-ink-secondary">Subtotal</span>
+                <span className="tabular font-semibold text-ink-primary">
+                  −{formatCents(dre.totalExpensesCents)}
+                </span>
+              </div>
+            </div>
+          )}
+          <div
+            className={clsx(
+              'py-3',
+              isProfit ? 'bg-success-soft/30' : 'bg-danger-soft/30',
+            )}
+          >
+            <div className="flex items-baseline justify-between">
+              <span className="text-base font-bold text-ink-primary">
+                = Resultado operacional
+              </span>
+              <div className="text-right">
+                <span
+                  className={clsx(
+                    'tabular text-2xl font-extrabold',
+                    isProfit ? 'text-success-bright' : 'text-danger-bright',
+                  )}
+                >
+                  {sign(dre.operatingResultCents)}
+                  {fmt(dre.operatingResultCents)}
+                </span>
+                <p className="text-[11px] text-ink-tertiary">
+                  Margem líquida: {(dre.netMarginPct * 100).toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside className="surface-card flex flex-col gap-3 p-5">
+        <h3 className="text-sm font-semibold">Resumo</h3>
+        <KpiCard
+          label="Receita líquida"
+          value={formatCents(dre.netRevenueCents)}
+          icon={Wallet}
+        />
+        <KpiCard
+          label="Margem bruta"
+          value={`${(dre.grossMarginPct * 100).toFixed(1)}%`}
+          icon={TrendingUp}
+          tone={dre.grossMarginPct >= 0.3 ? 'success' : 'muted'}
+          hint={formatCents(dre.grossMarginCents)}
+        />
+        <KpiCard
+          label="Resultado"
+          value={formatCents(dre.operatingResultCents)}
+          icon={isProfit ? TrendingUp : TrendingDown}
+          tone={isProfit ? 'success' : 'muted'}
+          hint={`${(dre.netMarginPct * 100).toFixed(1)}% margem líquida`}
+        />
+      </aside>
+    </div>
+  );
+}
+
+function DreRow({
+  label,
+  cents,
+  hint,
+  emphasis,
+  muted,
+}: {
+  label: string;
+  cents: number;
+  hint?: string;
+  emphasis?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between py-2.5">
+      <div>
+        <p
+          className={clsx(
+            'text-sm',
+            emphasis ? 'font-semibold text-ink-primary' : 'text-ink-secondary',
+          )}
+        >
+          {label}
+        </p>
+        {hint && <p className="text-[10px] text-ink-tertiary">{hint}</p>}
+      </div>
+      <span
+        className={clsx(
+          'tabular',
+          emphasis ? 'text-base font-bold text-ink-primary' : 'text-sm',
+          muted && !emphasis && 'text-ink-secondary',
+        )}
+      >
+        {cents < 0 ? '−' : ''}
+        {formatCents(Math.abs(cents))}
+      </span>
     </div>
   );
 }
