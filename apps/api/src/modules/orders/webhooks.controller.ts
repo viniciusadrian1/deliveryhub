@@ -75,7 +75,25 @@ export class WebhooksController {
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
     const headers = req.headers as Record<string, string>;
 
+    // ── Captura de payload bruto ──────────────────────────────────
+    // Logamos TODA requisição de webhook (headers + body) ANTES da
+    // verificação de assinatura. Isso é essencial pra implementar o
+    // adapter de uma plataforma nova: dispara um pedido de teste no
+    // sandbox da plataforma e o formato real aparece nos logs.
+    // Headers de autenticação são redatados; o resto (incluindo o
+    // header de assinatura, que QUEREMOS ver) é mantido.
+    this.logger.log(
+      {
+        platformCode,
+        headers: redactHeaders(headers),
+        bodyPreview: rawBody.toString('utf8').slice(0, 4096),
+        bodyBytes: rawBody.length,
+      },
+      'webhook_received',
+    );
+
     if (!adapter.verifyWebhookSignature(headers, rawBody)) {
+      this.logger.warn({ platformCode }, 'webhook_invalid_signature');
       throw new UnauthorizedException('invalid_signature');
     }
 
@@ -134,4 +152,20 @@ export class WebhooksController {
       return { status: 'error' };
     }
   }
+}
+
+/**
+ * Redata headers sensíveis (Authorization, cookies) mas PRESERVA os
+ * headers de assinatura de webhook — eles são justamente o que
+ * precisamos inspecionar pra implementar `verifyWebhookSignature`.
+ */
+function redactHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  const redactKeys = new Set(['authorization', 'cookie', 'proxy-authorization']);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    out[k] = redactKeys.has(k.toLowerCase()) ? '[REDACTED]' : v;
+  }
+  return out;
 }
