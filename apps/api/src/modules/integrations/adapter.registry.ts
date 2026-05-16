@@ -41,7 +41,12 @@ export class AdapterRegistry {
   }
 
   private registerIfood(env: Env): void {
-    if (env.IFOOD_CLIENT_ID && env.IFOOD_CLIENT_SECRET && env.IFOOD_WEBHOOK_SECRET) {
+    // iFood entrega pedidos por POLLING (events:polling), não por webhook —
+    // então só CLIENT_ID + CLIENT_SECRET (OAuth) são obrigatórios pro
+    // adapter real. IFOOD_WEBHOOK_SECRET é opcional: só seria usado se um
+    // webhook iFood fosse configurado; sem ele, verifyWebhookSignature
+    // apenas rejeita qualquer webhook (comportamento seguro).
+    if (env.IFOOD_CLIENT_ID && env.IFOOD_CLIENT_SECRET) {
       const httpLogger = new Logger('IFoodAdapter.http');
       this.adapters.set(
         'ifood',
@@ -50,7 +55,7 @@ export class AdapterRegistry {
             clientId: env.IFOOD_CLIENT_ID,
             clientSecret: env.IFOOD_CLIENT_SECRET,
             apiBaseUrl: env.IFOOD_API_BASE_URL,
-            webhookSecret: env.IFOOD_WEBHOOK_SECRET,
+            webhookSecret: env.IFOOD_WEBHOOK_SECRET ?? '',
           },
           {
             log: ({ method, path, status, durationMs, ok }) => {
@@ -64,7 +69,9 @@ export class AdapterRegistry {
       this.logger.log('iFood adapter registered (real)');
     } else {
       this.adapters.set('ifood', new MockAdapter('ifood'));
-      this.logger.warn('iFood adapter registered (MOCK — set IFOOD_* envs to use the real one)');
+      this.logger.warn(
+        'iFood adapter registered (MOCK — set IFOOD_CLIENT_ID + IFOOD_CLIENT_SECRET to use the real one)',
+      );
     }
   }
 

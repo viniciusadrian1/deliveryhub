@@ -138,7 +138,9 @@ services:
       - key: IFOOD_API_BASE_URL
         value: https://merchant-api.ifood.com.br
       - key: IFOOD_WEBHOOK_SECRET
-        sync: false
+        sync: false       # OPCIONAL — iFood recebe pedidos por polling;
+                          # só preencha se for configurar webhook iFood.
+                          # CLIENT_ID + CLIENT_SECRET ja bastam pro adapter real.
 
       # ----- Rappi (aguardando aprovacao Partners) -----
       - key: RAPPI_CLIENT_ID
