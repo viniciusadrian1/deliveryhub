@@ -53,7 +53,10 @@ const envSchema = z.object({
   // Keeta (Meituan Overseas) — developers.mykeeta.com
   KEETA_CLIENT_ID: z.string().optional(),
   KEETA_CLIENT_SECRET: z.string().optional(),
-  KEETA_API_BASE_URL: z.string().url().default('https://openapi.mykeeta.com'),
+  KEETA_API_BASE_URL: z
+    .string()
+    .url()
+    .default('https://open.mykeeta.com/api/open/opendelivery'),
   KEETA_WEBHOOK_SECRET: z.string().optional(),
 
   // ===== Object Storage (R2 / S3 / Supabase-storage compatible) =====

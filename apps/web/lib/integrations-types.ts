@@ -111,7 +111,7 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
     colorHex: '#FFCC00',
     enabled: false,
     availability: 'roadmap',
-    reason: 'Cadastre-se no portal Keeta (developers.mykeeta.com).',
+    reason: 'Adapter pronto — aguardando homologação (SIT) e credenciais de produção da Keeta.',
     logo: '/platforms/keeta.png',
     logoScale: 3.5,
   },

@@ -160,7 +160,9 @@ export class AdapterRegistry {
           webhookSecret: env.KEETA_WEBHOOK_SECRET,
         }),
       );
-      this.logger.log('Keeta adapter registered (real — STUB, will throw not_implemented)');
+      this.logger.log(
+        'Keeta adapter registered (real — Open Delivery: orders, events, polling)',
+      );
     } else {
       this.adapters.set('keeta', new MockAdapter('keeta'));
       this.logger.warn('Keeta adapter registered (MOCK)');

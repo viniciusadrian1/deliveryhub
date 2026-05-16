@@ -188,7 +188,7 @@ services:
       - key: KEETA_CLIENT_SECRET
         sync: false
       - key: KEETA_API_BASE_URL
-        value: https://openapi.mykeeta.com
+        value: https://open.mykeeta.com/api/open/opendelivery
       - key: KEETA_WEBHOOK_SECRET
         sync: false
 
