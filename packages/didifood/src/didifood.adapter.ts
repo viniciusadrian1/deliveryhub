@@ -33,8 +33,8 @@ import {
  *    de pedido e expira (refresh via /v1/auth/authtoken/refresh).
  *  - NÃO existe OAuth Device Flow. A loja é vinculada via página de
  *    auto-serviço: POST getUrl devolve uma URL, o lojista autoriza no
- *    portal 99Food, e `finalizeConnection` faz o diff do snapshot de
- *    lojas vinculadas pra descobrir a recém-conectada.
+ *    portal 99Food, e `finalizeConnection` lista as lojas vinculadas
+ *    pra descobrir a recém-conectada.
  *
  *  Mapeamento no `PlatformAdapter`:
  *    StoredTokens.accessToken  = auth_token
@@ -333,10 +333,8 @@ interface RawShopList {
   shops?: RawShopListItem[];
 }
 
-/** Conteúdo do `pendingHandle` do 99Food (snapshot pré-bind). */
+/** Conteúdo do `pendingHandle` do 99Food. */
 interface DidifoodPendingHandle {
-  /** app_shop_id já vinculados ANTES de iniciar a conexão. */
-  knownShopIds: string[];
   startedAt: number;
 }
 
@@ -867,57 +865,58 @@ export class DidifoodAdapter implements PlatformAdapter {
   /**
    * Inicia a conexão de uma loja 99Food via bind self-service.
    *
-   * Fluxo (≠ OAuth Device do iFood):
-   *  1. Snapshot das lojas já vinculadas ao app.
-   *  2. POST /v1/auth/authorizationpage/getUrl → URL de autorização.
-   *  3. O lojista abre a URL, loga no 99Food e clica "Authorize" na loja.
-   *  4. `finalizeConnection` faz o diff e descobre a loja recém-vinculada.
+   * `POST /v1/auth/authorizationpage/getUrl` devolve a URL de autorização;
+   * o lojista abre, loga no 99Food e clica "Authorize" na loja. Quem
+   * descobre a loja recém-vinculada é o `finalizeConnection`.
    *
-   * 99Food não tem "user code" — a URL já é personalizada. Devolvemos
-   * `userCode` vazio e a mesma URL nos dois campos. A URL vale 7 dias.
+   * ⚠️ NÃO chamamos `/v1/shop/shop/list` aqui — esse endpoint é limitado a
+   * 1 req/20s (errno 10005). Chamá-lo no start E no finalize estourava o
+   * limite. Só o finalize lista as lojas, uma única vez.
+   *
+   * 99Food não tem "user code" — devolvemos `userCode` vazio e a mesma URL
+   * nos dois campos. A URL vale 7 dias.
    */
   async startConnection(): Promise<StartConnectionResult> {
-    const known = await this.listBoundShops();
-
     const data = await this.post<{ url?: string }>('/v1/auth/authorizationpage/getUrl', {
       app_id: this.config.clientId,
     });
     if (!data?.url) {
       throw new AdapterApiError('99food_authorization_url_missing', 502, data);
     }
-
-    const handle: DidifoodPendingHandle = {
-      knownShopIds: known,
-      startedAt: Date.now(),
-    };
     return {
       userCode: '',
       verificationUrl: data.url,
       verificationUrlComplete: data.url,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      pendingHandle: encodeHandle(handle),
+      pendingHandle: encodeHandle({ startedAt: Date.now() }),
     };
   }
 
   /**
    * Verifica se o lojista já concluiu o bind na página de autorização.
    *
-   * Diff entre as lojas vinculadas AGORA e o snapshot do `startConnection`:
-   * a loja que apareceu é a recém-conectada. Sem loja nova →
-   * `ConnectionPendingError` (o lojista ainda não autorizou).
+   * Lista as lojas vinculadas (1 única chamada a `/v1/shop/shop/list`) e
+   * pega a primeira — suficiente p/ lojista de loja única; multi-loja, ele
+   * conecta as demais depois. Sem loja vinculada → `ConnectionPendingError`
+   * (ainda não autorizou). Se o `/shop/list` estourar o rate limit (errno
+   * 10005, 1 req/20s), também devolvemos pending — é só tentar de novo.
    */
   async finalizeConnection(pendingHandle: string): Promise<FinalizeConnectionResult> {
-    const { knownShopIds } = decodeHandle(pendingHandle);
-    const known = new Set(knownShopIds);
+    decodeHandle(pendingHandle); // valida o handle (corrompido → erro claro)
 
-    const current = await this.listBoundShops();
-    const fresh = current.filter((id) => !known.has(id));
+    let shops: string[];
+    try {
+      shops = await this.listBoundShops();
+    } catch (err) {
+      if (errnoOf(err) === 10005) {
+        // Rate limit do /shop/list — não é falha, é "tente de novo em ~20s".
+        throw new ConnectionPendingError();
+      }
+      throw err;
+    }
+    if (shops.length === 0) throw new ConnectionPendingError();
 
-    if (fresh.length === 0) throw new ConnectionPendingError();
-
-    // Conexão é 1:1 loja↔plataforma. Se o lojista vinculou mais de uma na
-    // mesma janela, pegamos a primeira — as demais ele conecta depois.
-    const appShopId = fresh[0]!;
+    const appShopId = shops[0]!;
     const tokens = await this.getAuthtoken(appShopId);
     return { tokens, externalMerchantId: appShopId };
   }
@@ -972,32 +971,29 @@ export class DidifoodAdapter implements PlatformAdapter {
   }
 
   /**
-   * Busca paginada de lojas num endpoint assinado. Body:
+   * Lista (1 página) de lojas num endpoint assinado. Body:
    * `{ app_id, timestamp, sign, page_no, page_size }` — `sign` é MD5 dos
    * params ordenados + app_secret.
    *
-   * Só lemos campos seguros (app_shop_id, shop_name, bound_flag); o
-   * `shop_id` (long 64-bit) da resposta é ignorado de propósito.
+   * Uma página só (page_size 100): o `/v1/shop/shop/list` é limitado a
+   * 1 req/20s, então paginar é inviável — 100 lojas cobrem o fluxo de
+   * conexão com folga. Só lemos campos seguros (app_shop_id, bound_flag);
+   * o `shop_id` long 64-bit da resposta é ignorado de propósito.
    */
   private async fetchShopList(endpoint: string): Promise<string[]> {
+    const signed = {
+      app_id: this.config.clientId,
+      timestamp: Math.floor(Date.now() / 1000),
+      page_no: 1,
+      page_size: 100,
+    };
+    const data = await this.post<RawShopList>(endpoint, {
+      ...signed,
+      sign: signParams(signed, this.config.clientSecret),
+    });
     const out: string[] = [];
-
-    for (let pageNo = 1; pageNo <= 20; pageNo++) {
-      const signed = {
-        app_id: this.config.clientId,
-        timestamp: Math.floor(Date.now() / 1000),
-        page_no: pageNo,
-        page_size: 50,
-      };
-      const data = await this.post<RawShopList>(endpoint, {
-        ...signed,
-        sign: signParams(signed, this.config.clientSecret),
-      });
-
-      for (const s of data?.shops ?? []) {
-        if (s.bound_flag === 1 && s.app_shop_id) out.push(s.app_shop_id);
-      }
-      if (pageNo >= (data?.total_page ?? 1)) break;
+    for (const s of data?.shops ?? []) {
+      if (s.bound_flag === 1 && s.app_shop_id) out.push(s.app_shop_id);
     }
     return out;
   }
@@ -1489,12 +1485,7 @@ function decodeHandle(handle: string): DidifoodPendingHandle {
     const o = JSON.parse(
       Buffer.from(handle, 'base64url').toString('utf8'),
     ) as Partial<DidifoodPendingHandle>;
-    return {
-      knownShopIds: Array.isArray(o.knownShopIds)
-        ? o.knownShopIds.filter((x): x is string => typeof x === 'string')
-        : [],
-      startedAt: typeof o.startedAt === 'number' ? o.startedAt : 0,
-    };
+    return { startedAt: typeof o.startedAt === 'number' ? o.startedAt : 0 };
   } catch {
     throw new AdapterApiError('99food_invalid_pending_handle', 400);
   }
