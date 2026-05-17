@@ -953,19 +953,26 @@ export class DidifoodAdapter implements PlatformAdapter {
   }
 
   /**
-   * Lista as lojas vinculadas ao app (bound_flag = 1).
+   * Lista os `app_shop_id` das lojas vinculadas ao app.
    *
-   * Usa `/v1/shop/shop/list` (List Bind Stores). Se o app não tiver
-   * permissão nesse endpoint (errno 10006), cai pro v3 getAuthorizedShops
-   * (List Authorized Stores) — mesma assinatura e mesmo shape de resposta.
+   * Tenta `/v1/shop/shop/list` (List Bind Stores); se vier VAZIO ou sem
+   * permissão (errno 10006), tenta `/v3/.../getAuthorizedShops` (List
+   * Authorized Stores) — uma loja recém-autorizada por self-service pode
+   * aparecer só num dos dois endpoints.
    */
   private async listBoundShops(): Promise<string[]> {
+    const fromList = await this.tryShopList('/v1/shop/shop/list');
+    if (fromList.length > 0) return fromList;
+    const fromAuth = await this.tryShopList('/v3/auth/authorization/getAuthorizedShops');
+    return fromAuth.length > 0 ? fromAuth : fromList;
+  }
+
+  /** `fetchShopList` tolerante a permissão: errno 10006 → []; demais sobem. */
+  private async tryShopList(endpoint: string): Promise<string[]> {
     try {
-      return await this.fetchShopList('/v1/shop/shop/list');
+      return await this.fetchShopList(endpoint);
     } catch (err) {
-      if (errnoOf(err) === 10006) {
-        return this.fetchShopList('/v3/auth/authorization/getAuthorizedShops');
-      }
+      if (errnoOf(err) === 10006) return [];
       throw err;
     }
   }
@@ -993,7 +1000,10 @@ export class DidifoodAdapter implements PlatformAdapter {
     });
     const out: string[] = [];
     for (const s of data?.shops ?? []) {
-      if (s.bound_flag === 1 && s.app_shop_id) out.push(s.app_shop_id);
+      // O `app_shop_id` só vem quando a loja está vinculada — sua presença
+      // já basta. NÃO exigimos `bound_flag === 1`: ele pode demorar a
+      // refletir o bind self-service e excluía a loja recém-conectada.
+      if (s.app_shop_id) out.push(s.app_shop_id);
     }
     return out;
   }

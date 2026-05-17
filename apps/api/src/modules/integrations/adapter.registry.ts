@@ -131,14 +131,24 @@ export class AdapterRegistry {
 
   private registerDidifood(env: Env): void {
     if (env.DIDIFOOD_CLIENT_ID && env.DIDIFOOD_CLIENT_SECRET && env.DIDIFOOD_WEBHOOK_SECRET) {
+      const didifoodHttp = new Logger('DidifoodAdapter.http');
       this.adapters.set(
         '99food',
-        new DidifoodAdapter({
-          clientId: env.DIDIFOOD_CLIENT_ID,
-          clientSecret: env.DIDIFOOD_CLIENT_SECRET,
-          apiBaseUrl: env.DIDIFOOD_API_BASE_URL,
-          webhookSecret: env.DIDIFOOD_WEBHOOK_SECRET,
-        }),
+        new DidifoodAdapter(
+          {
+            clientId: env.DIDIFOOD_CLIENT_ID,
+            clientSecret: env.DIDIFOOD_CLIENT_SECRET,
+            apiBaseUrl: env.DIDIFOOD_API_BASE_URL,
+            webhookSecret: env.DIDIFOOD_WEBHOOK_SECRET,
+          },
+          {
+            log: ({ method, path, status, durationMs, ok, errno }) => {
+              const msg = `${method} ${path} -> ${status} errno=${errno ?? '-'} (${durationMs}ms)`;
+              if (ok) didifoodHttp.log(msg);
+              else didifoodHttp.warn(msg);
+            },
+          },
+        ),
       );
       this.logger.log(
         '99Food adapter registered (real — Authorization + Order + Store + Menu API)',
