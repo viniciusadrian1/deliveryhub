@@ -44,6 +44,25 @@ interface Pause {
   createdAt: string;
 }
 
+interface StatusValidation {
+  id: string;
+  state?: string;
+  message?: string;
+}
+interface MerchantStatus {
+  operation?: string;
+  available: boolean;
+  state?: string;
+  validations: StatusValidation[];
+  message?: string;
+}
+interface StoreStatusEntry {
+  platform: string;
+  supported: boolean;
+  error?: string;
+  statuses: MerchantStatus[];
+}
+
 const REASON_LABEL: Record<string, string> = {
   kitchen_overloaded: 'Cozinha sobrecarregada',
   end_of_shift: 'Fim de expediente',
@@ -91,6 +110,20 @@ export default function PausePage() {
     queryKey: ['integrations'],
     queryFn: () => api<PlatformConnection[]>('/integrations/connections'),
     enabled: !!storeId,
+  });
+
+  const {
+    data: storeStatus = [],
+    isFetching: statusLoading,
+    refetch: refetchStatus,
+  } = useQuery({
+    queryKey: ['pauses', 'store-status', storeId],
+    queryFn: () =>
+      api<StoreStatusEntry[]>(
+        `/pauses/store-status?storeId=${encodeURIComponent(storeId ?? '')}`,
+      ),
+    enabled: !!storeId,
+    refetchInterval: 60_000,
   });
 
   const create = useMutation({
@@ -211,6 +244,84 @@ export default function PausePage() {
             Pausar loja
           </Button>
         </div>
+      </section>
+
+      {/* Status da loja por plataforma (GET /merchants/{id}/status) */}
+      <section className="surface-card overflow-hidden">
+        <header className="flex items-center justify-between gap-2 border-b border-surface-border-subtle px-5 py-3">
+          <div className="flex items-center gap-2">
+            <Store className="h-4 w-4 text-ink-tertiary" />
+            <h2 className="text-sm font-semibold text-ink-primary">Status da loja</h2>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void refetchStatus()}
+            loading={statusLoading}
+            leftIcon={<RotateCcw className="h-3 w-3" />}
+          >
+            Atualizar
+          </Button>
+        </header>
+        {storeStatus.length === 0 ? (
+          <p className="px-5 py-6 text-center text-sm text-ink-tertiary">
+            Nenhuma plataforma conectada.
+          </p>
+        ) : (
+          <ul className="divide-y divide-surface-border-subtle">
+            {storeStatus.map((entry) => {
+              const meta = PLATFORM_META[entry.platform];
+              const op = entry.statuses[0];
+              const available = op?.available ?? false;
+              return (
+                <li key={entry.platform} className="px-5 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-medium text-ink-primary">
+                      {meta?.name ?? entry.platform}
+                    </span>
+                    {!entry.supported ? (
+                      <Badge variant="neutral">Sem status</Badge>
+                    ) : entry.error ? (
+                      <Badge variant="danger">Erro</Badge>
+                    ) : available ? (
+                      <Badge variant="success" dot>
+                        Online
+                      </Badge>
+                    ) : (
+                      <Badge variant="warning" dot>
+                        Indisponível
+                      </Badge>
+                    )}
+                  </div>
+                  {op?.message && (
+                    <p className="mt-1 text-xs text-ink-secondary">{op.message}</p>
+                  )}
+                  {op?.validations && op.validations.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {op.validations.map((v) => (
+                        <li
+                          key={v.id}
+                          className="flex items-center gap-1.5 text-xs text-ink-tertiary"
+                        >
+                          <CircleDot
+                            className={clsx(
+                              'h-3 w-3 shrink-0',
+                              v.state === 'OK' ? 'text-success-bright' : 'text-warning-bright',
+                            )}
+                          />
+                          {v.message ?? v.id}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {entry.error && (
+                    <p className="mt-1 text-xs text-danger-bright">{entry.error}</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
 
       {/* Pausas ativas */}

@@ -23,6 +23,8 @@ interface SessionContext {
 
 interface ResolvedConnection {
   connectionId: string;
+  // Platform.id — usado para casar MenuItemPlatformConfig.platformId (FK p/ Platform), não connectionId.
+  platformId: string;
   platformCode: PlatformCode;
   externalMerchantId: string;
   adapter: PlatformAdapter;
@@ -77,6 +79,44 @@ export class PausesService {
         menuItem: { select: { id: true, name: true } },
       },
     });
+  }
+
+  /**
+   * Status de operacao da loja em cada plataforma conectada (iFood:
+   * GET /merchants/{id}/status). Mostra disponibilidade + validacoes (polling,
+   * horario). Cenario exigido na homologacao Merchant.
+   */
+  async getStoreStatus(auth: AuthContext, storeId: string) {
+    await this.assertStore(auth.orgId, storeId);
+    const connections = await this.resolveTargetConnections(auth.orgId, storeId);
+    const out: Array<{
+      platform: PlatformCode;
+      supported: boolean;
+      error?: string;
+      statuses: unknown[];
+    }> = [];
+    for (const conn of connections) {
+      if (!conn.adapter.fetchMerchantStatus) {
+        out.push({ platform: conn.platformCode, supported: false, statuses: [] });
+        continue;
+      }
+      try {
+        const statuses = await conn.adapter.fetchMerchantStatus(
+          conn.tokens,
+          conn.externalMerchantId,
+        );
+        out.push({ platform: conn.platformCode, supported: true, statuses });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unknown';
+        out.push({
+          platform: conn.platformCode,
+          supported: true,
+          error: message.slice(0, 200),
+          statuses: [],
+        });
+      }
+    }
+    return out;
   }
 
   // ========= Escrita =========
@@ -285,7 +325,7 @@ export class PausesService {
     orgId: string,
     storeId: string,
     platformCodes?: PlatformCode[],
-  ): Promise<Array<ResolvedConnection & { platformId: string }>> {
+  ): Promise<ResolvedConnection[]> {
     const where: Record<string, unknown> = {
       organizationId: orgId,
       storeId,
@@ -304,7 +344,7 @@ export class PausesService {
       throw new BadRequestException('no_active_connections');
     }
 
-    const resolved: Array<ResolvedConnection & { platformId: string }> = [];
+    const resolved: ResolvedConnection[] = [];
     for (const c of connections) {
       const tokens = await this.integrations.getTokens(c.id);
       if (!tokens) continue;
@@ -344,6 +384,7 @@ export class PausesService {
       if (!tokens) continue;
       resolved.push({
         connectionId: c.id,
+        platformId: c.platformId,
         platformCode: c.platform.code as PlatformCode,
         externalMerchantId: c.externalMerchantId,
         adapter: this.registry.get(c.platform.code as PlatformCode),
@@ -390,12 +431,10 @@ export class PausesService {
           );
         } else if (pause.scope === 'category' && pause.category) {
           for (const item of pause.category.menuItems) {
-            const cfg = item.platformConfigs.find((c) => c.platformId === conn.connectionId);
-            // Procura externalId da config dessa plataforma.
-            const externalId = item.platformConfigs.find(
-              (c) => c.externalId && c.platformId === conn.connectionId,
+            // Casa a config pelo Platform.id da conexão (não pelo connectionId) e exige externalId.
+            const ext = item.platformConfigs.find(
+              (c) => c.platformId === conn.platformId && c.externalId,
             )?.externalId;
-            const ext = cfg?.externalId ?? externalId;
             if (!ext) continue;
             await conn.adapter.pushItemAvailability(
               conn.tokens,
@@ -405,8 +444,9 @@ export class PausesService {
             );
           }
         } else if (pause.scope === 'item' && pause.menuItem) {
+          // Envia só o externalId da plataforma desta conexão — nunca o de outra plataforma.
           const ext = pause.menuItem.platformConfigs.find(
-            (c) => c.externalId,
+            (c) => c.platformId === conn.platformId && c.externalId,
           )?.externalId;
           if (!ext) continue;
           await conn.adapter.pushItemAvailability(

@@ -39,6 +39,12 @@ export class PausesController {
     return this.pauses.listActive(auth, storeId);
   }
 
+  /** Status de operacao da loja por plataforma (homologacao Merchant). */
+  @Get('store-status')
+  storeStatus(@CurrentUser() auth: AuthContext, @Query('storeId') storeId: string) {
+    return this.pauses.getStoreStatus(auth, storeId);
+  }
+
   @Post()
   @Roles('owner', 'manager')
   @HttpCode(201)
