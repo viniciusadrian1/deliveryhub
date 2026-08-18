@@ -5,7 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { ConnectionPendingError, type StoredTokens } from '@deliveryhub/ifood';
+import { AdapterApiError, ConnectionPendingError, type StoredTokens } from '@deliveryhub/ifood';
+import { KeetaAdapter } from '@deliveryhub/keeta';
 import type { PlatformCode } from '@deliveryhub/shared';
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
@@ -145,6 +146,7 @@ export class IntegrationsService {
   async finalizeConnection(
     auth: AuthContext,
     connectionId: string,
+    authorizationCode?: string,
     session: SessionContext = {},
   ): Promise<{ status: string; externalMerchantId: string | null }> {
     const conn = await this.prisma.platformConnection.findFirst({
@@ -164,7 +166,7 @@ export class IntegrationsService {
     const adapter = this.registry.get(conn.platform.code as PlatformCode);
 
     try {
-      const result = await adapter.finalizeConnection(pending.pendingHandle);
+      const result = await adapter.finalizeConnection(pending.pendingHandle, authorizationCode);
 
       await this.vault.write(
         `${ACTIVE_VAULT_PREFIX}:${conn.id}`,
@@ -202,10 +204,22 @@ export class IntegrationsService {
 
       return { status: updated.status, externalMerchantId: updated.externalMerchantId };
     } catch (err) {
+      // ---- Erros RECUPERÁVEIS pelo usuário: 400 com mensagem clara, SEM
+      // marcar a conexão como erro nem notificar managers (não é falha de
+      // sistema, é o usuário refazer/completar a autorização). ----
       if (err instanceof ConnectionPendingError) {
-        // Usuário ainda não autorizou — não marcamos como erro, só retornamos status pending.
         throw new BadRequestException('connection_still_pending');
       }
+      if (err instanceof AdapterApiError && err.message.includes('authorization_code_required')) {
+        throw new BadRequestException('authorization_code_required');
+      }
+      // 400/401 do /oauth/token = código inválido/expirado ou ainda não
+      // autorizado. Recuperável: usuário confere o código e tenta de novo.
+      if (err instanceof AdapterApiError && (err.status === 400 || err.status === 401)) {
+        throw new BadRequestException('authorization_invalid_or_expired');
+      }
+
+      // ---- Erro inesperado (rede, 5xx da plataforma): aí sim marca e notifica. ----
       const message = err instanceof Error ? err.message : 'unknown_error';
       await this.prisma.platformConnection.update({
         where: { id: conn.id },
@@ -216,8 +230,6 @@ export class IntegrationsService {
         },
       });
       this.logger.error({ err, connectionId: conn.id }, 'finalize_failed');
-
-      // Notifica owners + managers da org sobre a falha.
       await this.notifyOrgManagers(auth.orgId, {
         kind: 'integration_error',
         title: `Falha ao conectar ${conn.platform.name}`,
@@ -225,7 +237,8 @@ export class IntegrationsService {
         linkUrl: '/integrations',
       });
 
-      throw err;
+      // Nunca re-lança o erro cru (vira 500) — devolve BadGateway com mensagem.
+      throw new BadRequestException(message.slice(0, 200));
     }
   }
 
@@ -293,6 +306,95 @@ export class IntegrationsService {
       body: `A integração foi revogada. Você não receberá pedidos por este canal até reconectar.`,
       linkUrl: '/integrations',
     });
+  }
+
+  /**
+   * Webhook 1301 do Keeta: uma loja autorizou o app. Pega o token de app,
+   * lista as lojas autorizadas (GET merchantInfo) e ATIVA a conexão Keeta.
+   *
+   * Correlação: o webhook é a nível de APP (não traz nossa org). Se já existe
+   * conexão com esse merchantId, atualiza; senão anexa à conexão Keeta PENDENTE
+   * mais recente. Suficiente pra 1 loja por vez; multi-tenant concorrente exige
+   * propagar um `state` na URL de autorização (Keeta teria que ecoá-lo) — follow-up.
+   */
+  async handleKeetaAuthorization(authId: string): Promise<void> {
+    let adapter;
+    try {
+      adapter = this.registry.get('keeta');
+    } catch {
+      this.logger.warn('keeta_not_registered');
+      return;
+    }
+    if (!(adapter instanceof KeetaAdapter)) {
+      this.logger.warn('keeta_authorization_no_real_adapter');
+      return;
+    }
+    const platform = await this.prisma.platform.findUnique({ where: { code: 'keeta' } });
+    if (!platform) return;
+
+    const tokens = await adapter.refreshAuth(''); // token app-level (client_credentials)
+    const merchants = await adapter.fetchAuthorizedMerchants(tokens, authId);
+    if (merchants.length === 0) {
+      this.logger.warn({ authId }, 'keeta_authorization_no_merchants');
+      return;
+    }
+
+    for (const m of merchants) {
+      const existing = await this.prisma.platformConnection.findFirst({
+        where: { platformId: platform.id, externalMerchantId: m.merchantId },
+      });
+      const target =
+        existing ??
+        (await this.prisma.platformConnection.findFirst({
+          where: { platformId: platform.id, status: 'pending' },
+          orderBy: { createdAt: 'desc' },
+        }));
+      if (!target) {
+        this.logger.warn({ merchantId: m.merchantId }, 'keeta_authorization_no_pending_connection');
+        continue;
+      }
+
+      await this.vault.write(
+        `${ACTIVE_VAULT_PREFIX}:${target.id}`,
+        {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          expiresAt: tokens.expiresAt.toISOString(),
+        },
+        { kind: 'platform_tokens', platform: 'keeta' },
+      );
+      await this.prisma.platformConnection.update({
+        where: { id: target.id },
+        data: {
+          status: 'active',
+          vaultRef: `${ACTIVE_VAULT_PREFIX}:${target.id}`,
+          externalMerchantId: m.merchantId,
+          lastSyncAt: new Date(),
+          lastErrorAt: null,
+          lastErrorMessage: null,
+        },
+      });
+      this.logger.log(
+        { merchantId: m.merchantId, connectionId: target.id },
+        'keeta_connection_activated',
+      );
+    }
+  }
+
+  /** Webhook 1302 do Keeta: loja revogou a autorização → marca `revoked`. */
+  async handleKeetaDeauthorization(merchantId?: string): Promise<void> {
+    if (!merchantId) return;
+    const platform = await this.prisma.platform.findUnique({ where: { code: 'keeta' } });
+    if (!platform) return;
+    const res = await this.prisma.platformConnection.updateMany({
+      where: { platformId: platform.id, externalMerchantId: merchantId, status: 'active' },
+      data: {
+        status: 'revoked',
+        lastErrorAt: new Date(),
+        lastErrorMessage: 'Desautorizado na Keeta',
+      },
+    });
+    this.logger.log({ merchantId, count: res.count }, 'keeta_connection_revoked');
   }
 
   /**

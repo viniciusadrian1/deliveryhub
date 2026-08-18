@@ -13,11 +13,13 @@ import {
   type DidifoodActionRequest,
   type DidifoodDeliveryStatus,
 } from '@deliveryhub/didifood';
+import { KeetaAdapter } from '@deliveryhub/keeta';
 import type { PlatformCode } from '@deliveryhub/shared';
 
 import { Public } from '../../common/auth/public.decorator.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AdapterRegistry } from '../integrations/adapter.registry.js';
+import { IntegrationsService } from '../integrations/integrations.service.js';
 import { OrdersService } from './orders.service.js';
 import { PlatformActionRequestsService } from './platform-action-requests.service.js';
 
@@ -30,6 +32,7 @@ export class WebhooksController {
     private readonly registry: AdapterRegistry,
     private readonly orders: OrdersService,
     private readonly actionRequests: PlatformActionRequestsService,
+    private readonly integrations: IntegrationsService,
   ) {}
 
   @Public()
@@ -72,6 +75,26 @@ export class WebhooksController {
   @HttpCode(200)
   async keetaWebhook(@Req() req: Request & { rawBody?: Buffer }): Promise<{ status: string }> {
     return this.handle('keeta', req);
+  }
+
+  /** Keeta 1301 — nova autorização de loja (webhook /webhook/authorization). */
+  @Public()
+  @Post('keeta/authorization')
+  @HttpCode(200)
+  async keetaAuthorization(
+    @Req() req: Request & { rawBody?: Buffer },
+  ): Promise<{ status: string }> {
+    return this.handleKeetaAuth('authorization', req);
+  }
+
+  /** Keeta 1302 — desautorização de loja. */
+  @Public()
+  @Post('keeta/deauthorization')
+  @HttpCode(200)
+  async keetaDeauthorization(
+    @Req() req: Request & { rawBody?: Buffer },
+  ): Promise<{ status: string }> {
+    return this.handleKeetaAuth('deauthorization', req);
   }
 
   private async handle(
@@ -198,6 +221,58 @@ export class WebhooksController {
         where: { platformId_externalId: { platformId: platform.id, externalId: envelope.eventId } },
         data: { error: message.slice(0, 500) },
       });
+      return { status: 'error' };
+    }
+  }
+
+  /**
+   * Webhooks de autorização/desautorização do Keeta (1301/1302). Loga o corpo
+   * cru ANTES de tudo (pra capturar o formato real), verifica a assinatura e
+   * delega pro IntegrationsService ativar/revogar a conexão.
+   */
+  private async handleKeetaAuth(
+    kind: 'authorization' | 'deauthorization',
+    req: Request & { rawBody?: Buffer },
+  ): Promise<{ status: string }> {
+    let adapter;
+    try {
+      adapter = this.registry.get('keeta');
+    } catch {
+      return { status: 'ignored' };
+    }
+    const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    const headers = req.headers as Record<string, string>;
+
+    this.logger.log(
+      {
+        platformCode: 'keeta',
+        kind,
+        headers: redactHeaders(headers),
+        bodyPreview: rawBody.toString('utf8').slice(0, 4096),
+        bodyBytes: rawBody.length,
+      },
+      'keeta_auth_webhook_received',
+    );
+
+    if (!adapter.verifyWebhookSignature(headers, rawBody)) {
+      this.logger.warn({ kind }, 'keeta_auth_invalid_signature');
+      throw new UnauthorizedException('invalid_signature');
+    }
+    if (!(adapter instanceof KeetaAdapter)) return { status: 'ignored' };
+
+    try {
+      if (kind === 'authorization') {
+        const parsed = adapter.parseAuthorization(req.body, rawBody);
+        if (!parsed) return { status: 'ignored' };
+        await this.integrations.handleKeetaAuthorization(parsed.authId);
+      } else {
+        const parsed = adapter.parseDeauthorization(req.body, rawBody);
+        if (!parsed) return { status: 'ignored' };
+        await this.integrations.handleKeetaDeauthorization(parsed.merchantId);
+      }
+      return { status: 'processed' };
+    } catch (err) {
+      this.logger.error({ err, kind }, 'keeta_auth_processing_failed');
       return { status: 'error' };
     }
   }

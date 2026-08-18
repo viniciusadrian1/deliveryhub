@@ -64,6 +64,12 @@ export interface KeetaRequestLogger {
   (info: { method: string; path: string; status: number; durationMs: number; ok: boolean }): void;
 }
 
+/** Loja autorizada devolvida por GET /oauth/authorized/{authId}/merchantInfo. */
+export interface KeetaAuthorizedMerchant {
+  merchantId: string;
+  name?: string;
+}
+
 const UNSUPPORTED = 'keeta_endpoint_unsupported';
 
 /** Eventos do Open Delivery da Keeta. */
@@ -148,6 +154,31 @@ function toCents(p: RawPrice | undefined): number {
   return Math.round((p?.value ?? 0) * 100);
 }
 
+/** Normaliza o corpo do webhook de autorização (Keeta às vezes aninha em body/data). */
+function asAuthBody(payload: unknown, rawBody?: Buffer): Record<string, unknown> {
+  let obj = payload;
+  if ((!obj || typeof obj !== 'object') && rawBody) {
+    try {
+      obj = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      obj = {};
+    }
+  }
+  const o = (obj ?? {}) as Record<string, unknown>;
+  const nested = (o.body ?? o.data) as Record<string, unknown> | undefined;
+  return nested && typeof nested === 'object' ? { ...o, ...nested } : o;
+}
+
+/** Primeiro valor string/number não-vazio entre as chaves candidatas. */
+function firstString(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.length > 0) return v;
+    if (typeof v === 'number') return String(v);
+  }
+  return undefined;
+}
+
 export class KeetaAdapter implements PlatformAdapter {
   readonly code = 'keeta' as const;
   private readonly log?: KeetaRequestLogger;
@@ -207,6 +238,59 @@ export class KeetaAdapter implements PlatformAdapter {
     throw new AdapterApiError('keeta_connection_needs_authorization_webhook', 501, {
       hint: 'Conclua a autorização do merchant: webhook /webhook/authorization + GET /oauth/authorized/{authId}/merchantInfo.',
     });
+  }
+
+  /**
+   * Webhook 1301 (nova autorização de loja) → extrai o `authId`.
+   * `null` = payload não é de autorização (ignora).
+   * NOTA: nomes de campo confirmados contra o payload real dos logs — ver
+   * `webhook_received` no WebhooksController (loga o corpo cru).
+   */
+  parseAuthorization(payload: unknown, rawBody?: Buffer): { authId: string } | null {
+    const body = asAuthBody(payload, rawBody);
+    const authId = firstString(body, ['authId', 'authorizationId', 'authorizeId']);
+    return authId ? { authId } : null;
+  }
+
+  /** Webhook 1302 (desautorização) → extrai o id da loja (ou o authId). */
+  parseDeauthorization(
+    payload: unknown,
+    rawBody?: Buffer,
+  ): { merchantId?: string; authId?: string } | null {
+    const body = asAuthBody(payload, rawBody);
+    const merchantId = firstString(body, ['merchantId', 'storeId', 'brandId', 'shopId', 'id']);
+    const authId = firstString(body, ['authId', 'authorizationId']);
+    if (!merchantId && !authId) return null;
+    return { merchantId, authId };
+  }
+
+  /**
+   * GET /oauth/authorized/{authId}/merchantInfo — lista as lojas que o
+   * merchant autorizou nesta autorização. Chamada após o webhook 1301.
+   */
+  async fetchAuthorizedMerchants(
+    tokens: StoredTokens,
+    authId: string,
+  ): Promise<KeetaAuthorizedMerchant[]> {
+    interface RawMerchant {
+      id?: string;
+      merchantId?: string;
+      storeId?: string;
+      name?: string;
+      storeName?: string;
+    }
+    const data = await this.request<
+      RawMerchant[] | { merchants?: RawMerchant[]; stores?: RawMerchant[] }
+    >('GET', `/oauth/authorized/${encodeURIComponent(authId)}/merchantInfo`, {
+      token: tokens.accessToken,
+    });
+    const list = Array.isArray(data) ? data : (data?.merchants ?? data?.stores ?? []);
+    const out: KeetaAuthorizedMerchant[] = [];
+    for (const m of list) {
+      const merchantId = m.merchantId ?? m.storeId ?? m.id;
+      if (merchantId) out.push({ merchantId, name: m.name ?? m.storeName });
+    }
+    return out;
   }
 
   /**
