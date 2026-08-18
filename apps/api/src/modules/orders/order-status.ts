@@ -19,6 +19,17 @@ const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 
 export const TERMINAL_STATUSES: ReadonlySet<OrderStatus> = new Set(['delivered', 'cancelled']);
 
+/** Ordem linear do fluxo do pedido. `cancelled` empata com `delivered` (ambos finais). */
+const RANK: Record<OrderStatus, number> = {
+  placed: 0,
+  accepted: 1,
+  preparing: 2,
+  ready: 3,
+  dispatched: 4,
+  delivered: 5,
+  cancelled: 5,
+};
+
 export class InvalidTransitionError extends Error {
   constructor(
     public readonly from: OrderStatus,
@@ -52,7 +63,15 @@ export function transition(from: OrderStatus, to: OrderStatus): OrderStatus {
  */
 export function reconcileFromPlatform(from: OrderStatus, to: OrderStatus): OrderStatus {
   if (from === to) return from;
+  // A plataforma e autoritativa sobre a conclusao: um 'delivered' vindo dela sobrepoe
+  // um cancelamento LOCAL que a plataforma nao honrou (ex.: cancelar apos o despacho no
+  // iFood -> requestCancellation negado -> o pedido conclui do lado da plataforma).
+  if (from === 'cancelled' && to === 'delivered') return to;
+  // Estados terminais nao retrocedem.
   if (TERMINAL_STATUSES.has(from)) return from;
-  // Permite saltos para frente (cobre reordenamentos do iFood).
+  // A plataforma nunca retrocede um pedido em andamento. Eventos que nao carregam status
+  // (ex.: grupo DELIVERY do iFood) caem em 'placed' e regrediriam o pedido — bloqueia.
+  if (RANK[to] < RANK[from]) return from;
+  // Saltos para frente sao ok (cobre reordenamentos / iFood pulando 'preparing').
   return to;
 }

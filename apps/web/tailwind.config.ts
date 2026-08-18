@@ -19,6 +19,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        brand: ['var(--font-brand)', 'var(--font-sans)', 'sans-serif'],
       },
       colors: {
         // ====== Brand (theme-invariant) ======

@@ -58,7 +58,10 @@ export function ExpenseFormDialog({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const cents = Math.round(parseFloat(amountReais.replace(',', '.')) * 100) || 0;
+      // Remove os pontos de milhar (pt-BR) antes de trocar a vírgula decimal,
+      // senão "3.500,00" viraria "3.500.00" e parseFloat pararia em 3,5.
+      const cents =
+        Math.round(parseFloat(amountReais.replace(/\./g, '').replace(',', '.')) * 100) || 0;
       const body = {
         name,
         category,

@@ -14,6 +14,7 @@ import {
   type SetMenuItemRecipeInput,
   type SetSubRecipeInput,
 } from './dto/inventory.dto.js';
+import { CombosService } from '../menu/combos.service.js';
 import { RecipeCostService } from './recipe-cost.service.js';
 
 /**
@@ -35,6 +36,7 @@ export class RecipesService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly audit: AuditLogService,
     private readonly recipeCost: RecipeCostService,
+    private readonly combos: CombosService,
   ) {}
 
   async getMenuItemRecipe(auth: AuthContext, menuItemId: string) {
@@ -233,6 +235,7 @@ export class RecipesService {
     const MAX_DEPTH = 10;
     const visited = new Set<string>([startingIngredientId]);
     const queue: string[] = [startingIngredientId];
+    const affectedMenuItems = new Set<string>();
     let level = 0;
 
     while (queue.length > 0 && level <= MAX_DEPTH) {
@@ -248,6 +251,7 @@ export class RecipesService {
         if (u.parentIngredientId) subRecipes.add(u.parentIngredientId);
       }
       for (const mid of menuItems) {
+        affectedMenuItems.add(mid);
         await this.recipeCost.recomputeForMenuItem(tx, mid);
       }
       for (const sid of subRecipes) {
@@ -258,5 +262,7 @@ export class RecipesService {
       }
       level++;
     }
+    // Combos que usam qualquer MenuItem recalculado tem o CMV atualizado tambem.
+    await this.combos.recomputeCombosContaining(tx, affectedMenuItems);
   }
 }

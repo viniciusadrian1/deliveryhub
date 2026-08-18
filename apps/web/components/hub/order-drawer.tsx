@@ -41,7 +41,7 @@ const NEXT_ACTION: Record<OrderStatus, NextAction | null> = {
   accepted: { label: 'Iniciar preparo', path: 'preparing', icon: ChefHat },
   preparing: { label: 'Marcar pronto', path: 'ready', icon: CheckCircle2 },
   ready: { label: 'Despachar', path: 'dispatch', icon: Truck },
-  dispatched: { label: 'Marcar entregue', path: 'delivered', icon: CheckCircle2 },
+  dispatched: { label: 'Concluir pedido', path: 'delivered', icon: CheckCircle2 },
   delivered: null,
   cancelled: null,
 };
@@ -65,7 +65,7 @@ const STATUS_LABELS: Record<OrderStatus, string> = {
   preparing: 'Em preparo',
   ready: 'Pronto',
   dispatched: 'Despachado',
-  delivered: 'Entregue',
+  delivered: 'Concluído',
   cancelled: 'Cancelado',
 };
 

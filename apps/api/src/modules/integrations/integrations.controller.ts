@@ -5,7 +5,12 @@ import { CurrentUser } from '../../common/auth/current-user.decorator.js';
 import { Roles } from '../../common/auth/roles.decorator.js';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
-import { startConnectionSchema, type StartConnectionInput } from './dto/connect.dto.js';
+import {
+  finalizeConnectionSchema,
+  type FinalizeConnectionInput,
+  startConnectionSchema,
+  type StartConnectionInput,
+} from './dto/connect.dto.js';
 import { IntegrationsService } from './integrations.service.js';
 
 @Controller('integrations')
@@ -33,10 +38,16 @@ export class IntegrationsController {
   @HttpCode(200)
   finalize(
     @Param('id') id: string,
+    @Body(new ZodValidationPipe(finalizeConnectionSchema)) body: FinalizeConnectionInput,
     @CurrentUser() auth: AuthContext,
     @Req() req: Request,
   ) {
-    return this.integrations.finalizeConnection(auth, id, this.session(req));
+    return this.integrations.finalizeConnection(
+      auth,
+      id,
+      body.authorizationCode,
+      this.session(req),
+    );
   }
 
   @Delete('connections/:id')

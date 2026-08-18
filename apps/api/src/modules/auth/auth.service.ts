@@ -37,6 +37,12 @@ interface AuthSessionContext {
 
 @Injectable()
 export class AuthService {
+  // Hash argon2id fixo de uma string aleatória. Usado no login quando o e-mail não
+  // existe, para que o verify rode nos dois caminhos e o tempo de resposta não revele
+  // se a conta existe (proteção contra enumeração por timing).
+  private static readonly DUMMY_PASSWORD_HASH =
+    '$argon2id$v=19$m=19456,t=2,p=1$/mdKThYCQZr52TihCH/q3Q$w5hTu1V6HlOeo2CsvEFD/F5xuLPXShT4MV0lXz1UhyE';
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwords: PasswordService,
@@ -130,15 +136,24 @@ export class AuthService {
   async login(input: LoginInput, session: AuthSessionContext = {}): Promise<AuthResult> {
     const user = await this.prisma.user.findUnique({
       where: { email: input.email },
-      include: { memberships: { include: { organization: true }, take: 1 } },
+      // orderBy determinístico: usuários multi-org caem sempre na org mais antiga
+      // (a primeira que criaram/entraram), não numa membership arbitrária.
+      include: {
+        memberships: {
+          include: { organization: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
+        },
+      },
     });
 
-    if (!user) {
-      throw new UnauthorizedException('invalid_credentials');
-    }
-
-    const valid = await this.passwords.verify(user.passwordHash, input.password);
-    if (!valid) {
+    // Sempre roda um verify — contra um hash fixo quando o e-mail não existe — para
+    // que ambos os caminhos gastem o mesmo tempo de CPU (anti-enumeração por timing).
+    const valid = await this.passwords.verify(
+      user?.passwordHash ?? AuthService.DUMMY_PASSWORD_HASH,
+      input.password,
+    );
+    if (!user || !valid) {
       throw new UnauthorizedException('invalid_credentials');
     }
 
@@ -165,7 +180,16 @@ export class AuthService {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
       include: {
-        user: { include: { memberships: { include: { organization: true }, take: 1 } } },
+        user: {
+          include: {
+            // Mesmo orderBy determinístico do login (org mais antiga primeiro).
+            memberships: {
+              include: { organization: true },
+              orderBy: { createdAt: 'asc' },
+              take: 1,
+            },
+          },
+        },
       },
     });
 
@@ -180,10 +204,16 @@ export class AuthService {
 
     // Rotation: revoga o antigo, emite novo par. Tudo em uma transação para evitar reuso.
     return this.prisma.$transaction(async (tx) => {
-      await tx.refreshToken.update({
-        where: { id: stored.id },
+      // Revoga condicionalmente (revokedAt: null): sob Read Committed, dois refresh
+      // concorrentes com o mesmo token não geram dois tokens vivos — só o primeiro
+      // commit casa a linha; o segundo vê revokedAt já setado e aborta (count === 0).
+      const revoked = await tx.refreshToken.updateMany({
+        where: { id: stored.id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      if (revoked.count === 0) {
+        throw new UnauthorizedException('invalid_refresh_token');
+      }
 
       return this.issueSessionTokens(
         stored.user,

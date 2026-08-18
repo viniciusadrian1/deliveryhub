@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -7,7 +8,7 @@ import {
 
 import { DidifoodAdapter, type DidifoodDeliveryStatus } from '@deliveryhub/didifood';
 import type { PlatformCode } from '@deliveryhub/shared';
-import type { RemoteOrder } from '@deliveryhub/ifood';
+import { ifoodEventStatus, type RemoteOrder, type StoredTokens } from '@deliveryhub/ifood';
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -75,6 +76,7 @@ export class OrdersService {
     externalOrderId: string,
     externalMerchantId: string,
     eventType: string,
+    eventMetadata?: Record<string, unknown>,
   ): Promise<void> {
     const ctx = await this.resolveContext(platformCode, externalMerchantId);
     if (!ctx) {
@@ -90,7 +92,40 @@ export class OrdersService {
     }
 
     const remote = await adapter.fetchOrder(tokens, ctx.externalMerchantId, externalOrderId);
+
+    // iFood: o status é dirigido por EVENTO (o detalhe do pedido não tem
+    // campo status). Aplica o status do eventType; eventos que não mexem no
+    // status (grupo DELIVERY) retornam null e não alteram o pedido.
+    if (platformCode === 'ifood') {
+      const evStatus = ifoodEventStatus(eventType);
+      if (evStatus) remote.status = evStatus;
+    }
+
     await this.upsertOrder(ctx, remote, eventType);
+
+    // Eventos DELIVERY do iFood (ASSIGN_DRIVER) trazem o entregador no
+    // metadata — o pedido em si não muda, só anotamos quem está entregando.
+    // Falha aqui PROPAGA de propósito: o poller não dá ack e o iFood
+    // reentrega o evento (upsert acima é idempotente) — engolir o erro
+    // perderia o entregador pra sempre.
+    const courierName =
+      typeof eventMetadata?.workerName === 'string' ? eventMetadata.workerName : undefined;
+    if (courierName) {
+      const updated = await this.prisma.order.update({
+        where: {
+          platformId_externalId: {
+            platformId: ctx.platformId,
+            externalId: remote.externalId,
+          },
+        },
+        data: { courierName },
+      });
+      this.emit(
+        'order.updated',
+        { organizationId: ctx.organizationId, storeId: ctx.storeId, platformCode },
+        updated,
+      );
+    }
   }
 
   /**
@@ -231,11 +266,23 @@ export class OrdersService {
   }
 
   async startPreparing(auth: AuthContext, id: string) {
-    return this.userTransition(auth, id, 'preparing');
+    return this.userTransition(auth, id, 'preparing', async (adapter, tokens, merchantId, ext) => {
+      // iFood exige a transição startPreparation pra homologação Order.
+      // Outros adapters não têm o conceito — ignora se o método não existe.
+      if (adapter.startPreparation) {
+        await adapter.startPreparation(tokens, merchantId, ext);
+      }
+    });
   }
 
   async markReady(auth: AuthContext, id: string) {
-    return this.userTransition(auth, id, 'ready');
+    return this.userTransition(auth, id, 'ready', async (adapter, tokens, merchantId, ext) => {
+      // iFood exige readyToPickup quando a entrega é do próprio iFood.
+      // Outros adapters ignoram (rastro só local).
+      if (adapter.readyToPickup) {
+        await adapter.readyToPickup(tokens, merchantId, ext);
+      }
+    });
   }
 
   async dispatch(auth: AuthContext, id: string) {
@@ -268,6 +315,44 @@ export class OrdersService {
       },
       reason,
     );
+  }
+
+  /**
+   * Posição do entregador da plataforma (quando ela expõe rastreio — hoje
+   * só o iFood, via GET /orders/{id}/tracking). Devolve o entregador salvo
+   * no pedido + lat/lng ao vivo (`tracking: null` = sem rastreio ativo).
+   */
+  async getTracking(auth: AuthContext, id: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id, organizationId: auth.orgId },
+      include: { platform: true },
+    });
+    if (!order) throw new NotFoundException('order_not_found');
+
+    const conn = await this.integrations.getActiveConnectionWithTokens(
+      auth.orgId,
+      order.storeId,
+      order.platformId,
+    );
+    if (!conn) throw new BadRequestException('no_active_connection');
+
+    const adapter = this.registry.get(order.platform.code as PlatformCode);
+    if (!adapter.fetchOrderTracking) {
+      throw new BadRequestException('tracking_unsupported');
+    }
+
+    const tracking = await adapter.fetchOrderTracking(
+      conn.tokens,
+      conn.externalMerchantId,
+      order.externalId,
+    );
+
+    return {
+      orderId: order.id,
+      courierName: order.courierName,
+      courierPhone: order.courierPhone,
+      tracking,
+    };
   }
 
   /**
@@ -418,6 +503,89 @@ export class OrdersService {
 
   // ============== Helpers ==============
 
+  /**
+   * Piloto automático do iFood (SÓ homologação, gated por env no poller):
+   * reage aos pedidos sem humano — placed → confirm; depois dispatch (entrega
+   * da loja) ou readyToPickup (retirada / logística iFood), SEGURANDO pedido
+   * agendado até a janela de entrega. Avança UMA transição por ciclo (30s),
+   * o que separa confirm de dispatch e dá tempo pra um cancelamento do iFood
+   * chegar antes do despacho.
+   */
+  async runIfoodAutopilot(
+    externalMerchantId: string,
+    adapter: ReturnType<AdapterRegistry['get']>,
+    tokens: StoredTokens,
+  ): Promise<void> {
+    const ctx = await this.resolveContext('ifood', externalMerchantId);
+    if (!ctx) return;
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        storeId: ctx.storeId,
+        platformId: ctx.platformId,
+        status: { in: ['placed', 'accepted', 'preparing', 'ready'] },
+      },
+      select: {
+        id: true,
+        externalId: true,
+        status: true,
+        orderTiming: true,
+        orderType: true,
+        deliveryBy: true,
+        scheduledDeliveryAt: true,
+      },
+    });
+
+    const now = Date.now();
+    for (const o of orders) {
+      try {
+        if (o.status === 'placed') {
+          await adapter.acceptOrder(tokens, externalMerchantId, o.externalId);
+          await this.applyAutopilotStatus(ctx, o.id, 'accepted');
+          continue;
+        }
+        // Agendado: segura tudo até a janela de entrega.
+        if (
+          o.orderTiming === 'scheduled' &&
+          o.scheduledDeliveryAt &&
+          now < o.scheduledDeliveryAt.getTime()
+        ) {
+          continue;
+        }
+        const merchantDelivery = o.deliveryBy === 'store';
+        const isDelivery = (o.orderType ?? 'delivery') === 'delivery';
+        if (isDelivery && merchantDelivery) {
+          // Entrega própria: despacha (POST /dispatch).
+          await adapter.dispatchOrder(tokens, externalMerchantId, o.externalId);
+          await this.applyAutopilotStatus(ctx, o.id, 'dispatched');
+        } else if (adapter.readyToPickup && o.status !== 'ready') {
+          // Retirada ou logística iFood: marca pronto pra coleta.
+          await adapter.readyToPickup(tokens, externalMerchantId, o.externalId);
+          await this.applyAutopilotStatus(ctx, o.id, 'ready');
+        }
+      } catch (err) {
+        this.logger.warn({ err, orderId: o.id }, 'ifood_autopilot_action_failed');
+      }
+    }
+  }
+
+  private async applyAutopilotStatus(
+    ctx: { organizationId: string; storeId: string },
+    orderId: string,
+    status: OrderStatus,
+  ): Promise<void> {
+    const order = await this.prisma.order.update({
+      where: { id: orderId },
+      data: { status, ...stampStatusTimestamp(status) },
+    });
+    await this.recordStatusEvent(orderId, status, 'system', { eventType: 'autopilot' });
+    this.emit(
+      'order.updated',
+      { organizationId: ctx.organizationId, storeId: ctx.storeId, platformCode: 'ifood' },
+      order,
+    );
+  }
+
   private async resolveContext(platformCode: PlatformCode, externalMerchantId: string) {
     const platform = await this.prisma.platform.findUnique({
       where: { code: platformCode },
@@ -477,6 +645,9 @@ export class OrdersService {
           customerId: customer.id,
           paymentMethod: remote.paymentMethod ?? undefined,
           deliveryBy: remote.deliveryBy ?? undefined,
+          orderTiming: remote.orderTiming ?? undefined,
+          orderType: remote.orderType ?? undefined,
+          scheduledDeliveryAt: remote.schedule?.deliveryStart ?? undefined,
           ...stampStatusTimestamp(newStatus),
         },
       });
@@ -511,6 +682,9 @@ export class OrdersService {
           placedAt: remote.placedAt,
           paymentMethod: remote.paymentMethod ?? null,
           deliveryBy: remote.deliveryBy ?? null,
+          orderTiming: remote.orderTiming ?? null,
+          orderType: remote.orderType ?? null,
+          scheduledDeliveryAt: remote.schedule?.deliveryStart ?? null,
           ...stampStatusTimestamp(remote.status),
         },
       });
@@ -640,20 +814,34 @@ export class OrdersService {
               { err, orderId: order.id, next },
               'order_transition_side_effect_failed',
             );
-            // Não bloqueia a transição local — operador vê estado local atualizado
-            // e o sino acende um aviso de erro de plataforma.
+            // Cancelamento e fail-closed: se a plataforma recusou/falhou o pedido de
+            // cancelamento, NAO grava 'cancelled' local (evitaria dessincronia com a
+            // plataforma). As demais transicoes seguem local-first (o sino acende um
+            // aviso de erro de plataforma).
+            if (next === 'cancelled') {
+              throw new BadRequestException('platform_cancellation_failed');
+            }
           }
         }
       }
     }
 
-    const updated = await this.prisma.order.update({
-      where: { id: order.id },
+    // Compare-and-swap sobre o status lido ANTES do side-effect: se um evento da
+    // plataforma mudou o pedido durante o side-effect, nao sobrescreve (last-writer-wins)
+    // — devolve 409 e o operador reavalia. (order-status.ts ja bloqueia retrocessos.)
+    const swap = await this.prisma.order.updateMany({
+      where: { id: order.id, status: order.status },
       data: {
         status: nextStatus,
         cancellationReason: nextStatus === 'cancelled' ? (reason ?? null) : undefined,
         ...stampStatusTimestamp(nextStatus),
       },
+    });
+    if (swap.count === 0) {
+      throw new ConflictException('order_status_changed');
+    }
+    const updated = await this.prisma.order.findFirstOrThrow({
+      where: { id: order.id },
       include: { platform: true },
     });
 

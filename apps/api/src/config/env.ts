@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+/**
+ * URL opcional que aceita string vazia (= não preenchida → undefined).
+ * Sem isso, uma var tipo `STORAGE_ENDPOINT=` quebrava o `.url()` em dev.
+ */
+const optionalUrl = () =>
+  z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   MODE: z.enum(['api', 'worker']).default('api'),
@@ -25,6 +32,16 @@ const envSchema = z.object({
   IFOOD_CLIENT_SECRET: z.string().optional(),
   IFOOD_API_BASE_URL: z.string().url().default('https://merchant-api.ifood.com.br'),
   IFOOD_WEBHOOK_SECRET: z.string().optional(),
+  /**
+   * Piloto automático do iFood: quando 'true', o poller reage sozinho aos
+   * pedidos (confirm → dispatch/readyToPickup, respeitando agendamento).
+   * Usado SÓ na homologação (o robô do iFood exige que a integração reaja
+   * sem humano). Em produção fica 'false' — restaurante confirma na mão.
+   */
+  IFOOD_AUTOPILOT: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 
   // Rappi Partners (requer parceria comercial)
   RAPPI_CLIENT_ID: z.string().optional(),
@@ -62,7 +79,7 @@ const envSchema = z.object({
   // ===== Object Storage (R2 / S3 / Supabase-storage compatible) =====
   // Quando todos preenchidos, uploads vão pro bucket. Quando vazios, o
   // endpoint de upload responde 503 com mensagem clara.
-  STORAGE_ENDPOINT: z.string().url().optional(),
+  STORAGE_ENDPOINT: optionalUrl(),
   STORAGE_REGION: z.string().default('auto'),
   STORAGE_BUCKET: z.string().optional(),
   STORAGE_ACCESS_KEY_ID: z.string().optional(),
@@ -72,7 +89,7 @@ const envSchema = z.object({
    * ou https://pub-<id>.r2.dev. Concatenamos com a key para gerar a URL
    * final no MenuItem.imageUrl.
    */
-  STORAGE_PUBLIC_URL: z.string().url().optional(),
+  STORAGE_PUBLIC_URL: optionalUrl(),
 
   SENTRY_DSN: z.string().optional(),
   SENTRY_ENVIRONMENT: z.string().default('local'),

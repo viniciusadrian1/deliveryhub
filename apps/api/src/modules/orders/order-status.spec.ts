@@ -55,9 +55,19 @@ describe('order-status state machine', () => {
       expect(reconcileFromPlatform('accepted', 'delivered')).toBe('delivered');
     });
 
-    it('does not move out of terminal states', () => {
+    it('never regresses an in-progress order (iFood DELIVERY events default to placed)', () => {
+      expect(reconcileFromPlatform('dispatched', 'placed')).toBe('dispatched');
+      expect(reconcileFromPlatform('accepted', 'placed')).toBe('accepted');
+      expect(reconcileFromPlatform('ready', 'preparing')).toBe('ready');
+    });
+
+    it('keeps terminals sticky but lets an authoritative delivered override a local cancel', () => {
       expect(reconcileFromPlatform('delivered', 'cancelled')).toBe('delivered');
-      expect(reconcileFromPlatform('cancelled', 'delivered')).toBe('cancelled');
+      // plataforma concluiu um pedido que cancelamos localmente (cancel negado) — ela vence.
+      expect(reconcileFromPlatform('cancelled', 'delivered')).toBe('delivered');
+      // mas cancelled nao volta para estados anteriores.
+      expect(reconcileFromPlatform('cancelled', 'placed')).toBe('cancelled');
+      expect(reconcileFromPlatform('cancelled', 'dispatched')).toBe('cancelled');
     });
 
     it('returns same status on no change', () => {

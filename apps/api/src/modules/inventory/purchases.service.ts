@@ -79,23 +79,31 @@ export class PurchasesService {
     const unitCost = new Prisma.Decimal(input.unitCost);
     const totalCost = qty.mul(unitCost);
 
-    // Saldo atual via raw aggregation — precisa do PrismaService cru
-    // (TenantPrisma extension intercepta findMany; groupBy também).
-    const balanceRow = await this.tenantPrisma.tx.stockMovement.aggregate({
-      where: { ingredientId: ingredient.id, storeId: input.storeId },
-      _sum: { quantity: true },
-    });
-    const currentBalance = balanceRow._sum.quantity ?? new Prisma.Decimal(0);
-    const currentCost = ingredient.costPerUnit;
-
-    const newCost = computeWeightedAverageCost(
-      currentBalance,
-      currentCost,
-      qty,
-      unitCost,
-    );
-
     const result = await this.prisma.$transaction(async (tx) => {
+      // Trava a linha do ingrediente (FOR UPDATE) para serializar compras
+      // concorrentes do mesmo insumo: a 2ª transação bloqueia até a 1ª
+      // commitar e então lê saldo+custo já atualizados, evitando que dois
+      // save simultâneos (ou duplo-clique) corrompam a média ponderada.
+      const [locked] = await tx.$queryRaw<{ cost_per_unit: Prisma.Decimal }[]>`
+        SELECT cost_per_unit FROM ingredient WHERE id = ${ingredient.id} FOR UPDATE
+      `;
+      const currentCost = locked?.cost_per_unit ?? ingredient.costPerUnit;
+
+      // Saldo lido DENTRO da transação, depois da trava — nunca de um snapshot
+      // obsoleto lido antes do $transaction.
+      const balanceRow = await tx.stockMovement.aggregate({
+        where: { ingredientId: ingredient.id, storeId: input.storeId },
+        _sum: { quantity: true },
+      });
+      const currentBalance = balanceRow._sum.quantity ?? new Prisma.Decimal(0);
+
+      const newCost = computeWeightedAverageCost(
+        currentBalance,
+        currentCost,
+        qty,
+        unitCost,
+      );
+
       const purchase = await tx.ingredientPurchase.create({
         data: {
           organizationId: auth.orgId,

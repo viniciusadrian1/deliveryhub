@@ -1,4 +1,5 @@
-import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
 
 import { Public } from '../../common/auth/public.decorator.js';
@@ -16,6 +17,7 @@ import { AuthService, type AuthResult } from './auth.service.js';
 import { PasswordResetService } from './password-reset.service.js';
 
 @Controller('auth')
+@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
@@ -23,6 +25,7 @@ export class AuthController {
   ) {}
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('signup')
   @HttpCode(201)
   signup(
@@ -33,6 +36,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
   @HttpCode(200)
   login(
@@ -63,6 +67,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('password/forgot')
   @HttpCode(204)
   async forgotPassword(
@@ -73,6 +78,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('password/reset')
   @HttpCode(204)
   async resetPassword(

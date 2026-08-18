@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { MenuModule } from '../menu/menu.module.js';
 import {
   IngredientsController,
   PurchasesController,
@@ -31,6 +32,7 @@ import { SuppliersService } from './suppliers.service.js';
  *   resolução de DI (RecipeCostService só precisa do PrismaService).
  */
 @Module({
+  imports: [MenuModule], // CombosService: cascata de custo propaga p/ CMV de combos
   controllers: [
     SuppliersController,
     IngredientsController,

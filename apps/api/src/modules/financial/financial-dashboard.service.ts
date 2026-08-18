@@ -57,13 +57,15 @@ export class FinancialDashboardService {
       { day: Date; orders: bigint; gross_cents: bigint; net_cents: bigint }[]
     >`
       SELECT
-        date_trunc('day', placed_at)::date AS day,
+        -- placed_at é timestamp sem tz guardando UTC; converte pro dia local (BRT)
+        -- antes de truncar, senão pedidos do jantar caem no dia UTC seguinte.
+        date_trunc('day', placed_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date AS day,
         COUNT(*)::bigint              AS orders,
         SUM(total_cents)::bigint      AS gross_cents,
         SUM(net_cents)::bigint        AS net_cents
       FROM "order"
-      WHERE organization_id = ${auth.orgId}::uuid
-        AND store_id = ${storeId}::uuid
+      WHERE organization_id = ${auth.orgId}
+        AND store_id = ${storeId}
         AND status <> 'cancelled'
         AND placed_at >= ${from}
         AND placed_at <= ${to}
@@ -109,8 +111,8 @@ export class FinancialDashboardService {
       FROM order_item oi
       INNER JOIN "order" o ON o.id = oi.order_id
       LEFT JOIN menu_item mi ON mi.id = oi.menu_item_id
-      WHERE o.organization_id = ${auth.orgId}::uuid
-        AND o.store_id = ${storeId}::uuid
+      WHERE o.organization_id = ${auth.orgId}
+        AND o.store_id = ${storeId}
         AND o.status <> 'cancelled'
         AND o.placed_at >= ${from}
         AND o.placed_at <= ${to}
@@ -149,8 +151,8 @@ export class FinancialDashboardService {
         SUM(o.net_cents)::bigint      AS net_cents
       FROM "order" o
       INNER JOIN platform p ON p.id = o.platform_id
-      WHERE o.organization_id = ${auth.orgId}::uuid
-        AND o.store_id = ${storeId}::uuid
+      WHERE o.organization_id = ${auth.orgId}
+        AND o.store_id = ${storeId}
         AND o.status <> 'cancelled'
         AND o.placed_at >= ${from}
         AND o.placed_at <= ${to}

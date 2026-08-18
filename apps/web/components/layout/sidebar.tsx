@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import {
+  BadgePercent,
   Boxes,
   ChefHat,
   LayoutGrid,
@@ -38,6 +39,7 @@ const PRIMARY_NAV: NavItem[] = [
   { label: 'Cardápio', href: '/menu', icon: UtensilsCrossed },
   { label: 'Estoque', href: '/inventory', icon: Boxes, badge: 'novo' },
   { label: 'Preço & Margem', href: '/pricing', icon: TrendingUp },
+  { label: 'Promoções', href: '/promotions', icon: BadgePercent, badge: 'novo' },
   { label: 'Pausa', href: '/pause', icon: PauseCircle },
   { label: 'Financeiro', href: '/financial', icon: Wallet },
 ];
@@ -53,8 +55,9 @@ export function Sidebar() {
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-surface-border-subtle bg-surface-raised md:flex">
-      <div className="px-5 py-5">
-        <Logo size={28} />
+      {/* h fixo + logo grande: o logo cresce sem esticar o cabeçalho */}
+      <div className="flex h-16 shrink-0 items-center px-4">
+        <Logo size={60} />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">

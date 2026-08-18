@@ -3,6 +3,16 @@ import 'reflect-metadata';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+// JSON.stringify estoura em BigInt (Prisma devolve BigInt em colunas *_cents).
+// Serializa como Number globalmente — o front já consome esses campos como
+// number. ponytail: seguro até 2^53-1 centavos (~R$ 90 trilhões); nenhum
+// repasse chega perto. Se um dia chegar, serializar como string aqui.
+(BigInt.prototype as unknown as { toJSON: () => number }).toJSON = function (
+  this: bigint,
+) {
+  return Number(this);
+};
+
 import { NestFactory } from '@nestjs/core';
 import { config as loadDotenv } from 'dotenv';
 import { Logger } from 'nestjs-pino';

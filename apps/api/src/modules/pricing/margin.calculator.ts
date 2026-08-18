@@ -42,7 +42,10 @@ export interface MarginBreakdown {
 const round = (n: number): number => Math.round(n);
 
 const pctOver = (numerator: number, denominator: number): number =>
-  denominator === 0 ? 0 : Math.round((numerator / denominator) * 1_000_000) / 10_000;
+  // Divide pela magnitude do denominador para que o sinal do resultado siga o
+  // numerador. Sem isso, net_revenue negativo (taxas > preço) inverteria o sinal
+  // e um item deficitário apareceria com margem líquida positiva.
+  denominator === 0 ? 0 : Math.round((numerator / Math.abs(denominator)) * 1_000_000) / 10_000;
 
 export function calculateMargin(inputs: MarginInputs): MarginBreakdown {
   const { sellingPriceCents, costCents, commissionPct, paymentProcessingPct, flatFeeCents } =
@@ -107,5 +110,8 @@ export function priceToHitMargin(
   const denominator = 1 - targetMarginPct / 100 - totalPctFees;
   if (denominator <= 0) return null;
   const price = (costCents + fees.flatFeeCents) / denominator;
-  return Math.max(0, round(price));
+  // Custo + taxa fixa zerados → preço 0. Não repreça o item para R$0,00 (dá o
+  // produto de graça); trata como impossível para simulate/apply pularem.
+  const rounded = round(price);
+  return rounded > 0 ? rounded : null;
 }

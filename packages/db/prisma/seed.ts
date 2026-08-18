@@ -67,22 +67,24 @@ async function seedPlatforms(): Promise<number> {
   return platforms.length;
 }
 
-async function seedTestUser(): Promise<void> {
+/** Garante o usuário owner + org + loja. Devolve {orgId, storeId}. Idempotente. */
+async function seedTestUser(): Promise<{ orgId: string; storeId: string }> {
   const existing = await prisma.user.findUnique({
     where: { email: TEST_USER.email },
-    include: { memberships: { include: { organization: true }, take: 1 } },
+    include: { memberships: { take: 1 } },
   });
 
   if (existing) {
-    console.warn(`Test user "${TEST_USER.email}" already exists — skipping creation`);
-    return;
+    const orgId = existing.memberships[0]!.organizationId;
+    const store = await prisma.store.findFirst({ where: { organizationId: orgId } });
+    console.warn(`Test user "${TEST_USER.email}" already exists — reusing`);
+    return { orgId, storeId: store!.id };
   }
 
-  await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const organization = await tx.organization.create({
       data: { name: TEST_USER.organizationName },
     });
-
     const user = await tx.user.create({
       data: {
         email: TEST_USER.email,
@@ -90,25 +92,109 @@ async function seedTestUser(): Promise<void> {
         passwordHash: TEST_USER.passwordHash,
       },
     });
-
     await tx.membership.create({
-      data: {
-        organizationId: organization.id,
-        userId: user.id,
-        role: 'owner',
-      },
+      data: { organizationId: organization.id, userId: user.id, role: 'owner' },
     });
-
-    await tx.store.create({
+    const store = await tx.store.create({
       data: {
         organizationId: organization.id,
         name: TEST_USER.storeName,
         timezone: 'America/Sao_Paulo',
       },
     });
+    console.warn(`Created test user: ${TEST_USER.email}`);
+    return { orgId: organization.id, storeId: store.id };
+  });
+}
+
+/**
+ * Cardápio de demonstração — dá pra ver o app funcionando ponta a ponta
+ * (cardápio, CMV/margem, config por plataforma) sem digitação manual.
+ * Idempotente: se a loja já tem categoria, não faz nada.
+ */
+async function seedDemoMenu(orgId: string, storeId: string): Promise<void> {
+  const hasMenu = await prisma.category.findFirst({ where: { storeId } });
+  if (hasMenu) {
+    console.warn('Demo menu already present — skipping');
+    return;
+  }
+
+  const platforms = await prisma.platform.findMany({
+    where: { code: { in: ['ifood', '99food'] } },
+    select: { id: true, code: true },
   });
 
-  console.warn(`Created test user: ${TEST_USER.email}`);
+  const lanches = await prisma.category.create({
+    data: { organizationId: orgId, storeId, name: 'Lanches', sortOrder: 0 },
+  });
+  const bebidas = await prisma.category.create({
+    data: { organizationId: orgId, storeId, name: 'Bebidas', sortOrder: 1 },
+  });
+
+  // [nome, categoria, CMV (custo), preço de venda, salesKind]
+  const items: Array<[string, string, number, number, string]> = [
+    ['X-Burger', lanches.id, 650, 1890, 'main'],
+    ['X-Salada', lanches.id, 780, 2190, 'main'],
+    ['X-Bacon', lanches.id, 900, 2490, 'main'],
+    ['Batata Frita', lanches.id, 320, 1290, 'side'],
+    ['Coca-Cola Lata', bebidas.id, 250, 690, 'drink'],
+    ['Suco de Laranja', bebidas.id, 300, 890, 'drink'],
+  ];
+
+  for (const [name, categoryId, costCents, priceCents, salesKind] of items) {
+    const item = await prisma.menuItem.create({
+      data: {
+        organizationId: orgId,
+        storeId,
+        categoryId,
+        name,
+        costCents,
+        salesKind: salesKind as never,
+      },
+    });
+    // Mesmo preço nas duas plataformas ativas (sem externalId: publicação
+    // real preenche isso na sincronização/publish).
+    for (const p of platforms) {
+      await prisma.menuItemPlatformConfig.create({
+        data: {
+          organizationId: orgId,
+          menuItemId: item.id,
+          platformId: p.id,
+          sellingPriceCents: priceCents,
+        },
+      });
+    }
+
+    // Grupo de adicionais no X-Burger, pra demonstrar complementos.
+    if (name === 'X-Burger') {
+      const group = await prisma.modifierGroup.create({
+        data: {
+          organizationId: orgId,
+          menuItemId: item.id,
+          kind: 'ingredients',
+          name: 'Adicionais',
+          minSelect: 0,
+          maxSelect: 3,
+        },
+      });
+      for (const [mName, delta] of [
+        ['Bacon extra', 400],
+        ['Ovo', 250],
+        ['Queijo extra', 300],
+      ] as const) {
+        await prisma.modifier.create({
+          data: {
+            organizationId: orgId,
+            modifierGroupId: group.id,
+            name: mName,
+            costDeltaCents: delta,
+          },
+        });
+      }
+    }
+  }
+
+  console.warn(`Seeded demo menu: 2 categories, ${items.length} items`);
 }
 
 async function main(): Promise<void> {
@@ -127,7 +213,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  await seedTestUser();
+  const { orgId, storeId } = await seedTestUser();
+  await seedDemoMenu(orgId, storeId);
 }
 
 main()

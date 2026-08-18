@@ -94,7 +94,12 @@ export class UploadsService {
       });
     }
 
-    const ext = (originalName.split('.').pop() ?? 'bin').toLowerCase().slice(0, 8);
+    // Extensao derivada do mimeType (ja validado por magic-byte no controller), NAO do
+    // nome do arquivo do cliente — fecha o vetor de injecao de extensao no object-key.
+    const ext =
+      { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[
+        mimeType
+      ] ?? 'bin';
     const key = `org/${organizationId}/${entity}/${randomUUID()}.${ext}`;
 
     try {

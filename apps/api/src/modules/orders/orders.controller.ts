@@ -31,6 +31,12 @@ export class OrdersController {
     return this.orders.findOne(auth, id);
   }
 
+  /** Posição do entregador da plataforma (iFood Logistics — GPS ao vivo). */
+  @Get(':id/tracking')
+  tracking(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
+    return this.orders.getTracking(auth, id);
+  }
+
   @Post(':id/accept')
   @Roles('owner', 'manager', 'staff')
   @HttpCode(200)

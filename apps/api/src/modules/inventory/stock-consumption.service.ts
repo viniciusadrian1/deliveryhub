@@ -220,7 +220,7 @@ export class StockConsumptionService {
    *
    * @param multiplier  Quantas vezes o "produto" sendo expandido foi vendido.
    *                    Multiplicado por cada componente.
-   * @param depth       Controle de recursão (anti-ciclo via visited).
+   * @param depth       Controle de recursão (anti-ciclo por caminho: `path`).
    */
   private async accumulateLeafConsumption(
     organizationId: string,
@@ -229,9 +229,20 @@ export class StockConsumptionService {
     totals: Map<string, Prisma.Decimal>,
     warnings: string[],
   ): Promise<void> {
-    const visited = new Set<string>();
-    type Frame = { kind: 'menuItem' | 'subRecipe'; id: string; qty: Prisma.Decimal; depth: number };
-    const stack: Frame[] = [{ kind: 'menuItem', id: rootId, qty: rootQty, depth: 0 }];
+    // `path` = ancestrais (sub-receitas) do frame atual. Detecção de ciclo é
+    // por-caminho, não um "seen" global: uma sub-receita compartilhada por dois
+    // ramos (diamante) precisa ser expandida em cada ramo, senão descontamos
+    // metade do consumo real.
+    type Frame = {
+      kind: 'menuItem' | 'subRecipe';
+      id: string;
+      qty: Prisma.Decimal;
+      depth: number;
+      path: Set<string>;
+    };
+    const stack: Frame[] = [
+      { kind: 'menuItem', id: rootId, qty: rootQty, depth: 0, path: new Set() },
+    ];
 
     while (stack.length > 0) {
       const frame = stack.pop()!;
@@ -278,11 +289,11 @@ export class StockConsumptionService {
           // sub-receita: expandir recursivamente. Normalizar pela batchYield:
           // "preciso de X gramas do molho, e cada execução da receita produz Y g —
           // logo executei a receita X/Y vezes."
-          if (visited.has(ing.id)) {
+          // Ciclo real = a sub-receita aparece entre seus próprios ancestrais.
+          if (frame.path.has(ing.id)) {
             warnings.push(`cycle_in_recipe:${ing.id}`);
             continue;
           }
-          visited.add(ing.id);
           const yieldVal = ing.batchYield ?? new Prisma.Decimal(1);
           const recipeRuns = required.div(yieldVal);
           stack.push({
@@ -290,6 +301,7 @@ export class StockConsumptionService {
             id: ing.id,
             qty: recipeRuns,
             depth: frame.depth + 1,
+            path: new Set(frame.path).add(ing.id),
           });
         }
       }

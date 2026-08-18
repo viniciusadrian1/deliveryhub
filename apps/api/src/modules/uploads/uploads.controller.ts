@@ -23,6 +23,29 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 const entitySchema = z.enum(['menu-item', 'modifier', 'ingredient']);
 
+/**
+ * Confere os magic bytes do buffer contra o MIME declarado. O Content-Type do
+ * multipart é controlado pelo cliente; sem checar o conteúdo real, qualquer
+ * payload (malware/HTML) declarado como image/* entraria no bucket público.
+ */
+function matchesSignature(buf: Buffer, mime: string): boolean {
+  if (buf.length < 12) return false;
+  switch (mime) {
+    case 'image/jpeg':
+      return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    case 'image/png':
+      return buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+    case 'image/gif':
+      // "GIF8"
+      return buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38;
+    case 'image/webp':
+      // "RIFF" .... "WEBP"
+      return buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP';
+    default:
+      return false;
+  }
+}
+
 @Controller('uploads')
 export class UploadsController {
   constructor(private readonly uploads: UploadsService) {}
@@ -66,6 +89,13 @@ export class UploadsController {
       throw new BadRequestException({
         code: 'file_too_large',
         message: `Tamanho máximo: ${MAX_FILE_BYTES / (1024 * 1024)} MB.`,
+      });
+    }
+    // MIME declarado precisa bater com os magic bytes reais do arquivo.
+    if (!matchesSignature(file.buffer, file.mimetype)) {
+      throw new BadRequestException({
+        code: 'unsupported_mime_type',
+        message: `O conteúdo do arquivo não corresponde ao tipo ${file.mimetype}.`,
       });
     }
 

@@ -32,6 +32,6 @@ export const STATUS_LABELS: Record<string, string> = {
   preparing: 'Em preparo',
   ready: 'Pronto',
   dispatched: 'Despachado',
-  delivered: 'Entregue',
+  delivered: 'Concluído',
   cancelled: 'Cancelado',
 };

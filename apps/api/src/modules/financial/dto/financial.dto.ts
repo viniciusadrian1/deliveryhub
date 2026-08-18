@@ -46,6 +46,15 @@ export const manualReconcileSchema = z.object({
 });
 export type ManualReconcileInput = z.infer<typeof manualReconcileSchema>;
 
+/** Import de repasses OFICIAIS direto da API da plataforma (iFood Financial). */
+export const importPayoutsSchema = z.object({
+  storeId: z.string().uuid(),
+  platformCode: z.enum(PLATFORMS),
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+});
+export type ImportPayoutsInput = z.infer<typeof importPayoutsSchema>;
+
 // Bank import ================================================
 
 export const importBankCsvSchema = z.object({

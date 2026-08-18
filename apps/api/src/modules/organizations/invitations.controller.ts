@@ -30,6 +30,7 @@ export class InvitationsController {
     return this.invitations.create(
       auth.orgId,
       auth.userId,
+      auth.role,
       body.email,
       body.role,
       this.session(req),

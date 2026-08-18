@@ -17,6 +17,9 @@ const COLUMNS: { status: OrderStatus | OrderStatus[]; title: string; accent?: bo
   { status: ['accepted', 'preparing'], title: 'Em preparo' },
   { status: 'ready', title: 'Prontos' },
   { status: 'dispatched', title: 'Despachados' },
+  // ponytail: entregue + cancelado = "concluído" no sentido do iFood (pedido finalizado).
+  // limit=100 na query já corta o histórico; se crescer, filtrar por data aqui.
+  { status: ['delivered', 'cancelled'], title: 'Concluídos' },
 ];
 
 function HubBoard() {
@@ -135,7 +138,7 @@ function HubBoard() {
         </p>
       )}
 
-      <div className="grid flex-1 min-h-0 gap-3 overflow-x-auto md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid flex-1 min-h-0 gap-3 overflow-x-auto md:grid-cols-2 xl:grid-cols-5">
         {COLUMNS.map((col) => {
           const orders = grouped[col.title] ?? [];
           return (

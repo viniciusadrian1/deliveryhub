@@ -4,6 +4,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { AdapterApiError } from '@deliveryhub/ifood';
 import type { PlatformCode } from '@deliveryhub/shared';
 
+import { loadEnv } from '../../config/env.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { AdapterRegistry } from '../integrations/adapter.registry.js';
 import { IntegrationsService } from '../integrations/integrations.service.js';
@@ -36,6 +37,8 @@ export class OrdersPoller {
   private readonly logger = new Logger(OrdersPoller.name);
   /** Margem antes da expiração pra renovar o token preventivamente. */
   private readonly TOKEN_REFRESH_MARGIN_MS = 60 * 1000;
+  /** Piloto automático do iFood — ligado só na homologação (env). */
+  private readonly ifoodAutopilot = loadEnv().IFOOD_AUTOPILOT;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -122,6 +125,9 @@ export class OrdersPoller {
 
     if (events.length === 0) {
       // Mesmo sem eventos, atualiza lastSyncAt pra mostrar "vivo" no painel.
+      // E roda o autopilot: pedidos já recebidos avançam (accepted → dispatch)
+      // em ciclos seguintes, mesmo sem evento novo.
+      await this.runAutopilot(platformCode, conn.externalMerchantId, adapter, tokens, conn.id);
       await this.touchLastSync(conn.id);
       return;
     }
@@ -139,6 +145,7 @@ export class OrdersPoller {
           evt.externalOrderId,
           evt.externalMerchantId,
           evt.eventType,
+          evt.metadata,
         );
         processed.push(evt.eventId);
       } catch (err) {
@@ -163,7 +170,22 @@ export class OrdersPoller {
       }
     }
 
+    await this.runAutopilot(platformCode, conn.externalMerchantId, adapter, tokens, conn.id);
     await this.touchLastSync(conn.id);
+  }
+
+  /** Roda o autopilot do iFood (homologação) se ligado. No-op caso contrário. */
+  private async runAutopilot(
+    platformCode: PlatformCode,
+    externalMerchantId: string,
+    adapter: ReturnType<AdapterRegistry['get']>,
+    tokens: Awaited<ReturnType<IntegrationsService['getTokens']>>,
+    connectionId: string,
+  ): Promise<void> {
+    if (!this.ifoodAutopilot || platformCode !== 'ifood' || !tokens) return;
+    await this.orders
+      .runIfoodAutopilot(externalMerchantId, adapter, tokens)
+      .catch((err) => this.logger.warn({ err, connectionId }, 'ifood_autopilot_failed'));
   }
 
   private async touchLastSync(connectionId: string): Promise<void> {

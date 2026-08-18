@@ -15,6 +15,8 @@ import {
   dashboardQuerySchema,
   type ImportBankCsvInput,
   importBankCsvSchema,
+  type ImportPayoutsInput,
+  importPayoutsSchema,
   type ListBankTransactionsQuery,
   listBankTransactionsQuerySchema,
   type ListPayoutsQuery,
@@ -136,6 +138,23 @@ export class FinancialController {
       body.from,
       body.to,
       body.expectedPayDate,
+    );
+  }
+
+  /** Importa repasses oficiais da API da plataforma (iFood Financial v3). */
+  @Post('payouts/import')
+  @Roles('owner', 'manager', 'financial')
+  @HttpCode(200)
+  importPayouts(
+    @CurrentUser() auth: AuthContext,
+    @Body(new ZodValidationPipe(importPayoutsSchema)) body: ImportPayoutsInput,
+  ) {
+    return this.payouts.importFromPlatform(
+      auth,
+      body.storeId,
+      body.platformCode,
+      body.from,
+      body.to,
     );
   }
 

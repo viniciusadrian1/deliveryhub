@@ -170,6 +170,16 @@ export default function FinancialPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['fin', 'payouts'] }),
   });
 
+  // Repasses oficiais da plataforma (iFood Financial v3) do período filtrado.
+  const importPayouts = useMutation({
+    mutationFn: async () =>
+      api<{ imported: number }>('/payouts/import', {
+        method: 'POST',
+        body: { storeId, platformCode: 'ifood', from, to },
+      }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['fin', 'payouts'] }),
+  });
+
   const maxDaily = Math.max(1, ...daily.map((d) => d.revenueGrossCents));
 
   if (!storeId) {
@@ -405,14 +415,25 @@ export default function FinancialPage() {
             <h2 className="text-sm font-semibold text-ink-primary">Conciliação de repasses</h2>
             <Badge variant="neutral">{payouts.length}</Badge>
           </div>
-          <Button
-            size="sm"
-            onClick={() => reconcile.mutate()}
-            loading={reconcile.isPending}
-            leftIcon={<Zap className="h-3.5 w-3.5" />}
-          >
-            Rodar conciliação
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => importPayouts.mutate()}
+              loading={importPayouts.isPending}
+              title="Busca os repasses declarados pelo iFood (Financial API) no período filtrado"
+            >
+              Importar oficiais (iFood)
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => reconcile.mutate()}
+              loading={reconcile.isPending}
+              leftIcon={<Zap className="h-3.5 w-3.5" />}
+            >
+              Rodar conciliação
+            </Button>
+          </div>
         </header>
         {payouts.length === 0 ? (
           <div className="px-5 py-8">

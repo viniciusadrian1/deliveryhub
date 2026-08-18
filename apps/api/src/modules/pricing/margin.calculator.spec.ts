@@ -78,6 +78,19 @@ describe('calculateMargin', () => {
     expect(result.marginPct).toBe(0);
     expect(result.marginPctNet).toBe(0);
   });
+
+  it('keeps marginPctNet negative when net revenue is negative (no sign flip)', () => {
+    const result = calculateMargin({
+      sellingPriceCents: 1000,
+      costCents: 0,
+      commissionPct: 90,
+      paymentProcessingPct: 15, // taxas 1050 > preço 1000
+      flatFeeCents: 0,
+    });
+    expect(result.netRevenueCents).toBe(-50);
+    expect(result.marginCents).toBe(-50);
+    expect(result.marginPctNet).toBe(-100);
+  });
 });
 
 describe('applyPercentDelta', () => {
@@ -121,6 +134,17 @@ describe('priceToHitMargin', () => {
       priceToHitMargin(80, 1000, {
         commissionPct: 25,
         paymentProcessingPct: 5, // 30 + 80 = 110 → impossible
+        flatFeeCents: 0,
+      }),
+    ).toBeNull();
+  });
+
+  it('returns null for zero-cost items instead of pricing them at R$0,00', () => {
+    // custo + taxa fixa == 0 não pode virar preço 0 (produto de graça)
+    expect(
+      priceToHitMargin(30, 0, {
+        commissionPct: 23,
+        paymentProcessingPct: 3,
         flatFeeCents: 0,
       }),
     ).toBeNull();

@@ -895,13 +895,26 @@ export class DidifoodAdapter implements PlatformAdapter {
   /**
    * Verifica se o lojista já concluiu o bind na página de autorização.
    *
-   * Lista as lojas vinculadas (1 única chamada a `/v1/shop/shop/list`) e
-   * pega a primeira — suficiente p/ lojista de loja única; multi-loja, ele
-   * conecta as demais depois. Sem loja vinculada → `ConnectionPendingError`
-   * (ainda não autorizou). Se o `/shop/list` estourar o rate limit (errno
-   * 10005, 1 req/20s), também devolvemos pending — é só tentar de novo.
+   * Lista as lojas vinculadas (1 única chamada a `/v1/shop/shop/list`). Sem
+   * loja vinculada → `ConnectionPendingError` (ainda não autorizou). Se o
+   * `/shop/list` estourar o rate limit (errno 10005, 1 req/20s), também
+   * devolvemos pending — é só tentar de novo.
+   *
+   * `selectedAppShopId` é o `app_shop_id` que a UI mandou o lojista escolher
+   * (chega pelo campo `authorizationCode` do finalize, já encanado do
+   * controller → service → adapter). Se vier, vinculamos EXATAMENTE essa
+   * loja (após validar que ela está entre as vinculadas). Só quando há
+   * exatamente uma loja vinculada é seguro dispensar a escolha e usá-la.
+   *
+   * NUNCA mais chutamos `shops[0]` no caso multi-loja: isso vinculava a loja
+   * errada em silêncio e dois PlatformConnections acabavam com o mesmo
+   * `externalMerchantId`, fazendo o roteamento de pedidos cair na conexão
+   * errada. Multi-loja sem escolha explícita agora vira erro claro.
    */
-  async finalizeConnection(pendingHandle: string): Promise<FinalizeConnectionResult> {
+  async finalizeConnection(
+    pendingHandle: string,
+    selectedAppShopId?: string,
+  ): Promise<FinalizeConnectionResult> {
     decodeHandle(pendingHandle); // valida o handle (corrompido → erro claro)
 
     let shops: string[];
@@ -916,7 +929,23 @@ export class DidifoodAdapter implements PlatformAdapter {
     }
     if (shops.length === 0) throw new ConnectionPendingError();
 
-    const appShopId = shops[0]!;
+    let appShopId: string;
+    if (selectedAppShopId) {
+      if (!shops.includes(selectedAppShopId)) {
+        throw new AdapterApiError('99food_shop_not_bound', 400, {
+          selectedAppShopId,
+          shops,
+        });
+      }
+      appShopId = selectedAppShopId;
+    } else if (shops.length === 1) {
+      appShopId = shops[0]!;
+    } else {
+      // Multi-loja e a UI não disse qual: não dá pra adivinhar sem misturar
+      // as lojas. O lojista precisa escolher.
+      throw new AdapterApiError('99food_multiple_shops_select_one', 409, { shops });
+    }
+
     const tokens = await this.getAuthtoken(appShopId);
     return { tokens, externalMerchantId: appShopId };
   }

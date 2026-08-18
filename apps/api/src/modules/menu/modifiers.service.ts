@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -58,13 +58,22 @@ export class ModifiersService {
 
   async updateGroup(auth: AuthContext, id: string, input: UpdateModifierGroupInput) {
     const existing = await this.findGroupOrThrow(auth.orgId, id);
+    // O refine do Zod só valida min<=max quando os DOIS campos vêm no payload.
+    // Num PATCH parcial (só min ou só max) o outro lado sai do banco, então
+    // cruzamos com o valor existente pra nunca persistir minSelect > maxSelect
+    // (grupo contraditório vai parar no iFood via publishItem).
+    const minSelect = input.minSelect ?? existing.minSelect;
+    const maxSelect = input.maxSelect ?? existing.maxSelect;
+    if (minSelect > maxSelect) {
+      throw new BadRequestException('minSelect must be ≤ maxSelect');
+    }
     const updated = await this.prisma.modifierGroup.update({
       where: { id },
       data: {
         kind: input.kind ?? undefined,
         name: input.name ?? undefined,
-        minSelect: input.minSelect ?? undefined,
-        maxSelect: input.maxSelect ?? undefined,
+        minSelect,
+        maxSelect,
         required: input.required ?? undefined,
         sortOrder: input.sortOrder ?? undefined,
       },
@@ -96,6 +105,12 @@ export class ModifiersService {
 
   async createModifier(auth: AuthContext, input: CreateModifierInput) {
     await this.findGroupOrThrow(auth.orgId, input.modifierGroupId);
+    // O FK linkedMenuItem aponta pra MenuItem global; sem checar a org o
+    // modifier poderia linkar (e dar baixa de estoque pela receita de) um item
+    // de outro tenant. Valida a posse antes de gravar.
+    if (input.linkedMenuItemId) {
+      await this.assertMenuItem(auth.orgId, input.linkedMenuItemId);
+    }
 
     const created = await this.prisma.modifier.create({
       data: {
@@ -128,6 +143,11 @@ export class ModifiersService {
 
   async updateModifier(auth: AuthContext, id: string, input: UpdateModifierInput) {
     const existing = await this.findModifierOrThrow(auth.orgId, id);
+    // Mesma checagem cross-tenant do create; `undefined` = "sem alteração",
+    // então só validamos quando um id concreto é enviado.
+    if (input.linkedMenuItemId) {
+      await this.assertMenuItem(auth.orgId, input.linkedMenuItemId);
+    }
     const updated = await this.prisma.modifier.update({
       where: { id },
       data: {

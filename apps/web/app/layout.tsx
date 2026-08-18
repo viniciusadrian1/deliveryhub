@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Poppins } from 'next/font/google';
 
 import { THEME_INIT_SCRIPT } from '../lib/theme-context';
 import { Providers } from './providers';
@@ -12,6 +12,15 @@ const inter = Inter({
   display: 'swap',
 });
 
+// Fonte da marca — usada no wordmark do logo (italic) e nos números da landing (normal).
+const poppins = Poppins({
+  subsets: ['latin'],
+  weight: ['700', '900'],
+  style: ['normal', 'italic'],
+  variable: '--font-brand',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'DeliveryHub — controle unificado de delivery',
   description:
@@ -20,7 +29,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={inter.variable} suppressHydrationWarning>
+    <html lang="pt-BR" className={`${inter.variable} ${poppins.variable}`} suppressHydrationWarning>
       <head>
         {/* Resolve theme before first paint to avoid flash. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />

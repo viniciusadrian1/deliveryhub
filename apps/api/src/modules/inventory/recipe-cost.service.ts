@@ -4,6 +4,7 @@ import { Prisma } from '@deliveryhub/db';
 
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
+import { CombosService } from '../menu/combos.service.js';
 
 /** Limite duro de recursão na expansão de receitas — rede de segurança. */
 const MAX_DEPTH = 10;
@@ -26,8 +27,8 @@ const MAX_DEPTH = 10;
  *    custo de um Ingredient muda, percorre BFS na direção dos consumidores:
  *      raw -> sub-receitas que usam -> sub-receitas que usam aquelas -> ...
  *                                  \-> MenuItems que usam (em qualquer nível)
- *    Tudo em UMA transação Prisma. Anti-ciclo: visitedIngredients +
- *    MAX_DEPTH (na expansão de cada receita).
+ *    Tudo em UMA transação Prisma. Terminação: acíclico (assertNoCycle no
+ *    save) + MAX_DEPTH como rede de segurança.
  *
  *  - `assertNoCycle`: chamado pelo RecipesService antes de salvar a receita
  *    de uma sub-receita, garantindo que ela não inclua a si mesma direta ou
@@ -37,7 +38,10 @@ const MAX_DEPTH = 10;
 export class RecipeCostService {
   private readonly logger = new Logger(RecipeCostService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly combos: CombosService,
+  ) {}
 
   // -------------------------------------------------------------------
   // Cálculo de custo (consultas em modo leitura — usadas para preview)
@@ -173,20 +177,25 @@ export class RecipeCostService {
    *
    * 1. Encontra todos os RecipeComponent que apontam para `ingredientId`.
    *    Cada um tem um pai: MenuItem (caso A) ou Ingredient sub_recipe (caso B).
-   * 2. Para cada MenuItem afetado: recomputeForMenuItem
+   * 2. MenuItems afetados são acumulados (não recalculados ainda).
    * 3. Para cada sub_recipe afetada:
    *      a. recomputeForSubRecipe (custo unitário muda)
    *      b. se mudou, agenda a sub_recipe para o próximo nível de cascata
    *         (porque outras sub-receitas / MenuItems podem usar ela)
    * 4. Repete até a fila esvaziar OU MAX_DEPTH níveis.
+   * 5. Só então recalcula os MenuItems afetados, com as sub-receitas já
+   *    convergidas (evita ler custo de sub-receita estale no meio da cascata).
    */
   async propagateFromIngredient(
     auth: AuthContext,
     ingredientId: string,
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const visited = new Set<string>([ingredientId]);
       const queue: string[] = [ingredientId];
+      // MenuItems afetados são acumulados e recalculados UMA vez, ao final,
+      // depois que os custos das sub-receitas convergem — senão um MenuItem
+      // lê o costPerUnit ainda estale de uma sub-receita no meio da cascata.
+      const affectedMenuItems = new Set<string>();
       let level = 0;
 
       while (queue.length > 0) {
@@ -203,20 +212,17 @@ export class RecipeCostService {
           select: { menuItemId: true, parentIngredientId: true },
         });
 
-        const menuItems = new Set<string>();
         const subRecipes = new Set<string>();
         for (const u of usages) {
-          if (u.menuItemId) menuItems.add(u.menuItemId);
+          if (u.menuItemId) affectedMenuItems.add(u.menuItemId);
           if (u.parentIngredientId) subRecipes.add(u.parentIngredientId);
         }
 
-        for (const menuItemId of menuItems) {
-          await this.recomputeForMenuItem(tx, menuItemId);
-        }
-
+        // Sem "visited" permanente: re-enfileira apenas quando o custo muda
+        // (relaxação estilo Bellman-Ford), então uma sub-receita alcançada por
+        // caminho curto E longo (diamante) converge para o custo correto. A
+        // aciclicidade é garantida por assertNoCycle; MAX_DEPTH é o backstop.
         for (const subId of subRecipes) {
-          if (visited.has(subId)) continue;
-          visited.add(subId);
           const result = await this.recomputeForSubRecipe(tx, subId);
           if (result.changed) {
             queue.push(subId);
@@ -224,6 +230,14 @@ export class RecipeCostService {
         }
         level++;
       }
+
+      // Só agora, com as sub-receitas estabilizadas, recalcula os MenuItems.
+      for (const menuItemId of affectedMenuItems) {
+        await this.recomputeForMenuItem(tx, menuItemId);
+      }
+      // E propaga p/ os combos que contenham qualquer MenuItem afetado — senão o
+      // CMV do combo fica velho ate alguem re-salvar o combo.
+      await this.combos.recomputeCombosContaining(tx, affectedMenuItems);
     });
   }
 

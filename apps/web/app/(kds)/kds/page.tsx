@@ -123,7 +123,8 @@ export default function KdsPage() {
 
   // Mutations para transições — não bloqueiam UI (otimista invalida)
   const accept = useMutation({
-    mutationFn: (id: string) => api(`/orders/${id}/start-preparing`, { method: 'POST' }),
+    // Rota do backend é POST :id/preparing (accepted -> preparing), não start-preparing
+    mutationFn: (id: string) => api(`/orders/${id}/preparing`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kds-orders', storeId] }),
   });
   const markReady = useMutation({

@@ -31,6 +31,7 @@ model Platform {
   webhookEvents   WebhookEvent[]
   payouts         Payout[]
   actionRequests  PlatformActionRequest[]
+  promotions      Promotion[]
 
   @@map("platform")
 }
@@ -220,6 +221,9 @@ model MenuItemPlatformConfig {
   menuItemId         String    @map("menu_item_id")
   platformId         String    @map("platform_id")
   externalId         String?   @map("external_id")
+  // Codigo externo real do item na plataforma (EAN/SKU) — usado por promocoes
+  // p/ casar itens importados via pull, distinto do externalId (UUID do item).
+  externalCode       String?   @map("external_code")
   externalCategoryId String?   @map("external_category_id")
   sellingPriceCents  Int       @default(0) @map("selling_price_cents")
   isPublished        Boolean   @default(true) @map("is_published")
@@ -371,6 +375,11 @@ model Order {
   // plataforma) ou é informado pela loja na entrega própria.
   courierName            String?   @map("courier_name")
   courierPhone           String?   @map("courier_phone")
+  // Agendamento (iFood): 'immediate' | 'scheduled', modalidade e a hora
+  // de entrega agendada — o autopilot segura o despacho até essa hora.
+  orderTiming            String?   @map("order_timing")
+  orderType              String?   @map("order_type")
+  scheduledDeliveryAt    DateTime? @map("scheduled_delivery_at")
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
 
@@ -604,6 +613,46 @@ model Payout {
   @@map("payout")
 }
 
+enum PromotionStatus {
+  processing
+  active
+  error
+
+  @@map("promotion_status")
+}
+
+/// Promoção enviada a uma plataforma (iFood Promotion API). O processamento
+/// é assíncrono do lado da plataforma: criamos com status `processing` e o
+/// refresh consulta o resultado por item via aggregationId.
+model Promotion {
+  id                    String          @id @default(uuid(7))
+  organizationId        String          @map("organization_id")
+  storeId               String          @map("store_id")
+  platformId            String          @map("platform_id")
+  name                  String
+  /// Tag única por tentativa — a plataforma exige nunca reutilizar.
+  aggregationTag        String          @map("aggregation_tag")
+  /// Id devolvido pela plataforma pra consultar o processamento.
+  externalAggregationId String?         @map("external_aggregation_id")
+  discountPercent       Int             @map("discount_percent")
+  startsAt              DateTime        @map("starts_at") @db.Date
+  endsAt                DateTime        @map("ends_at") @db.Date
+  /// Itens incluídos: [{ menuItemId, externalId, name }]
+  items                 Json            @default("[]")
+  status                PromotionStatus @default(processing)
+  lastCheckedAt         DateTime?       @map("last_checked_at")
+  lastError             String?         @map("last_error")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  platform     Platform     @relation(fields: [platformId], references: [id])
+
+  @@index([organizationId, storeId])
+  @@map("promotion")
+}
+
 model BankTransaction {
   id             String   @id @default(uuid(7))
   organizationId String   @map("organization_id")
@@ -611,6 +660,9 @@ model BankTransaction {
   date           DateTime @db.Date
   amountCents    BigInt   @map("amount_cents")
   description    String
+  // Sequencial p/ desempate: permite linhas legitimamente iguais no mesmo dia
+  // (mesma data+valor+descricao) sem o dedupe descartar transacoes reais.
+  seq            Int      @default(0)
   raw            Json
   importedAt     DateTime @default(now()) @map("imported_at")
 
@@ -618,8 +670,8 @@ model BankTransaction {
   store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
   payouts      Payout[]
 
-  // Dedupe: mesma data + valor + descrição = mesma linha do extrato.
-  @@unique([storeId, date, amountCents, description])
+  // Dedupe: mesma data + valor + descrição + seq = mesma linha do extrato.
+  @@unique([storeId, date, amountCents, description, seq])
   @@index([organizationId, storeId, date(sort: Desc)])
   @@map("bank_transaction")
 }
@@ -713,6 +765,7 @@ model Organization {
   comboComponents         ComboComponent[]
   expenses                Expense[]
   platformActionRequests  PlatformActionRequest[]
+  promotions              Promotion[]
 
   @@map("organization")
 }
@@ -790,6 +843,7 @@ model Store {
   stockMovements      StockMovement[]
   expenses            Expense[]
   actionRequests      PlatformActionRequest[]
+  promotions          Promotion[]
 
   @@index([organizationId])
   @@map("store")

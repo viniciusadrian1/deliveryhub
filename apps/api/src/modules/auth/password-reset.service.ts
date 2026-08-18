@@ -41,6 +41,19 @@ export class PasswordResetService {
       return;
     }
 
+    // Dispara token + e-mail + audit FORA do caminho da resposta. Sem isso, o e-mail
+    // conhecido demoraria o round-trip de envio e o desconhecido retornaria na hora —
+    // e essa diferença de tempo revelaria se a conta existe, apesar do 204 uniforme.
+    void this.dispatchReset(user, email, session).catch((err) =>
+      this.logger.error({ err }, 'password_reset_dispatch_failed'),
+    );
+  }
+
+  private async dispatchReset(
+    user: { id: string; name: string; memberships: { organizationId: string }[] },
+    email: string,
+    session: SessionContext,
+  ): Promise<void> {
     const plainToken = randomBytes(32).toString('base64url');
     const tokenHash = this.tokens.hashRefreshToken(plainToken);
     const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_SECONDS * 1000);

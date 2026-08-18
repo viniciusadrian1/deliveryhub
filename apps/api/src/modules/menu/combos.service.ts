@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
+import { Prisma } from '@deliveryhub/db';
+
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
@@ -126,5 +128,53 @@ export class CombosService {
     });
 
     return this.getCombo(auth, menuItemId);
+  }
+
+  /**
+   * Recalcula o CMV (`costCents`) de todo combo que contém qualquer um dos
+   * `changedMenuItemIds` como componente.
+   *
+   * A cascata de custos de receita (RecipeCostService.propagateFromIngredient /
+   * RecipesService.propagateInTx) atualiza o `costCents` dos itens `single`
+   * quando o custo de um insumo muda, mas não conhece ComboComponent — então o
+   * CMV dos combos ficava velho até alguém re-salvar o combo. Esta helper é
+   * chamada AO FINAL daquelas cascatas, dentro da MESMA transação, com o
+   * conjunto de MenuItems que tiveram o custo recalculado.
+   *
+   * Combos de combos são proibidos (componentes precisam ser `single`), então
+   * um único passo basta — sem recursão.
+   *
+   * ponytail: espelha o cálculo de setComponents (sum(component.costCents*qty));
+   * se o custo do combo virar receita própria um dia, unificar com aquele path.
+   */
+  async recomputeCombosContaining(
+    tx: Prisma.TransactionClient,
+    changedMenuItemIds: Iterable<string>,
+  ): Promise<void> {
+    const ids = [...new Set(changedMenuItemIds)];
+    if (ids.length === 0) return;
+
+    const links = await tx.comboComponent.findMany({
+      where: { componentMenuItemId: { in: ids } },
+      select: { comboMenuItemId: true },
+    });
+    const comboIds = [...new Set(links.map((l) => l.comboMenuItemId))];
+
+    for (const comboId of comboIds) {
+      // Soma sobre TODOS os componentes atuais do combo (não só os que
+      // mudaram), lendo o costCents já atualizado de cada componente.
+      const components = await tx.comboComponent.findMany({
+        where: { comboMenuItemId: comboId },
+        include: { componentItem: { select: { costCents: true } } },
+      });
+      const totalCost = components.reduce(
+        (sum, c) => sum + c.componentItem.costCents * c.quantity,
+        0,
+      );
+      await tx.menuItem.update({
+        where: { id: comboId },
+        data: { costCents: totalCost },
+      });
+    }
   }
 }

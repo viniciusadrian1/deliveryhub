@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@deliveryhub/db';
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { TenantPrismaService } from '../../common/tenant/tenant-prisma.service.js';
@@ -17,15 +18,41 @@ export class ExpensesService {
   ) {}
 
   async list(auth: AuthContext, query: ListExpensesQuery) {
+    // "Despesas ativas no período" (contrato do DTO): one_time entra se occurredAt
+    // cai no período; recorrentes entram se já começaram (occurredAt <= periodEnd)
+    // e ainda não encerraram antes dele (endedAt nulo OU >= periodStart). Para
+    // recorrentes occurredAt é a data de INÍCIO, não a ocorrência no período —
+    // por isso não dá pra filtrar por occurredAt >= periodStart. Espelha DreService.
+    const periodFilter: Prisma.ExpenseWhereInput =
+      query.periodStart || query.periodEnd
+        ? {
+            OR: [
+              {
+                recurrence: 'one_time',
+                occurredAt: { gte: query.periodStart, lte: query.periodEnd },
+              },
+              {
+                recurrence: { in: ['monthly', 'weekly', 'daily'] },
+                occurredAt: query.periodEnd ? { lte: query.periodEnd } : undefined,
+                AND: [
+                  {
+                    OR: [
+                      { endedAt: null },
+                      query.periodStart ? { endedAt: { gte: query.periodStart } } : {},
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : {};
+
     return this.tenantPrisma.tx.expense.findMany({
       where: {
         storeId: query.storeId,
         category: query.category,
         recurrence: query.recurrence,
-        occurredAt:
-          query.periodStart || query.periodEnd
-            ? { gte: query.periodStart, lte: query.periodEnd }
-            : undefined,
+        ...periodFilter,
       },
       include: {
         createdBy: { select: { id: true, name: true } },

@@ -3,12 +3,25 @@ import { randomBytes } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 
 import type { Role } from '@deliveryhub/shared';
+
+/**
+ * Hierarquia de papéis. Um usuário só pode convidar alguém com papel de rank
+ * MENOR OU IGUAL ao seu — impede um manager de cunhar owners (escalação).
+ * staff e financial são pares (sem poder de convite acima de si).
+ */
+const ROLE_RANK: Record<Role, number> = {
+  owner: 3,
+  manager: 2,
+  staff: 1,
+  financial: 1,
+};
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { EmailService } from '../../common/email/email.service.js';
@@ -45,10 +58,16 @@ export class InvitationsService {
   async create(
     organizationId: string,
     invitedByUserId: string,
+    inviterRole: Role,
     email: string,
     role: Role,
     session: SessionContext = {},
   ): Promise<{ id: string; expiresAt: Date }> {
+    // Anti-escalação: ninguém convida acima do próprio papel.
+    if (ROLE_RANK[role] > ROLE_RANK[inviterRole]) {
+      throw new ForbiddenException('cannot_invite_higher_role');
+    }
+
     // Já é membro?
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
@@ -139,32 +158,48 @@ export class InvitationsService {
       throw new UnauthorizedException('invalid_invitation_token');
     }
 
-    let user = await this.prisma.user.findUnique({ where: { email: invitation.email } });
+    const existing = await this.prisma.user.findUnique({ where: { email: invitation.email } });
 
-    if (!user) {
+    // Hash de senha é CPU-bound — computa FORA da transação (só p/ usuário novo).
+    let passwordHash: string | undefined;
+    if (!existing) {
       if (!name || !password) {
         throw new BadRequestException('new_user_requires_name_and_password');
       }
-      const passwordHash = await this.passwords.hash(password);
-      user = await this.prisma.user.create({
-        data: { email: invitation.email, passwordHash, name },
-      });
+      passwordHash = await this.passwords.hash(password);
     }
 
-    const membership = await this.prisma.$transaction(async (tx) => {
-      const m = await tx.membership.create({
-        data: {
-          organizationId: invitation.organizationId,
-          userId: user!.id,
-          role: invitation.role,
-        },
+    // Cria usuário (se novo), membership e carimba o convite atomicamente. Antes o
+    // user.create rodava FORA da transação: se ela falhasse depois, sobrava um User
+    // órfão sem membership, travando login e re-registro do e-mail para sempre.
+    const { user, membership } = await this.prisma
+      .$transaction(async (tx) => {
+        const person =
+          existing ??
+          (await tx.user.create({
+            data: { email: invitation.email, passwordHash: passwordHash!, name: name! },
+          }));
+        const m = await tx.membership.create({
+          data: {
+            organizationId: invitation.organizationId,
+            userId: person.id,
+            role: invitation.role,
+          },
+        });
+        await tx.invitation.update({
+          where: { id: invitation.id },
+          data: { acceptedAt: new Date(), acceptedByUserId: person.id },
+        });
+        return { user: person, membership: m };
+      })
+      .catch((err) => {
+        // Double-accept concorrente do mesmo token colide no @@unique da membership
+        // (P2002) — devolve token usado em vez de 500 cru.
+        if (err?.code === 'P2002') {
+          throw new UnauthorizedException('invalid_invitation_token');
+        }
+        throw err;
       });
-      await tx.invitation.update({
-        where: { id: invitation.id },
-        data: { acceptedAt: new Date(), acceptedByUserId: user!.id },
-      });
-      return m;
-    });
 
     await this.audit.record({
       organizationId: invitation.organizationId,

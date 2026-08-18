@@ -68,8 +68,9 @@ export class AdapterRegistry {
       );
       this.logger.log('iFood adapter registered (real)');
     } else {
-      this.adapters.set('ifood', new MockAdapter('ifood'));
-      this.logger.warn(
+      this.registerMock(
+        'ifood',
+        env,
         'iFood adapter registered (MOCK — set IFOOD_CLIENT_ID + IFOOD_CLIENT_SECRET to use the real one)',
       );
     }
@@ -88,8 +89,7 @@ export class AdapterRegistry {
       );
       this.logger.log('Rappi adapter registered (real — STUB, will throw not_implemented)');
     } else {
-      this.adapters.set('rappi', new MockAdapter('rappi'));
-      this.logger.warn('Rappi adapter registered (MOCK)');
+      this.registerMock('rappi', env, 'Rappi adapter registered (MOCK)');
     }
   }
 
@@ -107,8 +107,7 @@ export class AdapterRegistry {
       );
       this.logger.log('Uber Eats adapter registered (real — STUB, will throw not_implemented)');
     } else {
-      this.adapters.set('ubereats', new MockAdapter('ubereats'));
-      this.logger.warn('Uber Eats adapter registered (MOCK)');
+      this.registerMock('ubereats', env, 'Uber Eats adapter registered (MOCK)');
     }
   }
 
@@ -124,8 +123,7 @@ export class AdapterRegistry {
       );
       this.logger.log('AiQfome adapter registered (real — STUB, will throw not_implemented)');
     } else {
-      this.adapters.set('aiqfome', new MockAdapter('aiqfome'));
-      this.logger.warn('AiQfome adapter registered (MOCK)');
+      this.registerMock('aiqfome', env, 'AiQfome adapter registered (MOCK)');
     }
   }
 
@@ -154,8 +152,7 @@ export class AdapterRegistry {
         '99Food adapter registered (real — Authorization + Order + Store + Menu API)',
       );
     } else {
-      this.adapters.set('99food', new MockAdapter('99food'));
-      this.logger.warn('99Food adapter registered (MOCK)');
+      this.registerMock('99food', env, '99Food adapter registered (MOCK)');
     }
   }
 
@@ -174,9 +171,28 @@ export class AdapterRegistry {
         'Keeta adapter registered (real — Open Delivery: orders, events, polling)',
       );
     } else {
-      this.adapters.set('keeta', new MockAdapter('keeta'));
-      this.logger.warn('Keeta adapter registered (MOCK)');
+      this.registerMock('keeta', env, 'Keeta adapter registered (MOCK)');
     }
+  }
+
+  /**
+   * Registra o MockAdapter no slot da plataforma — mas SÓ fora de produção.
+   *
+   * Em produção o mock NUNCA é registrado: ele aceita QUALQUER webhook
+   * (verifyWebhookSignature → true) e devolve pedidos com valores fabricados,
+   * então um deploy com credencial faltando/errada estaria injetando pedidos
+   * falsos no tenant. Sem creds em produção o slot fica vazio → `get()` lança
+   * NotFoundException e o webhook falha fechado (fail-closed).
+   */
+  private registerMock(code: PlatformCode, env: Env, warning: string): void {
+    if (env.NODE_ENV === 'production') {
+      this.logger.error(
+        `${code} adapter NÃO registrado: credenciais ausentes em produção (MockAdapter desabilitado — configure as credenciais reais da plataforma)`,
+      );
+      return;
+    }
+    this.adapters.set(code, new MockAdapter(code));
+    this.logger.warn(warning);
   }
 
   get(code: PlatformCode): PlatformAdapter {

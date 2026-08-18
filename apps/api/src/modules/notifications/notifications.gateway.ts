@@ -43,12 +43,11 @@ export class NotificationsGateway
 
   onModuleInit(): void {
     this.unsubscribe = this.emitter.subscribe((payload) => {
-      // Emite tanto pra sala do usuário (toda sessão dele recebe)
-      // quanto pra sala da org (operadores observam eventos globais).
+      // Notificações são sempre destinadas a um userId específico; entregamos
+      // apenas na sala dele (todas as sessões/dispositivos entram nela).
+      // Não emitimos pra sala da org: isso vazaria conteúdo pessoal/financeiro
+      // pra outros membros conectados (todos entram em org:${orgId} no connect).
       this.server.to(`user:${payload.userId}`).emit('notification.created', payload);
-      if (payload.organizationId) {
-        this.server.to(`org:${payload.organizationId}`).emit('notification.created', payload);
-      }
     });
   }
 

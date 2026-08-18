@@ -30,13 +30,13 @@ export class CustomersService {
     // Tenta achar por phone primeiro, depois document.
     let existing = null;
     if (phoneHash) {
-      existing = await this.prisma.customer.findUnique({
+      existing = await this.prisma.enc.customer.findUnique({
         where: { organizationId_phoneHash: { organizationId: input.organizationId, phoneHash } },
         select: { id: true },
       });
     }
     if (!existing && documentHash) {
-      existing = await this.prisma.customer.findUnique({
+      existing = await this.prisma.enc.customer.findUnique({
         where: {
           organizationId_documentHash: {
             organizationId: input.organizationId,
@@ -48,7 +48,7 @@ export class CustomersService {
     }
 
     if (existing) {
-      await this.prisma.customer.update({
+      await this.prisma.enc.customer.update({
         where: { id: existing.id },
         data: {
           name: input.name,
@@ -63,7 +63,7 @@ export class CustomersService {
       return existing;
     }
 
-    const created = await this.prisma.customer.create({
+    const created = await this.prisma.enc.customer.create({
       data: {
         organizationId: input.organizationId,
         name: input.name,
@@ -79,6 +79,8 @@ export class CustomersService {
 }
 
 function hashDigits(value: string): string {
-  const digits = value.replace(/\D/g, '');
+  // Defensivo: coage pra string — algumas plataformas mandam telefone/doc
+  // como número, e `.replace` só existe em string.
+  const digits = String(value).replace(/\D/g, '');
   return createHash('sha256').update(digits).digest('hex');
 }

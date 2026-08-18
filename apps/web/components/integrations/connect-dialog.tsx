@@ -27,6 +27,8 @@ export function ConnectDialog({
 }: ConnectDialogProps) {
   const qc = useQueryClient();
   const [started, setStarted] = useState<StartConnectionResponse | null>(null);
+  const [authCode, setAuthCode] = useState('');
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
 
   // iFood usa OAuth Device (mostra um código). 99Food não tem código — só
   // uma URL de autorização. Sem userCode, exibimos o fluxo simplificado.
@@ -53,19 +55,40 @@ export function ConnectDialog({
       if (!started) throw new Error('not_started');
       return api(`/integrations/connections/${started.connectionId}/finalize`, {
         method: 'POST',
+        // iFood: manda o código que a plataforma devolveu ao autorizar.
+        body: hasCode ? { authorizationCode: authCode.trim() } : {},
       });
     },
+    onMutate: () => setFinalizeError(null),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['integrations'] });
-      onClose();
-      setStarted(null);
+      close();
+    },
+    onError: (err) => {
+      const raw =
+        (err as { body?: { message?: string } })?.body?.message ??
+        (err instanceof Error ? err.message : 'erro');
+      const msgs: Record<string, string> = {
+        connection_still_pending:
+          'Ainda não recebemos a autorização. Confira se você concluiu no portal da plataforma.',
+        authorization_code_required:
+          'Cole o código que a plataforma mostrou depois que você autorizou.',
+        authorization_invalid_or_expired:
+          'Código inválido ou expirado. Reinicie a conexão, autorize de novo e cole o código novo.',
+      };
+      setFinalizeError(msgs[raw] ?? raw);
     },
   });
 
   const close = () => {
     onClose();
     setStarted(null);
+    setAuthCode('');
+    setFinalizeError(null);
   };
+
+  // Pra iFood, só habilita "Já autorizei" quando o código foi colado.
+  const canFinalize = !hasCode || authCode.trim().length > 0;
 
   return (
     <Dialog
@@ -86,6 +109,7 @@ export function ConnectDialog({
             <Button
               onClick={() => finalize.mutate()}
               loading={finalize.isPending}
+              disabled={!canFinalize}
               rightIcon={!finalize.isPending && <ArrowRight className="h-4 w-4" />}
             >
               {finalize.isPending ? 'Verificando…' : 'Já autorizei'}
@@ -181,13 +205,36 @@ export function ConnectDialog({
                 </div>
               </li>
             )}
+            {hasCode && (
+              <li className="flex gap-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
+                  3
+                </span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-ink-primary">
+                    Cole aqui o código que o {platformName} devolveu
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink-tertiary">
+                    Após autorizar a loja, o {platformName} mostra um código de
+                    confirmação — cole ele abaixo.
+                  </p>
+                  <input
+                    value={authCode}
+                    onChange={(e) => setAuthCode(e.target.value)}
+                    placeholder="Código de confirmação"
+                    className="mt-2 w-full rounded-lg border border-surface-border bg-surface-base px-3 py-2 font-mono text-sm text-ink-primary outline-none focus:border-brand-500"
+                    autoComplete="off"
+                  />
+                </div>
+              </li>
+            )}
             <li className="flex gap-3">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
-                {hasCode ? 3 : 2}
+                {hasCode ? 4 : 2}
               </span>
               <div className="flex-1">
                 <p className="text-sm font-medium text-ink-primary">
-                  {hasCode ? 'Volte e clique' : 'Autorize a loja e clique'} em{' '}
+                  {hasCode ? 'Clique em' : 'Autorize a loja e clique'} em{' '}
                   <b className="text-brand-300">"Já autorizei"</b>
                 </p>
                 {!hasCode && (
@@ -198,6 +245,12 @@ export function ConnectDialog({
               </div>
             </li>
           </ol>
+
+          {finalizeError && (
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-bright">
+              {finalizeError}
+            </p>
+          )}
 
           <p className="flex items-center gap-1.5 text-xs text-ink-tertiary">
             <Loader2 className="h-3 w-3 animate-pulse" />

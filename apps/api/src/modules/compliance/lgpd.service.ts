@@ -159,13 +159,13 @@ export class LgpdService {
    * histórica. Anonimização preserva o trail sem expor PII.
    *
    * Operação irreversível:
-   * - email → deleted-{id8}@anon.local (mantém UNIQUE)
+   * - email → deleted-{id}@anon.local (mantém UNIQUE)
    * - name → "Conta removida (LGPD)"
    * - phone → null
    * - passwordHash → impossível de logar
-   * - refresh tokens revogados
-   * - notification_preference deletadas (não há razão pra manter)
-   * - consent_log permanece (prova de compliance)
+   * - refresh tokens revogados + ip/userAgent limpos
+   * - notification_preference e notifications deletadas (não há razão pra manter)
+   * - consent_log e audit_log permanecem (prova de compliance)
    *
    * Recusa quando o usuário é o único `owner` de alguma org com outras
    * memberships — a org ficaria órfã. Operador deve transferir antes.
@@ -193,7 +193,10 @@ export class LgpdService {
       }
     }
 
-    const anonEmail = `deleted-${auth.userId.slice(0, 8)}@anon.local`;
+    // Usa o id completo (UUID globalmente único) — um prefixo de 8 chars de
+    // UUIDv7 colide entre contas criadas na mesma janela de ~65s e violaria o
+    // UNIQUE de email, travando a exclusão LGPD para sempre.
+    const anonEmail = `deleted-${auth.userId}@anon.local`;
     const unusablePasswordHash =
       '$argon2id$v=19$m=19456,t=2,p=1$ZGVsZXRlZA$ZGVsZXRlZA';
 
@@ -210,9 +213,14 @@ export class LgpdService {
       }),
       this.prisma.refreshToken.updateMany({
         where: { userId: auth.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+        // ip/userAgent são PII (LGPD) — zera junto com a revogação.
+        data: { revokedAt: new Date(), ip: null, userAgent: null },
       }),
       this.prisma.notificationPreference.deleteMany({
+        where: { userId: auth.userId },
+      }),
+      // Notifications carregam o nome real no title/body — sem valor de trail, deleta.
+      this.prisma.notification.deleteMany({
         where: { userId: auth.userId },
       }),
     ]);

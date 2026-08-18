@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AuditModule } from './common/audit/audit.module.js';
@@ -26,6 +27,7 @@ import { OrdersModule } from './modules/orders/orders.module.js';
 import { OrganizationsModule } from './modules/organizations/organizations.module.js';
 import { PausesModule } from './modules/pauses/pauses.module.js';
 import { PricingModule } from './modules/pricing/pricing.module.js';
+import { PromotionsModule } from './modules/promotions/promotions.module.js';
 import { UploadsModule } from './modules/uploads/uploads.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 
@@ -33,6 +35,9 @@ import { UsersModule } from './modules/users/users.module.js';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    // Rate limiting (aplicado so no AuthController via ThrottlerGuard) — brute-force
+    // em login/reset. Default generoso; overrides estritos por rota no controller.
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 60 }]),
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.LOG_LEVEL ?? 'info',
@@ -63,6 +68,7 @@ import { UsersModule } from './modules/users/users.module.js';
     OrdersModule,
     PausesModule,
     PricingModule,
+    PromotionsModule,
     FinancialModule,
     UploadsModule,
     UsersModule,

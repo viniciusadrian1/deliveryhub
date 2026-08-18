@@ -26,6 +26,9 @@ export interface ItemMarginRow {
     configId: string;
     sellingPriceCents: number;
     fees: FeeInputs;
+    // true quando não há PlatformFeeProfile vigente: a margem exibida é bruta,
+    // não líquida — a UI deve mostrar "taxas não cadastradas" em vez do número.
+    feesMissing: boolean;
     breakdown: MarginBreakdown;
   }>;
 }
@@ -42,6 +45,9 @@ export interface SimulationRow {
     newMarginPct: number | null;
     belowMinimum: boolean;
     impossible: boolean;
+    // Sem perfil de taxas cadastrado: margem indisponível e keep_margin_pct
+    // é tratado como impossível (não subprecifica com taxas zeradas).
+    feesMissing: boolean;
   }>;
 }
 
@@ -100,7 +106,13 @@ export class PricingService {
           ...fees,
         });
 
-        const newPrice = this.computeNewPrice(input, c.sellingPriceCents, r.costCents, fees);
+        const newPrice = this.computeNewPrice(
+          input,
+          c.sellingPriceCents,
+          r.costCents,
+          fees,
+          c.feesMissing,
+        );
         let newPct: number | null = null;
         let belowMinimum = false;
         const impossible = newPrice === null;
@@ -127,6 +139,7 @@ export class PricingService {
           newMarginPct: newPct,
           belowMinimum,
           impossible,
+          feesMissing: c.feesMissing,
         };
       });
 
@@ -221,6 +234,7 @@ export class PricingService {
     currentPriceCents: number,
     costCents: number,
     fees: FeeInputs,
+    feesMissing: boolean,
   ): number | null {
     switch (input.strategy) {
       case 'same_gross_pct':
@@ -228,6 +242,9 @@ export class PricingService {
       case 'fixed_delta_cents':
         return applyFixedDelta(currentPriceCents, input.deltaCents);
       case 'keep_margin_pct':
+        // Sem taxas cadastradas não dá pra mirar margem líquida; repricar com
+        // taxas zeradas subprecifica o item. Marca como impossível (skip).
+        if (feesMissing) return null;
         return priceToHitMargin(input.targetMarginPct, costCents, fees);
     }
   }
@@ -291,18 +308,21 @@ export class PricingService {
       menuItemName: item.name,
       costCents: item.costCents,
       categoryId: item.categoryId,
-      configs: item.platformConfigs.map((c) => ({
-        configId: c.id,
-        platformCode: c.platform.code as PlatformCode,
-        platformName: c.platform.name,
-        platformId: c.platform.id,
-        sellingPriceCents: c.sellingPriceCents,
-        fees: feesByPlatform.get(c.platform.id) ?? {
-          commissionPct: 0,
-          paymentProcessingPct: 0,
-          flatFeeCents: 0,
-        },
-      })),
+      configs: item.platformConfigs.map((c) => {
+        // Ausência de PlatformFeeProfile vigente é representada explicitamente,
+        // não como taxa 0 — senão a margem bruta seria exibida como líquida e o
+        // keep_margin_pct subprecificaria o item.
+        const fees = feesByPlatform.get(c.platform.id) ?? null;
+        return {
+          configId: c.id,
+          platformCode: c.platform.code as PlatformCode,
+          platformName: c.platform.name,
+          platformId: c.platform.id,
+          sellingPriceCents: c.sellingPriceCents,
+          feesMissing: fees === null,
+          fees: fees ?? { commissionPct: 0, paymentProcessingPct: 0, flatFeeCents: 0 },
+        };
+      }),
     }));
   }
 
@@ -320,6 +340,7 @@ export class PricingService {
         configId: c.configId,
         sellingPriceCents: c.sellingPriceCents,
         fees: c.fees,
+        feesMissing: c.feesMissing,
         breakdown: calculateMargin({
           sellingPriceCents: c.sellingPriceCents,
           costCents: r.costCents,

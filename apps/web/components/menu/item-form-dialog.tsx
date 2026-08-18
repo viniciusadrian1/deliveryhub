@@ -145,7 +145,8 @@ export function ItemFormDialog({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const cents = Math.round(parseFloat(costReais.replace(',', '.')) * 100) || 0;
+      const cents =
+        Math.round(parseFloat(costReais.replace(/\./g, '').replace(',', '.')) * 100) || 0;
       const body = {
         name,
         description: description || undefined,

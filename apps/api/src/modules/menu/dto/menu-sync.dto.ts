@@ -8,3 +8,8 @@ export const initialSyncSchema = z.object({
 });
 
 export type InitialSyncInput = z.infer<typeof initialSyncSchema>;
+
+/** Publicação completa do cardápio local na plataforma (mesmo shape). */
+export const publishAllSchema = initialSyncSchema;
+
+export type PublishAllInput = z.infer<typeof publishAllSchema>;

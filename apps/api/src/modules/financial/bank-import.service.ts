@@ -42,7 +42,16 @@ export class BankImportService {
     let inserted = 0;
     let duplicated = 0;
 
+    // Índice de ocorrência: linhas genuinamente idênticas no mesmo extrato
+    // (mesma data+valor+descrição) recebem seq 0,1,2... para não colidirem no
+    // @@unique. Reimportar o mesmo extrato reproduz a ordem e mantém a dedupe.
+    const seqByKey = new Map<string, number>();
+
     for (const row of parsed.rows) {
+      const description = row.description.slice(0, 200);
+      const key = `${row.date.toISOString().slice(0, 10)}|${row.amountCents}|${description}`;
+      const seq = seqByKey.get(key) ?? 0;
+      seqByKey.set(key, seq + 1);
       try {
         await this.prisma.bankTransaction.create({
           data: {
@@ -50,7 +59,8 @@ export class BankImportService {
             storeId,
             date: row.date,
             amountCents: row.amountCents,
-            description: row.description.slice(0, 200),
+            description,
+            seq,
             raw: row.raw as never,
           },
         });
@@ -167,12 +177,19 @@ export class BankImportService {
   }
 
   private parseAmountCents(raw: string): bigint {
-    // Remove R$, espaços e separadores de milhar; troca vírgula decimal por ponto.
-    const cleaned = raw
-      .replace(/[Rr]\$/g, '')
-      .replace(/\s+/g, '')
-      .replace(/\./g, '')
-      .replace(/,/, '.');
+    // Detecta o separador decimal em vez de assumir que ponto é sempre milhar:
+    // o separador (`.` ou `,`) que aparece por último é o decimal; o outro é
+    // milhar. Cobre pt-BR (`1.234,56`) e en-US/Nubank (`1234.56`, `-53.90`).
+    let cleaned = raw.replace(/[Rr]\$/g, '').replace(/\s+/g, '');
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    if (lastComma > lastDot) {
+      // pt-BR: vírgula é decimal, pontos são milhar
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else {
+      // en-US / Nubank: ponto é decimal, vírgulas são milhar
+      cleaned = cleaned.replace(/,/g, '');
+    }
     const value = Number(cleaned);
     if (!Number.isFinite(value)) throw new Error(`invalid_amount:${raw}`);
     return BigInt(Math.round(value * 100));
