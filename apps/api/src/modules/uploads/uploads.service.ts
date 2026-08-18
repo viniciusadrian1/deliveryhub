@@ -77,14 +77,14 @@ export class UploadsService {
    * @param entity         Pasta lógica (`menu-item`, `modifier`, `ingredient`).
    * @param buffer         Bytes do arquivo.
    * @param mimeType       MIME tipo (validado pelo controller).
-   * @param originalName   Nome original — usado só pra extrair extensão.
+   * @param _originalName  Nome original do arquivo (nao usado — a extensao vem do mimeType validado).
    */
   async uploadImage(
     organizationId: string,
     entity: string,
     buffer: Buffer,
     mimeType: string,
-    originalName: string,
+    _originalName: string,
   ): Promise<{ url: string; key: string; bytes: number }> {
     if (!this.client) {
       throw new ServiceUnavailableException({

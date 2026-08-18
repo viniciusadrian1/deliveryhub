@@ -29,6 +29,8 @@ export interface RemoteCategory {
 
 export interface RemoteMenuItem {
   externalId: string;
+  /** Codigo externo real (EAN/SKU) do item na plataforma, distinto do externalId. */
+  externalCode?: string;
   externalCategoryId: string | null;
   name: string;
   description?: string;

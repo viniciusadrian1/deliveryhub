@@ -34,6 +34,7 @@ interface ItemMarginRow {
     configId: string;
     sellingPriceCents: number;
     breakdown: MarginBreakdown;
+    feesMissing: boolean;
   }>;
 }
 
@@ -235,9 +236,15 @@ export default function PricingPage() {
                       {formatCents(p.sellingPriceCents)}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <Badge variant={marginTone(p.breakdown.marginPct)} dot>
-                        {p.breakdown.marginPct.toFixed(1)}%
-                      </Badge>
+                      {p.feesMissing ? (
+                        <span title="Cadastre a taxa desta plataforma para ver a margem líquida real">
+                          <Badge variant="warning">taxas não cadastradas</Badge>
+                        </span>
+                      ) : (
+                        <Badge variant={marginTone(p.breakdown.marginPct)} dot>
+                          {p.breakdown.marginPct.toFixed(1)}%
+                        </Badge>
+                      )}
                     </td>
                   </tr>
                 )),

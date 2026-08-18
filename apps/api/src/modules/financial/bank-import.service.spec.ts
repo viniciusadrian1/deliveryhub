@@ -24,4 +24,10 @@ describe('BankImportService.parseAmountCents', () => {
     expect(parse('-53,90')).toBe(-5390n);
     expect(parse('R$ 1.000,00')).toBe(100000n);
   });
+
+  it('separador único + 3 dígitos = milhar, não decimal (moeda tem 2 casas)', () => {
+    expect(parse('1.234')).toBe(123400n); // R$1234, não R$1,23
+    expect(parse('1,234')).toBe(123400n);
+    expect(parse('12.345')).toBe(1234500n);
+  });
 });

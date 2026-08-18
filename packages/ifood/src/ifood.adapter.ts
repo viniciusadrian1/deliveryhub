@@ -170,6 +170,7 @@ export class IFoodAdapter implements PlatformAdapter {
       status?: 'AVAILABLE' | 'UNAVAILABLE';
       isPublished?: boolean;
       imageUrl?: string;
+      externalCode?: string;
     }
 
     const data = await this.get<{ categories: RawCategory[] }>(
@@ -186,6 +187,7 @@ export class IFoodAdapter implements PlatformAdapter {
     const items = data.categories.flatMap((c) =>
       (c.items ?? []).map((it) => ({
         externalId: it.id,
+        externalCode: it.externalCode,
         externalCategoryId: it.categoryId ?? c.id,
         name: it.name,
         description: it.description,

@@ -130,6 +130,9 @@ export class MenuSyncService {
           menuItemId: itemId,
           platformId: connection.platformId,
           externalId: ri.externalId,
+          // Codigo externo real (EAN/SKU) da plataforma — necessario p/ promocoes
+          // casarem itens IMPORTADOS via pull (bug #12).
+          externalCode: ri.externalCode,
           externalCategoryId: ri.externalCategoryId,
           sellingPriceCents: ri.sellingPriceCents,
           isPublished: ri.isPublished,
@@ -138,6 +141,7 @@ export class MenuSyncService {
         },
         update: {
           externalId: ri.externalId,
+          externalCode: ri.externalCode,
           externalCategoryId: ri.externalCategoryId,
           sellingPriceCents: ri.sellingPriceCents,
           isAvailable: ri.isAvailable,

@@ -183,7 +183,11 @@ export class BankImportService {
     let cleaned = raw.replace(/[Rr]\$/g, '').replace(/\s+/g, '');
     const lastComma = cleaned.lastIndexOf(',');
     const lastDot = cleaned.lastIndexOf('.');
-    if (lastComma > lastDot) {
+    if (/^-?\d{1,3}[.,]\d{3}$/.test(cleaned)) {
+      // Separador unico seguido de EXATAMENTE 3 digitos = milhar, nao decimal
+      // (moeda tem 2 casas). Sem isto "1.234" (R$1234) viraria R$1,23.
+      cleaned = cleaned.replace(/[.,]/g, '');
+    } else if (lastComma > lastDot) {
       // pt-BR: vírgula é decimal, pontos são milhar
       cleaned = cleaned.replace(/\./g, '').replace(',', '.');
     } else {
