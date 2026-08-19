@@ -182,15 +182,13 @@ services:
       - key: DIDIFOOD_WEBHOOK_SECRET
         sync: false
 
-      # ----- Keeta (Meituan Overseas) -----
+      # ----- Keeta (Meituan Overseas) — client_secret assina E verifica webhooks -----
       - key: KEETA_CLIENT_ID
         sync: false
       - key: KEETA_CLIENT_SECRET
         sync: false
       - key: KEETA_API_BASE_URL
         value: https://open.mykeeta.com/api/open/opendelivery
-      - key: KEETA_WEBHOOK_SECRET
-        sync: false
 
   # ---------------------------------------------------------------------------
   # 3. Web Next.js
