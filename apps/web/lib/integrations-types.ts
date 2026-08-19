@@ -109,9 +109,8 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
   keeta: {
     name: 'Keeta',
     colorHex: '#FFCC00',
-    enabled: false,
-    availability: 'roadmap',
-    reason: 'Adapter pronto — aguardando homologação (SIT) e credenciais de produção da Keeta.',
+    enabled: true,
+    availability: 'available',
     logo: '/platforms/keeta.png',
     logoScale: 3.5,
   },

@@ -33,6 +33,9 @@ export function ConnectDialog({
   // iFood usa OAuth Device (mostra um código). 99Food não tem código — só
   // uma URL de autorização. Sem userCode, exibimos o fluxo simplificado.
   const hasCode = Boolean(started?.userCode);
+  // Keeta: a loja autoriza no portal deles e a conexão ativa via webhook 1301 —
+  // não há "finalize" por polling. O dialog só mostra a URL e orienta a aguardar.
+  const webhookDriven = platformCode === 'keeta';
   const expiryMs = started ? new Date(started.expiresAt).getTime() - Date.now() : 0;
   const expiryLabel = hasCode
     ? `Código expira em ${Math.max(0, Math.round(expiryMs / 60_000))} min`
@@ -102,19 +105,25 @@ export function ConnectDialog({
       }
       footer={
         started ? (
-          <>
-            <Button variant="ghost" onClick={close}>
-              Cancelar
+          webhookDriven ? (
+            <Button onClick={close} rightIcon={<CheckCircle2 className="h-4 w-4" />}>
+              Entendi, fechar
             </Button>
-            <Button
-              onClick={() => finalize.mutate()}
-              loading={finalize.isPending}
-              disabled={!canFinalize}
-              rightIcon={!finalize.isPending && <ArrowRight className="h-4 w-4" />}
-            >
-              {finalize.isPending ? 'Verificando…' : 'Já autorizei'}
-            </Button>
-          </>
+          ) : (
+            <>
+              <Button variant="ghost" onClick={close}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => finalize.mutate()}
+                loading={finalize.isPending}
+                disabled={!canFinalize}
+                rightIcon={!finalize.isPending && <ArrowRight className="h-4 w-4" />}
+              >
+                {finalize.isPending ? 'Verificando…' : 'Já autorizei'}
+              </Button>
+            </>
+          )
         ) : (
           <>
             <Button variant="ghost" onClick={close}>
@@ -233,14 +242,29 @@ export function ConnectDialog({
                 {hasCode ? 4 : 2}
               </span>
               <div className="flex-1">
-                <p className="text-sm font-medium text-ink-primary">
-                  {hasCode ? 'Clique em' : 'Autorize a loja e clique'} em{' '}
-                  <b className="text-brand-300">"Já autorizei"</b>
-                </p>
-                {!hasCode && (
-                  <p className="mt-1 text-xs text-ink-tertiary">
-                    O DeliveryHub detecta a loja vinculada automaticamente.
-                  </p>
+                {webhookDriven ? (
+                  <>
+                    <p className="text-sm font-medium text-ink-primary">
+                      A loja autoriza no portal da Keeta
+                    </p>
+                    <p className="mt-1 text-xs text-ink-tertiary">
+                      Assim que a loja confirmar a autorização, a conexão ativa aqui
+                      <b className="text-ink-secondary"> automaticamente</b> (via webhook,
+                      pode levar alguns segundos). Pode fechar esta janela.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-ink-primary">
+                      {hasCode ? 'Clique em' : 'Autorize a loja e clique'} em{' '}
+                      <b className="text-brand-300">"Já autorizei"</b>
+                    </p>
+                    {!hasCode && (
+                      <p className="mt-1 text-xs text-ink-tertiary">
+                        O DeliveryHub detecta a loja vinculada automaticamente.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </li>

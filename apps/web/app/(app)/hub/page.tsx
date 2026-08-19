@@ -138,13 +138,13 @@ function HubBoard() {
         </p>
       )}
 
-      <div className="grid flex-1 min-h-0 gap-3 overflow-x-auto md:grid-cols-2 xl:grid-cols-5">
+      <div className="flex flex-1 min-h-0 gap-3 overflow-x-auto pb-2">
         {COLUMNS.map((col) => {
           const orders = grouped[col.title] ?? [];
           return (
             <section
               key={col.title}
-              className="flex min-w-[280px] flex-col rounded-xl border border-surface-border-subtle bg-surface-base/40"
+              className="flex w-[300px] shrink-0 flex-col rounded-xl border border-surface-border-subtle bg-surface-base/40"
             >
               <header className="flex items-center justify-between border-b border-surface-border-subtle px-3 py-2.5">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
