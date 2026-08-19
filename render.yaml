@@ -57,6 +57,7 @@ services:
     # Tudo idempotente, seguro pra rodar em todo deploy.
     buildCommand: |
       corepack enable &&
+      export NODE_OPTIONS="--max-old-space-size=460" &&
       pnpm install --frozen-lockfile --prod=false &&
       pnpm --filter @deliveryhub/db generate &&
       pnpm --filter "@deliveryhub/api..." build &&
@@ -203,6 +204,7 @@ services:
 
     buildCommand: |
       corepack enable &&
+      export NODE_OPTIONS="--max-old-space-size=460" &&
       pnpm install --frozen-lockfile --prod=false &&
       pnpm --filter "@deliveryhub/web..." build
 
