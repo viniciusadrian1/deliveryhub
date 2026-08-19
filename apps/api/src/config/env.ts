@@ -74,7 +74,6 @@ const envSchema = z.object({
     .string()
     .url()
     .default('https://open.mykeeta.com/api/open/opendelivery'),
-  KEETA_WEBHOOK_SECRET: z.string().optional(),
 
   // ===== Object Storage (R2 / S3 / Supabase-storage compatible) =====
   // Quando todos preenchidos, uploads vão pro bucket. Quando vazios, o

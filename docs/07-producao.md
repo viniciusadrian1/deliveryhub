@@ -39,9 +39,9 @@
 - **Depende de:** você (conta de storage). Código já pronto — hoje upload retorna 503 sem isso.
 
 ### C. Keeta — colocar de pé
-1. **Obter** no portal (`developers.mykeeta.com`): `client_id`, `client_secret`, `webhook_secret`.
+1. **Obter** no portal (`developers.mykeeta.com`): **Application ID** (= `client_id`) e **Secret key** (= `client_secret`). A Keeta **não fornece webhook secret separado** — o mesmo `client_secret` assina as requests e verifica os webhooks.
 2. **Configurar** no app da Keeta: URLs `…/api/webhooks/keeta/authorization` (1301) e `…/deauthorization` (1302) + **IP whitelist** do servidor.
-3. Setar `KEETA_CLIENT_ID/SECRET/WEBHOOK_SECRET` no `.env` (aí o adapter sai do MOCK).
+3. Setar no `.env` (só 2 vars): `KEETA_CLIENT_ID` e `KEETA_CLIENT_SECRET` (aí o adapter sai do MOCK).
 4. Fazer a **1ª autorização de teste** → me mandar o payload do log `keeta_auth_webhook_received` pra eu **confirmar os nomes de campo** do parser (último ajuste fino).
 - **Depende de:** você (credenciais + config) + eu (ajuste do parser com o payload real).
 

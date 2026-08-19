@@ -157,14 +157,16 @@ export class AdapterRegistry {
   }
 
   private registerKeeta(env: Env): void {
-    if (env.KEETA_CLIENT_ID && env.KEETA_CLIENT_SECRET && env.KEETA_WEBHOOK_SECRET) {
+    // Keeta usa app-level token: client_id + client_secret bastam. O MESMO
+    // client_secret assina as requests E verifica os webhooks — a Keeta nao
+    // fornece um webhook secret separado.
+    if (env.KEETA_CLIENT_ID && env.KEETA_CLIENT_SECRET) {
       this.adapters.set(
         'keeta',
         new KeetaAdapter({
           clientId: env.KEETA_CLIENT_ID,
           clientSecret: env.KEETA_CLIENT_SECRET,
           apiBaseUrl: env.KEETA_API_BASE_URL,
-          webhookSecret: env.KEETA_WEBHOOK_SECRET,
         }),
       );
       this.logger.log(

@@ -55,8 +55,6 @@ export interface KeetaAdapterConfig {
   clientSecret: string;
   /** Base da API. Ex.: https://open.mykeeta.com/api/open/opendelivery */
   apiBaseUrl: string;
-  /** Secret de verificação do webhook (assinatura X-App-Signature). */
-  webhookSecret: string;
 }
 
 /** Hook opcional de log de request (sem PII). */
@@ -465,14 +463,15 @@ export class KeetaAdapter implements PlatformAdapter {
   }
 
   /**
-   * Verifica o header `X-App-Signature` do webhook — HMAC-SHA256 (base64)
-   * do corpo cru com a chave de webhook. O esquema exato de assinatura do
-   * webhook deve ser confirmado na homologação (SIT) com a Keeta.
+   * Verifica o header `X-App-Signature` do webhook — HMAC-SHA256 (base64) do
+   * corpo cru com a chave = `clientSecret`. A Keeta usa o MESMO segredo do app
+   * pra assinar requests e webhooks; nao ha um "webhook secret" separado.
+   * O esquema exato deve ser confirmado na homologacao (SIT) com a Keeta.
    */
   verifyWebhookSignature(headers: Record<string, string>, rawBody: Buffer): boolean {
     const provided = headers['x-app-signature'] ?? headers['X-App-Signature'];
     if (typeof provided !== 'string' || !provided) return false;
-    const expected = createHmac('sha256', this.config.webhookSecret)
+    const expected = createHmac('sha256', this.config.clientSecret)
       .update(rawBody)
       .digest('base64');
     try {
