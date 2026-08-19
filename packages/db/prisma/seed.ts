@@ -52,7 +52,7 @@ async function seedPlatforms(): Promise<number> {
     { code: 'ifood', name: 'iFood', colorHex: '#EA1D2C', active: true },
     { code: 'rappi', name: 'Rappi', colorHex: '#FF441F', active: false },
     { code: '99food', name: '99Food', colorHex: '#FE3324', active: true },
-    { code: 'keeta', name: 'Keeta', colorHex: '#FFCC00', active: false },
+    { code: 'keeta', name: 'Keeta', colorHex: '#FFCC00', active: true },
     { code: 'ubereats', name: 'Uber Eats', colorHex: '#06C167', active: false },
     { code: 'aiqfome', name: 'AiQfome', colorHex: '#E2231A', active: false },
   ];
