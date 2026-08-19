@@ -29,6 +29,7 @@ export function ConnectDialog({
   const [started, setStarted] = useState<StartConnectionResponse | null>(null);
   const [authCode, setAuthCode] = useState('');
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
 
   // iFood usa OAuth Device (mostra um código). 99Food não tem código — só
   // uma URL de autorização. Sem userCode, exibimos o fluxo simplificado.
@@ -47,9 +48,21 @@ export function ConnectDialog({
         method: 'POST',
         body: { storeId, platformCode },
       }),
+    onMutate: () => setStartError(null),
     onSuccess: (data) => {
       setStarted(data);
       void qc.invalidateQueries({ queryKey: ['integrations'] });
+    },
+    onError: (err) => {
+      const raw =
+        (err as { body?: { message?: string } })?.body?.message ??
+        (err instanceof Error ? err.message : 'erro_desconhecido');
+      const msgs: Record<string, string> = {
+        adapter_not_registered:
+          'Plataforma sem credenciais no servidor — o adapter não foi registrado. Configure as chaves (CLIENT_ID/SECRET) na Render e aguarde o redeploy.',
+        no_active_connections: 'Nenhuma conexão ativa encontrada.',
+      };
+      setStartError(msgs[raw] ?? `Não foi possível iniciar a conexão: ${raw}`);
     },
   });
 
@@ -88,6 +101,7 @@ export function ConnectDialog({
     setStarted(null);
     setAuthCode('');
     setFinalizeError(null);
+    setStartError(null);
   };
 
   // Pra iFood, só habilita "Já autorizei" quando o código foi colado.
@@ -163,6 +177,11 @@ export function ConnectDialog({
               confirmação.
             </p>
           </div>
+          {startError && (
+            <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-bright">
+              {startError}
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-5">
