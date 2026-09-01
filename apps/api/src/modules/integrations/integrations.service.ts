@@ -309,15 +309,16 @@ export class IntegrationsService {
   }
 
   /**
-   * Webhook 1301 do Keeta: uma loja autorizou o app. Pega o token de app,
-   * lista as lojas autorizadas (GET merchantInfo) e ATIVA a conexão Keeta.
+   * Webhook Event 1 do Keeta (Standard): a loja autorizou e a Keeta mandou um
+   * `code`. Trocamos o code por tokens PER-MERCHANT (90d), listamos as lojas
+   * (base/authorized/resource/get) e ATIVAMOS a(s) conexão(ões) Keeta.
    *
    * Correlação: o webhook é a nível de APP (não traz nossa org). Se já existe
-   * conexão com esse merchantId, atualiza; senão anexa à conexão Keeta PENDENTE
+   * conexão com esse shopId, atualiza; senão anexa à conexão Keeta PENDENTE
    * mais recente. Suficiente pra 1 loja por vez; multi-tenant concorrente exige
    * propagar um `state` na URL de autorização (Keeta teria que ecoá-lo) — follow-up.
    */
-  async handleKeetaAuthorization(authId: string): Promise<void> {
+  async handleKeetaAuthorization(code: string): Promise<void> {
     let adapter;
     try {
       adapter = this.registry.get('keeta');
@@ -332,10 +333,10 @@ export class IntegrationsService {
     const platform = await this.prisma.platform.findUnique({ where: { code: 'keeta' } });
     if (!platform) return;
 
-    const tokens = await adapter.refreshAuth(''); // token app-level (client_credentials)
-    const merchants = await adapter.fetchAuthorizedMerchants(tokens, authId);
+    // Standard: uma troca de code → tokens per-merchant + lojas do merchant.
+    const { tokens, merchants } = await adapter.exchangeAuthorizationCode(code);
     if (merchants.length === 0) {
-      this.logger.warn({ authId }, 'keeta_authorization_no_merchants');
+      this.logger.warn('keeta_authorization_no_merchants');
       return;
     }
 

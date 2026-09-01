@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 import {
   AdapterApiError,
@@ -7,6 +7,7 @@ import {
   type PlatformAdapter,
   type PolledEvent,
   type RemoteMenu,
+  type RemoteMerchantStatus,
   type RemoteOrder,
   type RemoteOrderItem,
   type RemoteOrderStatus,
@@ -16,45 +17,51 @@ import {
 } from '@deliveryhub/ifood';
 
 /**
- * Keeta (Meituan Overseas) Open Delivery API adapter.
+ * Keeta (Meituan Overseas) — Standard API adapter.
  *
  * Portal: https://developers.mykeeta.com  ·  API: https://open.mykeeta.com
- * Spec: Keeta Open Delivery API v1.0.7 (padrão Open Delivery / Abrasel).
+ * Spec: Keeta Standard API (Order + Store + Menu) — ver docs/keeta-standard-api.md.
  *
  * ════════════════════════════════════════════════════════════════════
- *  ASSINATURA — header `X-App-Signature`
+ *  AUTENTICAÇÃO — OAuth `authorization_code` (PER-MERCHANT)
  * ════════════════════════════════════════════════════════════════════
- *  Toda request leva `X-App-Signature` = HMAC-SHA256 (base64) sobre a
- *  string `URL & query_ordenada & body`, com chave = `clientSecret`.
- *  O body é canonicalizado (JCS / RFC 8785: chaves ordenadas, sem espaço)
- *  — assinamos exatamente o mesmo texto que enviamos.
+ *  Cada loja autoriza o app em merchant.mykeeta.com/.../authorize
+ *  (responseType=authorization_code) → devolve um `code` (via webhook
+ *  Event 1 OU redirect). Trocamos o code em POST /api/open/base/oauth/token
+ *  por { accessToken, refreshToken, expiresIn≈90d } — token de nível de
+ *  LOJA (não de app). `refreshAuth` usa grantType=refresh_token.
  *
  * ════════════════════════════════════════════════════════════════════
- *  AUTENTICAÇÃO
+ *  ASSINATURA — parâmetro `sig` (SHA-256, NÃO HMAC)
  * ════════════════════════════════════════════════════════════════════
- *  POST /oauth/token (grant_type app_level_token, client_id+secret) →
- *  access_token de nível de APP (cobre todos os merchants autorizados).
- *  Todo endpoint exige `Authorization: Bearer <token>` + a assinatura.
+ *  sig = sha256( FULL_URL + '?' + params_ordenados(k=v&…) + appSecret )
+ *  hex minúsculo. Params de auth (appId, timestamp, accessToken, grantType…)
+ *  vão na QUERY e entram no sig; o corpo de negócio vai como JSON no body.
+ *  ponytail: SIT-confirm — se a Keeta incluir campos do body no sig, basta
+ *  mesclá-los no mapa de params em `signedParams` (uma linha).
  *
  * ════════════════════════════════════════════════════════════════════
  *  STATUS
  * ════════════════════════════════════════════════════════════════════
- *  ✅ signature, refreshAuth, fetchOrder, accept/reject/dispatchOrder
- *  ✅ pollEvents / acknowledgeEvents, parseWebhook, verifyWebhookSignature
- *  ✅ startConnection (URL de autorização do merchant)
- *  ⏳ finalizeConnection — a autorização do merchant na Keeta conclui via
- *     webhook /webhook/authorization + GET merchantInfo (precisa fiar o
- *     webhook de autorização). Documentado abaixo.
- *  🚫 fetchMenu / pushItemPrice / pushItemAvailability / pushStorePause —
- *     a Open Delivery API da Keeta não expõe esses endpoints.
+ *  ✅ token/refresh, sig, startConnection, exchangeAuthorizationCode,
+ *     fetchAuthorizedResources, finalize, parse(de)authorization
+ *  ✅ fetchOrder + accept/startPreparation/readyToPickup/dispatch/reject
+ *  ✅ pushStorePause (scm/shop/status/rest|open), fetchMerchantStatus
+ *  ✅ parseWebhook (Event 1001), verifyWebhookSignature
+ *  ⏳ fetchMenu / pushItemPrice — dependem de resolução de id + menu/sync
+ *     assíncrono; precisam do merchant de teste (ver stubs no fim).
  */
 export interface KeetaAdapterConfig {
-  /** client_id fornecido pela Keeta (= APP credentials). */
-  clientId: string;
-  /** client_secret — também é a chave HMAC da assinatura. */
-  clientSecret: string;
-  /** Base da API. Ex.: https://open.mykeeta.com/api/open/opendelivery */
+  /** appId (numérico) do portal de dev. Era `clientId` no Open Delivery. */
+  appId: string;
+  /** appSecret — chave da assinatura `sig`. Era `clientSecret`. */
+  appSecret: string;
+  /** Base da API Standard. Ex.: https://open.mykeeta.com */
   apiBaseUrl: string;
+  /** Base do portal do lojista (consent). Ex.: https://merchant.mykeeta.com */
+  merchantBaseUrl: string;
+  /** redirectUri opcional pro fluxo authorization_code (se usarmos redirect). */
+  redirectUri?: string;
 }
 
 /** Hook opcional de log de request (sem PII). */
@@ -62,98 +69,94 @@ export interface KeetaRequestLogger {
   (info: { method: string; path: string; status: number; durationMs: number; ok: boolean }): void;
 }
 
-/** Loja autorizada devolvida por GET /oauth/authorized/{authId}/merchantInfo. */
+/** Loja autorizada devolvida por /api/open/base/authorized/resource/get. */
 export interface KeetaAuthorizedMerchant {
   merchantId: string;
   name?: string;
 }
 
-const UNSUPPORTED = 'keeta_endpoint_unsupported';
-
-/** Eventos do Open Delivery da Keeta. */
-interface RawEvent {
-  eventId?: string;
-  eventType?: string;
-  orderId?: string;
-  orderURL?: string;
-  createdAt?: string;
-  virtualBrand?: string;
+/** Resultado da troca do authorization_code: tokens + lojas autorizadas. */
+export interface KeetaAuthorizationResult {
+  tokens: StoredTokens;
+  merchants: KeetaAuthorizedMerchant[];
 }
 
-/** Objeto de preço Open Delivery — `{ value, currency }`, value decimal. */
-interface RawPrice {
-  value?: number;
-}
+const API_PREFIX = '/api/open';
+
+/** Preço Standard — centavos inteiros (ver mapeamento). ponytail: SIT-confirm unidade. */
 interface RawOrderItem {
-  id?: string;
-  externalCode?: string;
+  itemId?: string;
+  skuId?: string;
+  openItemCode?: string;
   name?: string;
   quantity?: number;
-  unitPrice?: RawPrice;
-  totalPrice?: RawPrice;
-  specialInstructions?: string;
-  options?: RawOrderItem[];
+  price?: number;
+  totalPrice?: number;
+  remark?: string;
+  attrs?: RawOrderItem[];
 }
 interface RawOrder {
-  id?: string;
+  orderId?: string;
   displayId?: string;
-  createdAt?: string;
-  lastEvent?: string;
-  extraInfo?: string;
-  merchant?: { id?: string; name?: string };
+  shopId?: string;
+  status?: string | number;
+  createTime?: number | string;
+  remark?: string;
   items?: RawOrderItem[];
-  otherFees?: { type?: string; price?: RawPrice }[];
-  total?: {
-    itemsPrice?: RawPrice;
-    otherFees?: RawPrice;
-    discount?: RawPrice;
-    orderAmount?: RawPrice;
+  amount?: {
+    total?: number;
+    subtotal?: number;
+    deliveryFee?: number;
+    discount?: number;
   };
-  payments?: {
-    prepaid?: number;
-    methods?: { type?: string; method?: string }[];
+  settlement?: {
+    commission?: number;
+    serviceFee?: number;
+    flatFee?: number;
   };
-  customer?: {
-    name?: string;
-    documentNumber?: string;
-    phone?: { number?: string };
-  };
-  delivery?: { deliveredBy?: string };
+  payType?: string | number;
+  deliveryType?: string | number;
+  customer?: { name?: string; phone?: string; taxId?: string };
 }
 
 /**
- * lastEvent / eventType da Keeta → status interno.
- * Eventos ambíguos (refund, cancellation request) caem em `placed` — o
- * reconcileFromPlatform a montante impede regressão de status.
+ * Status do pedido Standard → status interno. Valores exatos confirmam no SIT;
+ * o reconcileFromPlatform a montante impede regressão.
+ * ponytail: SIT-confirm — mapeia tanto string quanto código numérico.
  */
-function mapKeetaStatus(event: string | undefined): RemoteOrderStatus {
-  switch (event) {
+function mapKeetaStatus(status: string | number | undefined): RemoteOrderStatus {
+  switch (String(status ?? '').toUpperCase()) {
     case 'CONFIRMED':
+    case 'ACCEPTED':
       return 'accepted';
+    case 'PREPARING':
+      return 'preparing';
+    case 'READY':
     case 'READY_FOR_PICKUP':
       return 'ready';
     case 'DISPATCHED':
     case 'PICKED_UP':
-    case 'PICKUP_ONGOING':
+    case 'DELIVERING':
       return 'dispatched';
     case 'DELIVERED':
+    case 'COMPLETED':
     case 'CONCLUDED':
       return 'delivered';
     case 'CANCELLED':
+    case 'CANCELED':
       return 'cancelled';
     default:
-      // CREATED + eventos pós-entrega (refund/etc.)
       return 'placed';
   }
 }
 
-/** Converte um preço Open Delivery (decimal) em centavos. */
-function toCents(p: RawPrice | undefined): number {
-  return Math.round((p?.value ?? 0) * 100);
+/** Centavos: a Standard já envia inteiro em centavos na maioria dos campos. */
+function cents(v: number | undefined): number {
+  return Math.round(v ?? 0);
 }
 
-/** Normaliza o corpo do webhook de autorização (Keeta às vezes aninha em body/data). */
-function asAuthBody(payload: unknown, rawBody?: Buffer): Record<string, unknown> {
+/** Normaliza o corpo do webhook (Keeta às vezes aninha em body/data). */
+function asBody(payload: unknown, rawBody?: Buffer): Record<string, unknown> {
   let obj = payload;
   if ((!obj || typeof obj !== 'object') && rawBody) {
     try {
@@ -181,13 +184,6 @@ export class KeetaAdapter implements PlatformAdapter {
   readonly code = 'keeta' as const;
   private readonly log?: KeetaRequestLogger;
 
-  /**
-   * Cache eventId → { orderId, eventType } populado pelo `pollEvents`.
-   * O `acknowledgeEvents` recebe só os ids; a Keeta exige orderId+eventType
-   * no ack, então recuperamos daqui (limite de tamanho pra não vazar).
-   */
-  private readonly eventCache = new Map<string, { orderId: string; eventType: string }>();
-
   constructor(
     private readonly config: KeetaAdapterConfig,
     options: { log?: KeetaRequestLogger } = {},
@@ -196,356 +192,410 @@ export class KeetaAdapter implements PlatformAdapter {
   }
 
   // ===================================================================
-  // Conexão de loja
+  // Conexão de loja — OAuth authorization_code (per-merchant)
   // ===================================================================
 
   /**
-   * GET /oauth/authorization/url — devolve a URL onde o lojista autoriza
-   * o app na Keeta. Keeta não tem "user code"; a URL já é completa.
+   * Monta a URL de consent do lojista. Standard usa authorization_code:
+   * a loja autoriza e a Keeta devolve um `code` (webhook Event 1 ou redirect).
+   * Não há "user code" — a URL já é completa.
    */
   async startConnection(): Promise<StartConnectionResult> {
-    const data = await this.request<{ merchantAuthorizationUrl?: string }>(
-      'GET',
-      '/oauth/authorization/url',
-      { query: { clientId: this.config.clientId } },
-    );
-    const url = data?.merchantAuthorizationUrl;
-    if (!url) {
-      throw new AdapterApiError('keeta_authorization_url_missing', 502, data);
-    }
+    const state = Buffer.from(JSON.stringify({ t: 'keeta' })).toString('base64url');
+    const params = new URLSearchParams({
+      responseType: 'authorization_code',
+      appId: this.config.appId,
+      scope: 'all',
+      state,
+    });
+    if (this.config.redirectUri) params.set('redirectUri', this.config.redirectUri);
+    const url = `${this.config.merchantBaseUrl.replace(/\/$/, '')}/m/web/openapi/authorize?${params.toString()}`;
     return {
       userCode: '',
       verificationUrl: url,
       verificationUrlComplete: url,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      pendingHandle: Buffer.from(JSON.stringify({ startedAt: Date.now() })).toString(
+      pendingHandle: Buffer.from(JSON.stringify({ state, startedAt: Date.now() })).toString(
         'base64url',
       ),
     };
   }
 
   /**
-   * A autorização do merchant na Keeta é concluída do lado deles e
-   * notificada por `POST /webhook/authorization` (traz o `authId`); só
-   * então `GET /oauth/authorized/{authId}/merchantInfo` lista as lojas.
-   *
-   * Esse fluxo é webhook-driven e não cabe no finalize por polling — fiar
-   * o webhook de autorização é o próximo passo da integração Keeta.
+   * Troca o authorization_code por tokens PER-MERCHANT e já lista as lojas
+   * autorizadas. Usado tanto pelo webhook de autorização (Event 1) quanto
+   * pelo finalize manual (loja cola o code).
    */
-  async finalizeConnection(_pendingHandle: string): Promise<FinalizeConnectionResult> {
-    throw new AdapterApiError('keeta_connection_needs_authorization_webhook', 501, {
-      hint: 'Conclua a autorização do merchant: webhook /webhook/authorization + GET /oauth/authorized/{authId}/merchantInfo.',
-    });
+  async exchangeAuthorizationCode(code: string): Promise<KeetaAuthorizationResult> {
+    const tokens = await this.fetchToken('authorization_code', { code });
+    const merchants = await this.fetchAuthorizedResources(tokens);
+    return { tokens, merchants };
   }
 
   /**
-   * Webhook 1301 (nova autorização de loja) → extrai o `authId`.
-   * `null` = payload não é de autorização (ignora).
-   * NOTA: nomes de campo confirmados contra o payload real dos logs — ver
-   * `webhook_received` no WebhooksController (loga o corpo cru).
+   * finalize por code (fallback quando a loja cola o code manualmente).
+   * O caminho principal é webhook-driven (integrations.service).
    */
-  parseAuthorization(payload: unknown, rawBody?: Buffer): { authId: string } | null {
-    const body = asAuthBody(payload, rawBody);
-    const authId = firstString(body, ['authId', 'authorizationId', 'authorizeId']);
-    return authId ? { authId } : null;
+  async finalizeConnection(
+    _pendingHandle: string,
+    authorizationCode?: string,
+  ): Promise<FinalizeConnectionResult> {
+    const code = authorizationCode?.trim();
+    if (!code) {
+      throw new AdapterApiError('authorization_code_required', 400, {
+        hint: 'Standard usa authorization_code; a conexão ativa via webhook Event 1 ou com o code colado.',
+      });
+    }
+    const { tokens, merchants } = await this.exchangeAuthorizationCode(code);
+    const merchantId = merchants[0]?.merchantId;
+    if (!merchantId) {
+      throw new AdapterApiError('keeta_no_authorized_merchant', 502, { merchants });
+    }
+    return { tokens, externalMerchantId: merchantId };
   }
 
-  /** Webhook 1302 (desautorização) → extrai o id da loja (ou o authId). */
+  /** Webhook Event 1 (auth code) → extrai o `code`. `null` = não é auth. */
+  parseAuthorization(payload: unknown, rawBody?: Buffer): { code: string } | null {
+    const body = asBody(payload, rawBody);
+    const code = firstString(body, ['code', 'authorizationCode', 'authCode', 'authorization_code']);
+    return code ? { code } : null;
+  }
+
+  /** Webhook 1302/1303 (desautorização) → id da loja/brand. */
   parseDeauthorization(
     payload: unknown,
     rawBody?: Buffer,
   ): { merchantId?: string; authId?: string } | null {
-    const body = asAuthBody(payload, rawBody);
-    const merchantId = firstString(body, ['merchantId', 'storeId', 'brandId', 'shopId', 'id']);
-    const authId = firstString(body, ['authId', 'authorizationId']);
-    if (!merchantId && !authId) return null;
-    return { merchantId, authId };
+    const body = asBody(payload, rawBody);
+    const merchantId = firstString(body, ['shopId', 'merchantId', 'storeId', 'brandId', 'id']);
+    if (!merchantId) return null;
+    return { merchantId };
   }
 
   /**
-   * GET /oauth/authorized/{authId}/merchantInfo — lista as lojas que o
-   * merchant autorizou nesta autorização. Chamada após o webhook 1301.
+   * POST /api/open/base/authorized/resource/get — lojas que este token
+   * (merchant) autorizou. Chamado após a troca do code.
    */
-  async fetchAuthorizedMerchants(
-    tokens: StoredTokens,
-    authId: string,
-  ): Promise<KeetaAuthorizedMerchant[]> {
-    interface RawMerchant {
-      id?: string;
+  async fetchAuthorizedResources(tokens: StoredTokens): Promise<KeetaAuthorizedMerchant[]> {
+    interface RawShop {
+      shopId?: string;
       merchantId?: string;
-      storeId?: string;
+      id?: string;
       name?: string;
-      storeName?: string;
+      shopName?: string;
     }
     const data = await this.request<
-      RawMerchant[] | { merchants?: RawMerchant[]; stores?: RawMerchant[] }
-    >('GET', `/oauth/authorized/${encodeURIComponent(authId)}/merchantInfo`, {
-      token: tokens.accessToken,
-    });
-    const list = Array.isArray(data) ? data : (data?.merchants ?? data?.stores ?? []);
+      RawShop[] | { shops?: RawShop[]; resources?: RawShop[]; merchants?: RawShop[] }
+    >('POST', '/base/authorized/resource/get', { token: tokens.accessToken, body: {} });
+    const list = Array.isArray(data)
+      ? data
+      : (data?.shops ?? data?.resources ?? data?.merchants ?? []);
     const out: KeetaAuthorizedMerchant[] = [];
-    for (const m of list) {
-      const merchantId = m.merchantId ?? m.storeId ?? m.id;
-      if (merchantId) out.push({ merchantId, name: m.name ?? m.storeName });
+    for (const s of list) {
+      const merchantId = s.shopId ?? s.merchantId ?? s.id;
+      if (merchantId) out.push({ merchantId, name: s.name ?? s.shopName });
     }
     return out;
   }
 
-  /**
-   * POST /oauth/token (grant_type=app_level_token) — a Keeta usa token de
-   * nível de APP; "renovar" é trocar credenciais de novo. `refreshToken`
-   * é ignorado de propósito.
-   */
-  async refreshAuth(_refreshToken: string): Promise<StoredTokens> {
-    return this.fetchAppToken();
+  /** grantType=refresh_token — Standard emite token de 90 dias renovável. */
+  async refreshAuth(refreshToken: string): Promise<StoredTokens> {
+    if (!refreshToken) {
+      throw new AdapterApiError('keeta_refresh_token_missing', 400, {
+        hint: 'Standard é per-merchant: sem refreshToken não há como renovar. Reconecte a loja.',
+      });
+    }
+    return this.fetchToken('refresh_token', { refreshToken });
   }
 
-  private async fetchAppToken(): Promise<StoredTokens> {
-    const data = await this.request<{ access_token?: string; expires_in?: number }>(
-      'POST',
-      '/oauth/token',
-      {
-        body: {
-          client_id: this.config.clientId,
-          client_secret: this.config.clientSecret,
-          grant_type: 'app_level_token',
-        },
-        skipAuth: true,
-      },
-    );
-    if (!data?.access_token) {
+  private async fetchToken(
+    grantType: 'authorization_code' | 'refresh_token',
+    extra: { code?: string; refreshToken?: string },
+  ): Promise<StoredTokens> {
+    const body: Record<string, unknown> = { appId: this.config.appId, grantType };
+    if (extra.code) body.code = extra.code;
+    if (extra.refreshToken) body.refreshToken = extra.refreshToken;
+    const data = await this.request<{
+      accessToken?: string;
+      refreshToken?: string;
+      expiresIn?: number;
+    }>('POST', '/base/oauth/token', { body, skipToken: true });
+    if (!data?.accessToken) {
       throw new AdapterApiError('keeta_token_missing', 502, data);
     }
     return {
-      accessToken: data.access_token,
-      refreshToken: '',
-      expiresAt: new Date(Date.now() + (data.expires_in ?? 7200) * 1000),
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken ?? extra.refreshToken ?? '',
+      // Standard: 90 dias (7776000s). Default defensivo se ausente.
+      expiresAt: new Date(Date.now() + (data.expiresIn ?? 7776000) * 1000),
     };
   }
 
   // ===================================================================
-  // Pedidos
+  // Pedidos — POST /api/open/order/*
   // ===================================================================
 
-  /** GET /v1/orders/{orderId} — busca o pedido e mapeia pro RemoteOrder. */
+  /** POST /api/open/order/get — busca o pedido e mapeia pro RemoteOrder. */
   async fetchOrder(
     tokens: StoredTokens,
     _externalMerchantId: string,
     externalOrderId: string,
   ): Promise<RemoteOrder> {
-    const data = await this.request<RawOrder>(
-      'GET',
-      `/v1/orders/${encodeURIComponent(externalOrderId)}`,
-      { token: tokens.accessToken },
-    );
-    return mapOrderToRemote(data ?? {}, externalOrderId);
+    const data = await this.request<RawOrder | { order?: RawOrder }>('POST', '/order/get', {
+      token: tokens.accessToken,
+      body: { orderId: externalOrderId },
+    });
+    const order = (data as { order?: RawOrder })?.order ?? (data as RawOrder);
+    return mapOrderToRemote(order ?? {}, externalOrderId);
   }
 
-  /** POST /v1/orders/{orderId}/confirm — confirma (aceita) o pedido. */
+  /** POST /api/open/order/confirm — aceita o pedido. */
   async acceptOrder(
     tokens: StoredTokens,
     _externalMerchantId: string,
     externalOrderId: string,
   ): Promise<void> {
-    await this.request('POST', `/v1/orders/${encodeURIComponent(externalOrderId)}/confirm`, {
+    await this.request('POST', '/order/confirm', {
       token: tokens.accessToken,
-      body: {
-        createdAt: new Date().toISOString(),
-        orderExternalCode: externalOrderId,
-      },
+      body: { orderId: externalOrderId },
     });
   }
 
-  /** POST /v1/orders/{orderId}/requestCancellation — cancela o pedido. */
+  /** POST /api/open/order/prepare — em preparo. */
+  async startPreparation(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalOrderId: string,
+  ): Promise<void> {
+    await this.request('POST', '/order/prepare', {
+      token: tokens.accessToken,
+      body: { orderId: externalOrderId },
+    });
+  }
+
+  /** POST /api/open/order/collect — pronto pra coleta (entregador da Keeta). */
+  async readyToPickup(
+    tokens: StoredTokens,
+    _externalMerchantId: string,
+    externalOrderId: string,
+  ): Promise<void> {
+    await this.request('POST', '/order/collect', {
+      token: tokens.accessToken,
+      body: { orderId: externalOrderId },
+    });
+  }
+
+  /** Ação universal "pronto"/"despachar": usa collect (readyForPickup). */
+  async dispatchOrder(
+    tokens: StoredTokens,
+    externalMerchantId: string,
+    externalOrderId: string,
+  ): Promise<void> {
+    await this.readyToPickup(tokens, externalMerchantId, externalOrderId);
+  }
+
+  /** POST /api/open/order/cancel — cancela (recusa) o pedido. */
   async rejectOrder(
     tokens: StoredTokens,
     _externalMerchantId: string,
     externalOrderId: string,
     reason: string,
   ): Promise<void> {
-    await this.request(
-      'POST',
-      `/v1/orders/${encodeURIComponent(externalOrderId)}/requestCancellation`,
-      {
-        token: tokens.accessToken,
-        body: {
-          reason: reason || 'Cancelado pela loja',
-          code: 'INTERNAL_DIFFICULTIES_OF_THE_RESTAURANT',
-          mode: 'MANUAL',
-        },
-      },
-    );
-  }
-
-  /**
-   * POST /v1/orders/{orderId}/readyForPickup — sinaliza que o pedido está
-   * pronto pra coleta (ação universal da loja; o despacho é da logística).
-   */
-  async dispatchOrder(
-    tokens: StoredTokens,
-    _externalMerchantId: string,
-    externalOrderId: string,
-  ): Promise<void> {
-    await this.request(
-      'POST',
-      `/v1/orders/${encodeURIComponent(externalOrderId)}/readyForPickup`,
-      { token: tokens.accessToken },
-    );
+    await this.request('POST', '/order/cancel', {
+      token: tokens.accessToken,
+      body: { orderId: externalOrderId, reason: reason || 'Cancelado pela loja' },
+    });
   }
 
   // ===================================================================
-  // Eventos — polling + webhook
+  // Eventos — Standard é webhook-driven (Event 1001); sem polling.
   // ===================================================================
 
-  /** GET /v1/events:polling — eventos novos da(s) loja(s). */
-  async pollEvents(
-    tokens: StoredTokens,
-    externalMerchantId: string,
-  ): Promise<PolledEvent[]> {
-    const data = await this.request<RawEvent[]>('GET', '/v1/events:polling', {
-      token: tokens.accessToken,
-      headers: { 'x-polling-merchants': externalMerchantId },
-    });
-    if (!Array.isArray(data)) return [];
-    return data
-      .filter((e): e is RawEvent & { eventId: string; orderId: string } =>
-        Boolean(e.eventId && e.orderId),
-      )
-      .map((e) => {
-        this.rememberEvent(e.eventId, e.orderId, e.eventType ?? 'unknown');
-        return {
-          eventId: e.eventId,
-          eventType: e.eventType ?? 'unknown',
-          externalOrderId: e.orderId,
-          externalMerchantId,
-          occurredAt: e.createdAt ? new Date(e.createdAt) : new Date(),
-        };
-      });
+  /** Standard entrega pedidos por webhook (Event 1001), não por polling. */
+  async pollEvents(): Promise<PolledEvent[]> {
+    return [];
   }
 
-  /**
-   * POST /v1/events/acknowledgment — confirma o processamento dos eventos.
-   * A Keeta exige `{ id, orderId, eventType }` por evento; recuperamos
-   * orderId/eventType do cache preenchido no `pollEvents`.
-   */
-  async acknowledgeEvents(tokens: StoredTokens, eventIds: string[]): Promise<void> {
-    if (eventIds.length === 0) return;
-    const body = eventIds.map((id) => {
-      const cached = this.eventCache.get(id);
-      return { id, orderId: cached?.orderId ?? '', eventType: cached?.eventType ?? '' };
-    });
-    await this.request('POST', '/v1/events/acknowledgment', {
-      token: tokens.accessToken,
-      body,
-    });
-    for (const id of eventIds) this.eventCache.delete(id);
+  /** Sem polling → sem ack. */
+  async acknowledgeEvents(): Promise<void> {
+    return;
   }
 
-  /**
-   * Webhook `POST /v1/newEvent` — corpo é um `Event`. O merchantId vem no
-   * header `X-App-MerchantId` (não no corpo); como `parseWebhook` não
-   * recebe headers, o intake principal da Keeta é por polling.
-   */
-  parseWebhook(payload: unknown): WebhookEnvelope {
-    const p = (payload ?? {}) as RawEvent & { merchantId?: string };
-    const eventId = p.eventId ?? '';
-    const orderId = p.orderId ?? '';
+  /** Webhook de pedido (Event 1001) → envelope. */
+  parseWebhook(payload: unknown, rawBody?: Buffer): WebhookEnvelope {
+    const body = asBody(payload, rawBody);
+    const eventId = firstString(body, ['eventId', 'messageId', 'id']) ?? '';
+    const orderId = firstString(body, ['orderId', 'orderNo', 'displayId']) ?? '';
+    const merchantId = firstString(body, ['shopId', 'merchantId', 'storeId']) ?? '';
     if (!eventId || !orderId) {
       throw new AdapterApiError('keeta_invalid_webhook_payload', 400, payload);
     }
+    const eventType = firstString(body, ['eventType', 'type', 'event']) ?? 'ORDER';
+    const ts = body['createTime'] ?? body['timestamp'];
     return {
       eventId,
-      eventType: p.eventType ?? 'unknown',
+      eventType: String(eventType),
       externalOrderId: orderId,
-      externalMerchantId: p.merchantId ?? '',
-      occurredAt: p.createdAt ? new Date(p.createdAt) : new Date(),
+      externalMerchantId: merchantId,
+      occurredAt: ts ? new Date(Number(ts) || String(ts)) : new Date(),
     };
   }
 
   /**
-   * Verifica o header `X-App-Signature` do webhook — HMAC-SHA256 (base64) do
-   * corpo cru com a chave = `clientSecret`. A Keeta usa o MESMO segredo do app
-   * pra assinar requests e webhooks; nao ha um "webhook secret" separado.
-   * O esquema exato deve ser confirmado na homologacao (SIT) com a Keeta.
+   * Verifica a assinatura do webhook. Standard assina com o mesmo appSecret;
+   * o esquema exato do header confirma no SIT (o WebhooksController loga o
+   * corpo cru + headers ANTES de verificar justamente pra isso).
+   * ponytail: SIT-confirm — expected = sha256(rawBody + appSecret) hex.
    */
   verifyWebhookSignature(headers: Record<string, string>, rawBody: Buffer): boolean {
-    const provided = headers['x-app-signature'] ?? headers['X-App-Signature'];
+    const provided =
+      headers['sign'] ?? headers['sig'] ?? headers['x-app-signature'] ?? headers['x-sign'];
     if (typeof provided !== 'string' || !provided) return false;
-    const expected = createHmac('sha256', this.config.clientSecret)
-      .update(rawBody)
-      .digest('base64');
+    const expected = createHash('sha256')
+      .update(Buffer.concat([rawBody, Buffer.from(this.config.appSecret, 'utf8')]))
+      .digest('hex');
     try {
-      return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+      return timingSafeEqual(
+        Buffer.from(provided.toLowerCase()),
+        Buffer.from(expected),
+      );
     } catch {
       return false;
     }
   }
 
   // ===================================================================
-  // Cardápio / pausa — não suportados pela Open Delivery API da Keeta
+  // Loja — pausa / status (Store API)
   // ===================================================================
 
+  /**
+   * POST /api/open/scm/shop/status/rest (pausar) | /status/open (reabrir).
+   * `until` (fim da pausa) é passado quando a loja agenda a reabertura.
+   */
+  async pushStorePause(
+    tokens: StoredTokens,
+    externalMerchantId: string,
+    paused: boolean,
+    until?: Date,
+    reason?: string,
+  ): Promise<void> {
+    const path = paused ? '/scm/shop/status/rest' : '/scm/shop/status/open';
+    const body: Record<string, unknown> = { shopId: externalMerchantId };
+    if (paused && until) body.restEndTime = Math.floor(until.getTime() / 1000);
+    if (paused && reason) body.reason = reason;
+    await this.request('POST', path, { token: tokens.accessToken, body });
+  }
+
+  /** POST /api/open/scm/shop/base/get — status/dados da loja. */
+  async fetchMerchantStatus(
+    tokens: StoredTokens,
+    externalMerchantId: string,
+  ): Promise<RemoteMerchantStatus[]> {
+    const data = await this.request<{ status?: string | number; open?: boolean }>(
+      'POST',
+      '/scm/shop/base/get',
+      { token: tokens.accessToken, body: { shopId: externalMerchantId } },
+    );
+    const open =
+      data?.open ?? ['OPEN', 'OPENING', '1', 'ONLINE'].includes(String(data?.status).toUpperCase());
+    return [
+      {
+        operation: 'DELIVERY',
+        available: Boolean(open),
+        state: String(data?.status ?? (open ? 'OPEN' : 'CLOSED')),
+        validations: [],
+      },
+    ];
+  }
+
+  // ===================================================================
+  // Cardápio — Standard SUPORTA (Menu API), mas o wiring precisa do SIT
+  // ===================================================================
+
+  /**
+   * Standard tem Menu API completa, mas ler/publicar exige resolver ids
+   * (product/spu/list) e o menu/sync é ASSÍNCRONO (webhook de conclusão).
+   * Sem merchant de teste não dá pra mapear os shapes com segurança —
+   * habilita assim que a homologação Menu confirmar os campos.
+   * Mecanismo: GET via /product/spu/list + /product/shopcategory/list;
+   * PUSH via /product/menu/sync (upsert do cardápio inteiro por openItemCode).
+   */
   async fetchMenu(): Promise<RemoteMenu> {
-    throw new AdapterApiError(UNSUPPORTED, 501, { endpoint: 'menu (Keeta não expõe)' });
-  }
-  async pushItemPrice(): Promise<void> {
-    throw new AdapterApiError(UNSUPPORTED, 501, { endpoint: 'item price (Keeta não expõe)' });
-  }
-  async pushItemAvailability(): Promise<void> {
-    throw new AdapterApiError(UNSUPPORTED, 501, {
-      endpoint: 'item availability (Keeta não expõe)',
+    throw new AdapterApiError('keeta_menu_pending_sit', 501, {
+      endpoint: 'product/spu/list',
+      hint: 'Standard suporta; habilitar após homologação Menu (resolução de id + shapes).',
     });
   }
-  async pushStorePause(): Promise<void> {
-    throw new AdapterApiError(UNSUPPORTED, 501, { endpoint: 'store pause (Keeta não expõe)' });
+
+  /**
+   * Preço na Standard não tem endpoint isolado — vai pelo menu/sync (ou
+   * spu/batchupdate por id). Precisa do id da SPU (spu/list) → SIT.
+   */
+  async pushItemPrice(): Promise<void> {
+    throw new AdapterApiError('keeta_menu_pending_sit', 501, {
+      endpoint: 'product/menu/sync',
+      hint: 'Preço vai pelo menu/sync; requer mapa openItemCode↔SPU do merchant de teste.',
+    });
+  }
+
+  /**
+   * POST /api/open/product/spustatus/batchupdatebycode — disponibilidade
+   * por openItemCode. `externalId` = o código externo (nosso menuItemId)
+   * gravado como openItemCode na publicação. ponytail: SIT-confirm shape.
+   */
+  async pushItemAvailability(
+    tokens: StoredTokens,
+    externalMerchantId: string,
+    externalId: string,
+    available: boolean,
+  ): Promise<void> {
+    await this.request('POST', '/product/spustatus/batchupdatebycode', {
+      token: tokens.accessToken,
+      body: {
+        shopId: externalMerchantId,
+        items: [{ openItemCode: externalId, sellStatus: available ? 1 : 0 }],
+      },
+    });
   }
 
   // ===================================================================
-  // HTTP + assinatura
+  // HTTP + assinatura `sig`
   // ===================================================================
-
-  private rememberEvent(eventId: string, orderId: string, eventType: string): void {
-    if (this.eventCache.size > 5000) {
-      const first = this.eventCache.keys().next().value;
-      if (first) this.eventCache.delete(first);
-    }
-    this.eventCache.set(eventId, { orderId, eventType });
-  }
 
   private async request<T>(
     method: string,
     path: string,
     opts: {
-      query?: Record<string, string | number>;
       body?: unknown;
       token?: string;
-      headers?: Record<string, string>;
-      skipAuth?: boolean;
+      /** true no /oauth/token (ainda não temos accessToken). */
+      skipToken?: boolean;
     } = {},
   ): Promise<T> {
     const start = Date.now();
-    const baseUrl = this.config.apiBaseUrl.replace(/\/$/, '') + path;
-    const bodyStr =
-      opts.body !== undefined ? canonicalJson(opts.body) : undefined;
+    // Standard chama no host raiz (/api/open/...). Normaliza configs herdadas do
+    // Open Delivery (…/api/open/opendelivery) pro host, evitando path duplicado.
+    const host = this.config.apiBaseUrl
+      .replace(/\/$/, '')
+      .replace(/\/api\/open(\/.*)?$/, '');
+    const url = host + API_PREFIX + path;
 
-    // Assinatura: URL + &k=v (query ordenada) + &body.
-    const signature = this.sign(baseUrl, opts.query, bodyStr);
-
-    const headers: Record<string, string> = {
-      'X-App-Signature': signature,
-      ...(opts.headers ?? {}),
+    // Params de auth vão na query e entram no sig; o corpo de negócio é JSON.
+    const params: Record<string, string> = {
+      appId: this.config.appId,
+      timestamp: String(Math.floor(Date.now() / 1000)),
     };
-    if (bodyStr !== undefined) headers['Content-Type'] = 'application/json';
-    if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
+    if (!opts.skipToken && opts.token) params.accessToken = opts.token;
+    params.sig = this.sign(url, params);
 
-    const qs = opts.query
-      ? '?' + new URLSearchParams(asStringRecord(opts.query)).toString()
-      : '';
-    const url = baseUrl + qs;
+    const qs = new URLSearchParams(params).toString();
+    const bodyStr = opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
+    const headers: Record<string, string> = {};
+    if (bodyStr !== undefined) headers['Content-Type'] = 'application/json';
 
     let res: Response;
     try {
-      res = await fetch(url, { method, headers, body: bodyStr });
+      res = await fetch(`${url}?${qs}`, { method, headers, body: bodyStr });
     } catch (err) {
       this.log?.({ method, path, status: 0, durationMs: Date.now() - start, ok: false });
       throw new AdapterApiError(
@@ -567,118 +617,111 @@ export class KeetaAdapter implements PlatformAdapter {
         json ?? text,
       );
     }
+    // Standard encapsula em { code, msg, data }: desembrulha quando presente.
+    const envelope = json as { code?: number | string; data?: unknown } | undefined;
+    if (
+      envelope &&
+      typeof envelope === 'object' &&
+      'data' in envelope &&
+      ('code' in envelope || 'msg' in envelope)
+    ) {
+      const okCode = envelope.code === 0 || envelope.code === '0' || envelope.code === undefined;
+      if (!okCode) {
+        throw new AdapterApiError(`keeta_api_error ${method} ${path}`, res.status, envelope);
+      }
+      return (envelope.data ?? {}) as T;
+    }
     return (json ?? {}) as T;
   }
 
-  /** HMAC-SHA256(base64) de `URL & query_ordenada & body` — chave clientSecret. */
-  private sign(
-    url: string,
-    query: Record<string, string | number> | undefined,
-    body: string | undefined,
-  ): string {
-    let s = url;
-    if (query) {
-      for (const k of Object.keys(query).sort()) {
-        s += `&${k}=${query[k] ?? ''}`;
-      }
-    }
-    if (body && body !== '{}' && body.trim()) {
-      s += `&${body}`;
-    }
-    return createHmac('sha256', this.config.clientSecret)
-      .update(s, 'utf8')
-      .digest('base64');
+  /**
+   * sig = sha256( FULL_URL + '?' + params_ordenados(k=v&…) + appSecret ) hex.
+   * O próprio `sig` nunca entra no cálculo (ainda não existe).
+   */
+  private sign(url: string, params: Record<string, string>): string {
+    return signKeeta(url, params, this.config.appSecret);
   }
+}
+
+/** Assinatura Standard, exportada pra self-check. */
+export function signKeeta(
+  url: string,
+  params: Record<string, string>,
+  appSecret: string,
+): string {
+  const sorted = Object.keys(params)
+    .filter((k) => k !== 'sig')
+    .sort()
+    .map((k) => `${k}=${params[k]}`)
+    .join('&');
+  return createHash('sha256').update(`${url}?${sorted}${appSecret}`, 'utf8').digest('hex');
 }
 
 // =====================================================================
 // Mapeamento de pedido
 // =====================================================================
 
-/** Converte o `Order` (Open Delivery) da Keeta no RemoteOrder interno. */
+/** Converte o Order (Standard) da Keeta no RemoteOrder interno. */
 function mapOrderToRemote(o: RawOrder, externalOrderId: string): RemoteOrder {
   const items: RemoteOrderItem[] = (o.items ?? []).map((it) => ({
-    externalId: it.id ?? it.externalCode ?? '',
+    externalId: it.itemId ?? it.skuId ?? it.openItemCode ?? '',
     name: it.name ?? 'Item',
     qty: it.quantity ?? 1,
-    unitPriceCents: toCents(it.unitPrice),
-    totalCents: toCents(it.totalPrice),
-    notes: it.specialInstructions || undefined,
-    modifiers: (it.options ?? []).map((op) => ({
-      externalId: op.id ?? '',
+    unitPriceCents: cents(it.price),
+    totalCents: cents(it.totalPrice ?? (it.price ?? 0) * (it.quantity ?? 1)),
+    notes: it.remark || undefined,
+    modifiers: (it.attrs ?? []).map((op) => ({
+      externalId: op.itemId ?? op.skuId ?? '',
       name: op.name ?? '',
       qty: op.quantity ?? 1,
-      unitPriceCents: toCents(op.unitPrice),
+      unitPriceCents: cents(op.price),
     })),
   }));
 
-  const deliveryFee = (o.otherFees ?? []).find((f) => f.type === 'DELIVERY_FEE');
-  const subtotalCents = toCents(o.total?.itemsPrice);
-  const totalCents = toCents(o.total?.orderAmount);
+  const subtotalCents = cents(o.amount?.subtotal);
+  const totalCents = cents(o.amount?.total);
 
   return {
-    externalId: o.id ?? externalOrderId,
-    externalMerchantId: o.merchant?.id ?? '',
-    status: mapKeetaStatus(o.lastEvent),
+    externalId: o.orderId ?? externalOrderId,
+    externalMerchantId: o.shopId ?? '',
+    status: mapKeetaStatus(o.status),
     customer: {
       name: o.customer?.name || 'Cliente Keeta',
-      phone: o.customer?.phone?.number || undefined,
-      document: o.customer?.documentNumber || undefined,
+      phone: o.customer?.phone || undefined,
+      document: o.customer?.taxId || undefined,
     },
     items,
     subtotalCents,
-    deliveryFeeCents: toCents(deliveryFee?.price),
+    deliveryFeeCents: cents(o.amount?.deliveryFee),
     totalCents: totalCents || subtotalCents,
-    // A Open Delivery da Keeta não detalha a comissão no pedido — fica 0.
-    platformFeeCents: 0,
-    processingFeeCents: 0,
-    flatFeeCents: 0,
-    notes: o.extraInfo || undefined,
-    placedAt: o.createdAt ? new Date(o.createdAt) : new Date(),
-    paymentMethod: mapPaymentMethod(o),
+    // Settlement vem no pedido: comissão/taxas quando presentes.
+    platformFeeCents: cents(o.settlement?.commission),
+    processingFeeCents: cents(o.settlement?.serviceFee),
+    flatFeeCents: cents(o.settlement?.flatFee),
+    notes: o.remark || undefined,
+    placedAt: o.createTime ? new Date(Number(o.createTime) || String(o.createTime)) : new Date(),
+    paymentMethod: mapPaymentMethod(o.payType),
     deliveryBy:
-      o.delivery?.deliveredBy === 'MERCHANT'
+      String(o.deliveryType ?? '').toUpperCase() === 'SELF'
         ? 'store'
-        : o.delivery?.deliveredBy === 'MARKETPLACE'
+        : o.deliveryType !== undefined
           ? 'platform'
           : undefined,
   };
 }
 
-/** Deriva a forma de pagamento dos métodos do pedido. */
-function mapPaymentMethod(o: RawOrder): OrderPaymentMethod | undefined {
-  const methods = o.payments?.methods ?? [];
-  if (methods.length === 0) return undefined;
-  if (methods.some((m) => m.method === 'CASH')) return 'cash';
-  if (methods.some((m) => m.type === 'PREPAID') || (o.payments?.prepaid ?? 0) > 0) {
-    return 'online';
-  }
+/** Deriva a forma de pagamento do payType. ponytail: SIT-confirm códigos. */
+function mapPaymentMethod(payType: string | number | undefined): OrderPaymentMethod | undefined {
+  if (payType === undefined) return undefined;
+  const t = String(payType).toUpperCase();
+  if (t === 'CASH' || t === 'COD' || t === '2') return 'cash';
+  if (t === 'ONLINE' || t === 'PREPAID' || t === '1') return 'online';
   return 'other';
 }
 
 // =====================================================================
 // Helpers
 // =====================================================================
-
-/**
- * Serialização canônica (aprox. RFC 8785 / JCS): chaves ordenadas, sem
- * espaços. Assinamos e enviamos exatamente esta string.
- */
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  const obj = value as Record<string, unknown>;
-  const parts = Object.keys(obj)
-    .sort()
-    .map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`);
-  return `{${parts.join(',')}}`;
-}
-
-function asStringRecord(q: Record<string, string | number>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(q)) out[k] = String(v);
-  return out;
-}
 
 function safeJson(text: string): unknown {
   try {

@@ -67,13 +67,17 @@ const envSchema = z.object({
   DIDIFOOD_API_BASE_URL: z.string().url().default('https://openapi.99food.com'),
   DIDIFOOD_WEBHOOK_SECRET: z.string().optional(),
 
-  // Keeta (Meituan Overseas) — developers.mykeeta.com
+  // Keeta (Meituan Overseas) — developers.mykeeta.com — Standard API.
+  // KEETA_CLIENT_ID = appId, KEETA_CLIENT_SECRET = appSecret (mesmos 2 params
+  // do portal; nomes mantidos por compat com o .env/Render já configurado).
   KEETA_CLIENT_ID: z.string().optional(),
   KEETA_CLIENT_SECRET: z.string().optional(),
-  KEETA_API_BASE_URL: z
-    .string()
-    .url()
-    .default('https://open.mykeeta.com/api/open/opendelivery'),
+  // Standard: host da API é a raiz; os paths vão em /api/open/... (o adapter prefixa).
+  KEETA_API_BASE_URL: z.string().url().default('https://open.mykeeta.com'),
+  // Portal do lojista (consent authorization_code).
+  KEETA_MERCHANT_BASE_URL: z.string().url().default('https://merchant.mykeeta.com'),
+  // redirectUri opcional pro fluxo authorization_code (se usarmos redirect).
+  KEETA_REDIRECT_URI: optionalUrl(),
 
   // ===== Object Storage (R2 / S3 / Supabase-storage compatible) =====
   // Quando todos preenchidos, uploads vão pro bucket. Quando vazios, o

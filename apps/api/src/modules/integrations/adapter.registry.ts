@@ -157,20 +157,32 @@ export class AdapterRegistry {
   }
 
   private registerKeeta(env: Env): void {
-    // Keeta usa app-level token: client_id + client_secret bastam. O MESMO
-    // client_secret assina as requests E verifica os webhooks — a Keeta nao
+    // Keeta Standard API: appId + appSecret (= KEETA_CLIENT_ID/SECRET). O mesmo
+    // appSecret assina as requests (`sig`) E verifica os webhooks — a Keeta nao
     // fornece um webhook secret separado.
     if (env.KEETA_CLIENT_ID && env.KEETA_CLIENT_SECRET) {
+      const keetaHttp = new Logger('KeetaAdapter.http');
       this.adapters.set(
         'keeta',
-        new KeetaAdapter({
-          clientId: env.KEETA_CLIENT_ID,
-          clientSecret: env.KEETA_CLIENT_SECRET,
-          apiBaseUrl: env.KEETA_API_BASE_URL,
-        }),
+        new KeetaAdapter(
+          {
+            appId: env.KEETA_CLIENT_ID,
+            appSecret: env.KEETA_CLIENT_SECRET,
+            apiBaseUrl: env.KEETA_API_BASE_URL,
+            merchantBaseUrl: env.KEETA_MERCHANT_BASE_URL,
+            redirectUri: env.KEETA_REDIRECT_URI,
+          },
+          {
+            log: ({ method, path, status, durationMs, ok }) => {
+              const msg = `${method} ${path} -> ${status} (${durationMs}ms)`;
+              if (ok) keetaHttp.debug(msg);
+              else keetaHttp.warn(msg);
+            },
+          },
+        ),
       );
       this.logger.log(
-        'Keeta adapter registered (real — Open Delivery: orders, events, polling)',
+        'Keeta adapter registered (real — Standard API: orders, store/pause, auth)',
       );
     } else {
       this.registerMock('keeta', env, 'Keeta adapter registered (MOCK)');

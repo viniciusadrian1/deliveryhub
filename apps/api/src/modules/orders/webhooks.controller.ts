@@ -77,7 +77,7 @@ export class WebhooksController {
     return this.handle('keeta', req);
   }
 
-  /** Keeta 1301 — nova autorização de loja (webhook /webhook/authorization). */
+  /** Keeta Event 1 (Standard) — autorização da loja: traz o authorization_code. */
   @Public()
   @Post('keeta/authorization')
   @HttpCode(200)
@@ -87,7 +87,7 @@ export class WebhooksController {
     return this.handleKeetaAuth('authorization', req);
   }
 
-  /** Keeta 1302 — desautorização de loja. */
+  /** Keeta 1302/1303 (Standard) — desautorização de loja/brand. */
   @Public()
   @Post('keeta/deauthorization')
   @HttpCode(200)
@@ -226,9 +226,10 @@ export class WebhooksController {
   }
 
   /**
-   * Webhooks de autorização/desautorização do Keeta (1301/1302). Loga o corpo
-   * cru ANTES de tudo (pra capturar o formato real), verifica a assinatura e
-   * delega pro IntegrationsService ativar/revogar a conexão.
+   * Webhooks de autorização/desautorização do Keeta (Standard: Event 1 traz o
+   * authorization_code; 1302/1303 desautorizam). Loga o corpo cru ANTES de tudo
+   * (pra capturar o formato real no SIT), verifica a assinatura e delega pro
+   * IntegrationsService trocar o code/revogar a conexão.
    */
   private async handleKeetaAuth(
     kind: 'authorization' | 'deauthorization',
@@ -264,7 +265,7 @@ export class WebhooksController {
       if (kind === 'authorization') {
         const parsed = adapter.parseAuthorization(req.body, rawBody);
         if (!parsed) return { status: 'ignored' };
-        await this.integrations.handleKeetaAuthorization(parsed.authId);
+        await this.integrations.handleKeetaAuthorization(parsed.code);
       } else {
         const parsed = adapter.parseDeauthorization(req.body, rawBody);
         if (!parsed) return { status: 'ignored' };
