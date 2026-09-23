@@ -1011,9 +1011,10 @@ export class DidifoodAdapter implements PlatformAdapter {
    * `{ app_id, timestamp, sign, page_no, page_size }` — `sign` é MD5 dos
    * params ordenados + app_secret.
    *
-   * Uma página só (page_size 100): o `/v1/shop/shop/list` é limitado a
-   * 1 req/20s, então paginar é inviável — 100 lojas cobrem o fluxo de
-   * conexão com folga. Só lemos campos seguros (app_shop_id, bound_flag);
+   * Uma página só (page_size 50): a API 99Food rejeita valores maiores que
+   * 50 (errno 10001). O endpoint também é limitado a 1 req/20s, então
+   * paginar é inviável — 50 lojas cobrem o fluxo de conexão com folga.
+   * Só lemos campos seguros (app_shop_id, bound_flag);
    * o `shop_id` long 64-bit da resposta é ignorado de propósito.
    */
   private async fetchShopList(endpoint: string): Promise<string[]> {
@@ -1021,7 +1022,7 @@ export class DidifoodAdapter implements PlatformAdapter {
       app_id: this.config.clientId,
       timestamp: Math.floor(Date.now() / 1000),
       page_no: 1,
-      page_size: 100,
+      page_size: 50,
     };
     const data = await this.post<RawShopList>(endpoint, {
       ...signed,
