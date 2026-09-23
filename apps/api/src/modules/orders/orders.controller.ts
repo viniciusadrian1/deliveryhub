@@ -102,4 +102,27 @@ export class OrdersController {
   ) {
     return this.orders.dispatchSelfDelivery(auth, id, body);
   }
+
+  /** Simula a chegada de um pedido de teste em tempo real no Hub. */
+  @Post('simulate')
+  @Roles('owner', 'manager', 'staff')
+  @HttpCode(201)
+  simulate(
+    @CurrentUser() auth: AuthContext,
+    @Body() body: { platformCode?: string; storeId?: string; allIntegrated?: boolean },
+  ) {
+    if (body?.allIntegrated) {
+      return this.orders.simulateAllIntegrated(auth, body?.storeId);
+    }
+    return this.orders.simulateOrder(auth, body?.platformCode, body?.storeId);
+  }
+
+  /** Limpa todos os pedidos simulados (de teste) da organização. */
+  @Post('clear-simulated')
+  @Roles('owner', 'manager', 'staff')
+  @HttpCode(200)
+  clearSimulated(@CurrentUser() auth: AuthContext) {
+    return this.orders.clearSimulatedOrders(auth);
+  }
 }
+

@@ -57,7 +57,10 @@ export class OrdersPoller {
     }>;
     try {
       connections = await this.prisma.platformConnection.findMany({
-        where: { status: 'active' },
+        where: {
+          status: 'active',
+          platform: { code: 'ifood' },
+        },
         select: {
           id: true,
           externalMerchantId: true,
@@ -75,6 +78,9 @@ export class OrdersPoller {
     // estourar rate limit das plataformas. Se ficar lento dá pra usar
     // Promise.all com limite de concorrência depois.
     for (const conn of connections) {
+      if (conn.externalMerchantId?.startsWith('sim-')) {
+        continue;
+      }
       await this.pollOne(conn).catch((err) => {
         this.logger.error(
           { err, connectionId: conn.id, platform: conn.platform.code },
