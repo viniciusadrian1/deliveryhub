@@ -48,6 +48,7 @@ async function bootstrap() {
     // Mantém o container vivo até os consumers serem implementados. Encerrar
     // aqui fazia o Docker reiniciar o worker indefinidamente e mascarava o
     // estado real da fila.
+    setInterval(() => undefined, 60_000);
     await new Promise<void>(() => undefined);
     return;
   }
