@@ -39,14 +39,38 @@ export class FinancialDashboardService {
       Number(result._sum.processingFeeCents ?? 0) +
       Number(result._sum.flatFeeCents ?? 0);
 
+    let revenueSource: 'orders' | 'bank_statement' = 'orders';
+    let finalGross = revenueGross;
+    let finalNet = revenueNet;
+    let finalFees = totalFees;
+    if (result._count._all === 0) {
+      const bankCredits = await this.prisma.bankTransaction.aggregate({
+        where: {
+          organizationId: auth.orgId,
+          storeId,
+          date: { gte: from, lte: to },
+          amountCents: { gt: 0n },
+        },
+        _sum: { amountCents: true },
+      });
+      const importedCredits = Number(bankCredits._sum.amountCents ?? 0n);
+      if (importedCredits > 0) {
+        finalGross = importedCredits;
+        finalNet = importedCredits;
+        finalFees = 0;
+        revenueSource = 'bank_statement';
+      }
+    }
+
     return {
       from,
       to,
       orderCount: result._count._all,
-      revenueGrossCents: revenueGross,
-      revenueNetCents: revenueNet,
-      totalFeesCents: totalFees,
+      revenueGrossCents: finalGross,
+      revenueNetCents: finalNet,
+      totalFeesCents: finalFees,
       avgTicketCents: Math.round(Number(result._avg.totalCents ?? 0)),
+      revenueSource,
     };
   }
 

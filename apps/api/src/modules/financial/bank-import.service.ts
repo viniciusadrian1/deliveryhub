@@ -158,8 +158,30 @@ export class BankImportService {
   }
 
   private splitLine(line: string, sep: string): string[] {
-    // CSV simples — não cobre aspas com sep embutido, suficiente pro MVP.
-    return line.split(sep).map((p) => p.trim().replace(/^"|"$/g, ''));
+    // CSV RFC 4180 básico: separadores dentro de aspas não quebram a coluna
+    // e aspas duplicadas representam uma aspa literal. Bancos frequentemente
+    // exportam descrições como "PIX, CLIENTE".
+    const parts: string[] = [];
+    let current = '';
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]!;
+      if (char === '"') {
+        if (quoted && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char === sep && !quoted) {
+        parts.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    parts.push(current.trim());
+    return parts;
   }
 
   private parseDate(raw: string): Date {
@@ -181,6 +203,9 @@ export class BankImportService {
     // o separador (`.` ou `,`) que aparece por último é o decimal; o outro é
     // milhar. Cobre pt-BR (`1.234,56`) e en-US/Nubank (`1234.56`, `-53.90`).
     let cleaned = raw.replace(/[Rr]\$/g, '').replace(/\s+/g, '');
+    if (/^\(.*\)$/.test(cleaned)) {
+      cleaned = `-${cleaned.slice(1, -1)}`;
+    }
     const lastComma = cleaned.lastIndexOf(',');
     const lastDot = cleaned.lastIndexOf('.');
     if (/^-?\d{1,3}[.,]\d{3}$/.test(cleaned)) {

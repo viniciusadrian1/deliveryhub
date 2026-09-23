@@ -45,6 +45,7 @@ interface Summary {
   revenueNetCents: number;
   totalFeesCents: number;
   avgTicketCents: number;
+  revenueSource?: 'orders' | 'bank_statement';
 }
 
 interface DailyPoint {
@@ -264,7 +265,9 @@ export default function FinancialPage() {
           label="Faturamento bruto"
           value={formatCents(summary?.revenueGrossCents ?? 0)}
           icon={TrendingUp}
-          hint={`${summary?.orderCount ?? 0} pedido${summary?.orderCount === 1 ? '' : 's'}`}
+          hint={summary?.revenueSource === 'bank_statement'
+            ? 'Créditos importados do extrato (regime de caixa)'
+            : `${summary?.orderCount ?? 0} pedido${summary?.orderCount === 1 ? '' : 's'}`}
         />
         <KpiCard
           label="Taxas pagas"

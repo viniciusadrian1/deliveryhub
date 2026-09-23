@@ -92,6 +92,7 @@ export class ReconciliationService {
       const candidates = unlinkedBankTxns.filter(
         (tx) =>
           !reservedTxnIds.has(tx.id) &&
+          tx.amountCents > 0n &&
           Math.abs(tx.date.getTime() - anchorMs) <= dayWindowMs,
       );
 

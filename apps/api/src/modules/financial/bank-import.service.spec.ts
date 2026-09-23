@@ -30,4 +30,21 @@ describe('BankImportService.parseAmountCents', () => {
     expect(parse('1,234')).toBe(123400n);
     expect(parse('12.345')).toBe(1234500n);
   });
+
+  it('aceita valores negativos entre parênteses', () => {
+    expect(parse('(1.234,56)')).toBe(-123456n);
+  });
+});
+
+describe('BankImportService.splitLine', () => {
+  it('preserva separadores dentro de campos entre aspas', () => {
+    const service = new BankImportService({} as never, {} as never) as unknown as {
+      splitLine(line: string, sep: string): string[];
+    };
+    expect(service.splitLine('01/09/2026;"PIX, CLIENTE";1.234,56', ';')).toEqual([
+      '01/09/2026',
+      'PIX, CLIENTE',
+      '1.234,56',
+    ]);
+  });
 });

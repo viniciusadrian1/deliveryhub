@@ -137,8 +137,7 @@ export class DreService {
 
     const netRevenueCents = grossRevenueCents - platformFeesCents;
     const grossMarginCents = netRevenueCents - cogsCents;
-    const grossMarginPct =
-      netRevenueCents > 0 ? grossMarginCents / netRevenueCents : 0;
+    const grossMarginPct = netRevenueCents !== 0 ? grossMarginCents / netRevenueCents : 0;
 
     // ----- Despesas no período (incluindo recorrências expandidas) -----
     const expenses = await this.prisma.expense.findMany({
@@ -178,8 +177,7 @@ export class DreService {
 
     const totalExpensesCents = expenseLines.reduce((s, l) => s + l.cents, 0);
     const operatingResultCents = grossMarginCents - totalExpensesCents;
-    const netMarginPct =
-      netRevenueCents > 0 ? operatingResultCents / netRevenueCents : 0;
+    const netMarginPct = netRevenueCents !== 0 ? operatingResultCents / netRevenueCents : 0;
 
     return {
       period: { from: from.toISOString(), to: to.toISOString() },
@@ -259,9 +257,9 @@ function countOccurrencesInPeriod(
       return Math.max(1, yearsDiff * 12 + monthsDiff + 1);
     }
     case 'weekly':
-      return Math.max(1, Math.ceil(ms / (7 * 24 * 3600 * 1000)));
+      return Math.max(1, Math.ceil(ms / (7 * 24 * 3600 * 1000)) + 1);
     case 'daily':
-      return Math.max(1, Math.ceil(ms / (24 * 3600 * 1000)));
+      return Math.max(1, Math.ceil(ms / (24 * 3600 * 1000)) + 1);
     default:
       return 1;
   }

@@ -48,6 +48,7 @@ export class PayoutsService {
     to: Date,
     expectedPayDate?: Date,
   ) {
+    await this.assertStore(auth.orgId, storeId);
     const platform = await this.prisma.platform.findUnique({ where: { code: platformCode } });
     if (!platform) throw new NotFoundException('platform_not_found');
 
@@ -120,6 +121,7 @@ export class PayoutsService {
     from: Date,
     to: Date,
   ) {
+    await this.assertStore(auth.orgId, storeId);
     const platform = await this.prisma.platform.findUnique({ where: { code: platformCode } });
     if (!platform) throw new NotFoundException('platform_not_found');
 
@@ -228,9 +230,17 @@ export class PayoutsService {
     if (!payout) throw new NotFoundException('payout_not_found');
 
     const tx = await this.prisma.bankTransaction.findFirst({
-      where: { id: bankTransactionId, organizationId: auth.orgId },
+      where: {
+        id: bankTransactionId,
+        organizationId: auth.orgId,
+        storeId: payout.storeId,
+      },
+      include: { payouts: { select: { id: true }, take: 2 } },
     });
     if (!tx) throw new NotFoundException('bank_transaction_not_found');
+    if (tx.payouts.some((linked) => linked.id !== payout.id)) {
+      throw new BadRequestException('bank_transaction_already_reconciled');
+    }
 
     const status = this.classify(payout.expectedAmountCents, tx.amountCents);
 
@@ -269,6 +279,14 @@ export class PayoutsService {
     const date = new Date(d);
     date.setUTCHours(0, 0, 0, 0);
     return date;
+  }
+
+  private async assertStore(orgId: string, storeId: string): Promise<void> {
+    const store = await this.prisma.store.findFirst({
+      where: { id: storeId, organizationId: orgId },
+      select: { id: true },
+    });
+    if (!store) throw new NotFoundException('store_not_found');
   }
 
   private serializePayout(p: {
