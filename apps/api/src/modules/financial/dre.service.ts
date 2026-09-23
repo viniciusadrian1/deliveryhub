@@ -41,8 +41,10 @@ export interface DreResult {
   period: { from: string; to: string };
   storeId: string;
 
-  /** Faturamento bruto (total das ordens não-canceladas) */
+  /** Faturamento bruto (pedidos ou créditos do extrato, quando não há pedidos) */
   grossRevenueCents: number;
+  /** Origem usada para calcular a receita do período. */
+  revenueSource: 'orders' | 'bank_statement';
   /** Soma das taxas cobradas pelas plataformas */
   platformFeesCents: number;
   /** = grossRevenue − fees */
@@ -112,6 +114,27 @@ export class DreService {
         cogsCents += unitCost * item.qty;
       }
     }
+    // Quando ainda não há pedidos importados no período, usa os créditos do
+    // extrato como receita em regime de caixa. Se houver pedidos, eles seguem
+    // como fonte principal para evitar duplicar repasses bancários líquidos.
+    let revenueSource: DreResult['revenueSource'] = 'orders';
+    if (orders.length === 0) {
+      const bankCredits = await this.prisma.bankTransaction.aggregate({
+        where: {
+          organizationId: auth.orgId,
+          storeId: query.storeId,
+          date: { gte: from, lte: to },
+          amountCents: { gt: 0n },
+        },
+        _sum: { amountCents: true },
+      });
+      const importedRevenueCents = Number(bankCredits._sum.amountCents ?? 0n);
+      if (importedRevenueCents > 0) {
+        grossRevenueCents = importedRevenueCents;
+        revenueSource = 'bank_statement';
+      }
+    }
+
     const netRevenueCents = grossRevenueCents - platformFeesCents;
     const grossMarginCents = netRevenueCents - cogsCents;
     const grossMarginPct =
@@ -162,6 +185,7 @@ export class DreService {
       period: { from: from.toISOString(), to: to.toISOString() },
       storeId: query.storeId,
       grossRevenueCents,
+      revenueSource,
       platformFeesCents,
       netRevenueCents,
       cogsCents,

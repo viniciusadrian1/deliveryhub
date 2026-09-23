@@ -156,6 +156,7 @@ export default function FinancialPage() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['fin'] });
+      void qc.invalidateQueries({ queryKey: ['dre'] });
       setImportOpen(false);
       setCsvText('');
     },
@@ -743,7 +744,11 @@ function DreTab({
           <DreRow
             label="Faturamento bruto"
             cents={dre.grossRevenueCents}
-            hint={`${dre.ordersCount} pedidos · ticket médio ${formatCents(dre.averageTicketCents)}`}
+            hint={
+              dre.revenueSource === 'bank_statement'
+                ? 'Receita calculada pelos créditos importados do extrato'
+                : `${dre.ordersCount} pedidos · ticket médio ${formatCents(dre.averageTicketCents)}`
+            }
             emphasis
           />
           <DreRow

@@ -69,6 +69,7 @@ export interface DreReport {
   period: { from: string; to: string };
   storeId: string;
   grossRevenueCents: number;
+  revenueSource: 'orders' | 'bank_statement';
   platformFeesCents: number;
   netRevenueCents: number;
   cogsCents: number;
