@@ -988,7 +988,10 @@ export class IFoodAdapter implements PlatformAdapter {
 
   private async postForm<T>(path: string, body: URLSearchParams): Promise<T> {
     return this.request<T>('POST', path, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
       body,
     });
   }
@@ -1025,6 +1028,7 @@ export class IFoodAdapter implements PlatformAdapter {
   private authHeaders(tokens: StoredTokens): Record<string, string> {
     return {
       Authorization: `Bearer ${tokens.accessToken}`,
+      Accept: 'application/json',
       'Content-Type': 'application/json',
     };
   }
