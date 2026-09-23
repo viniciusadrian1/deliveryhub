@@ -12,7 +12,7 @@ const inter = Inter({
   display: 'swap',
 });
 
-// Fonte da marca — usada no wordmark do logo (italic) e nos números da landing (normal).
+// Fonte da marca: usada no wordmark do logo (italic) e em destaques numéricos.
 const poppins = Poppins({
   subsets: ['latin'],
   weight: ['700', '900'],
@@ -22,9 +22,9 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: 'DeliveryHub — controle unificado de delivery',
+  title: 'DeliveryHub: Centralização de Pedidos para Restaurantes',
   description:
-    'Camada única de controle para restaurantes que operam em múltiplas plataformas de delivery. Margem cross-platform, pausa multiplataforma e conciliação automatizada.',
+    'Painel operacional unificado para receber pedidos do iFood, Rappi, 99Food e canais próprios com organização para seu restaurante.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

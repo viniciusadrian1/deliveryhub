@@ -34,38 +34,100 @@ export function IngredientFormDialog({
   const [name, setName] = useState('');
   const [unit, setUnit] = useState<IngredientUnit>('gram');
   const [costPerUnit, setCostPerUnit] = useState('');
+  const [costBulk, setCostBulk] = useState('');
   const [batchYield, setBatchYield] = useState('');
   const [minLevel, setMinLevel] = useState('');
   const [targetDays, setTargetDays] = useState('');
   const [notes, setNotes] = useState('');
 
+  // Sincroniza estado ao abrir ou mudar edição
   useEffect(() => {
     if (!open) return;
-    setKind(editing?.kind ?? defaultKind);
+    const currentKind = editing?.kind ?? defaultKind;
+    const currentUnit = editing?.unit ?? 'gram';
+    setKind(currentKind);
     setName(editing?.name ?? '');
-    setUnit(editing?.unit ?? 'gram');
-    setCostPerUnit(editing?.costPerUnit ?? '');
+    setUnit(currentUnit);
+
+    const rawCost = editing?.costPerUnit ?? '';
+    setCostPerUnit(rawCost);
+    if (rawCost && !isNaN(parseFloat(rawCost))) {
+      const num = parseFloat(rawCost);
+      if (currentUnit === 'gram' || currentUnit === 'milliliter') {
+        setCostBulk((num * 1000).toFixed(2).replace('.', ','));
+      } else {
+        setCostBulk(num.toFixed(2).replace('.', ','));
+      }
+    } else {
+      setCostBulk('');
+    }
+
     setBatchYield(editing?.batchYield ?? '');
     setMinLevel(editing?.minLevel ?? '');
     setTargetDays(editing?.targetDays?.toString() ?? '');
     setNotes(editing?.notes ?? '');
   }, [open, editing, defaultKind]);
 
+  // Manipulador quando altera o custo por Quilo ou Litro (bulk)
+  const handleBulkChange = (value: string) => {
+    setCostBulk(value);
+    const cleaned = value.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(cleaned);
+    if (!isNaN(num) && num >= 0) {
+      if (unit === 'gram' || unit === 'milliliter') {
+        setCostPerUnit((num / 1000).toString());
+      } else {
+        setCostPerUnit(num.toString());
+      }
+    } else if (!value.trim()) {
+      setCostPerUnit('');
+    }
+  };
+
+  // Manipulador quando altera o custo por unidade base direta
+  const handleDirectCostChange = (value: string) => {
+    setCostPerUnit(value);
+    const cleaned = value.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(cleaned);
+    if (!isNaN(num) && num >= 0) {
+      if (unit === 'gram' || unit === 'milliliter') {
+        setCostBulk((num * 1000).toFixed(2).replace('.', ','));
+      } else {
+        setCostBulk(num.toFixed(2).replace('.', ','));
+      }
+    } else if (!value.trim()) {
+      setCostBulk('');
+    }
+  };
+
+  const handleUnitChange = (newUnit: IngredientUnit) => {
+    setUnit(newUnit);
+    const cleaned = costPerUnit.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(cleaned);
+    if (!isNaN(num) && num >= 0) {
+      if (newUnit === 'gram' || newUnit === 'milliliter') {
+        setCostBulk((num * 1000).toFixed(2).replace('.', ','));
+      } else {
+        setCostBulk(num.toFixed(2).replace('.', ','));
+      }
+    }
+  };
+
   const mutation = useMutation({
     mutationFn: async () => {
-      const normalizeDecimal = (value: string) => value.trim().replace(',', '.');
-      const costValue = costPerUnit.trim() ? normalizeDecimal(costPerUnit) : undefined;
-      const batchYieldValue = batchYield.trim() ? normalizeDecimal(batchYield) : undefined;
-      const minLevelValue = minLevel.trim() ? minLevel : null;
+      const minLevelValue = minLevel.trim() ? minLevel.replace(',', '.') : null;
       const targetDaysValue = targetDays.trim() ? parseInt(targetDays, 10) : null;
+      const cleanCost = costPerUnit.trim().replace(',', '.');
+      const cleanBatchYield = batchYield.trim().replace(',', '.');
+
       if (editing) {
         return api(`/inventory/ingredients/${editing.id}`, {
           method: 'PATCH',
           body: {
             name,
             unit,
-            costPerUnit: kind === 'raw' ? costValue : undefined,
-            batchYield: kind === 'sub_recipe' ? batchYieldValue : undefined,
+            costPerUnit: kind === 'raw' ? (cleanCost || '0') : undefined,
+            batchYield: kind === 'sub_recipe' ? cleanBatchYield : undefined,
             minLevel: minLevelValue,
             targetDays: targetDaysValue,
             notes,
@@ -79,8 +141,8 @@ export function IngredientFormDialog({
           kind,
           name,
           unit,
-          costPerUnit: kind === 'raw' ? costValue : undefined,
-          batchYield: kind === 'sub_recipe' ? batchYieldValue : undefined,
+          costPerUnit: kind === 'raw' ? (cleanCost || '0') : undefined,
+          batchYield: kind === 'sub_recipe' ? cleanBatchYield : undefined,
           minLevel: minLevelValue,
           targetDays: targetDaysValue,
           notes,
@@ -97,11 +159,11 @@ export function IngredientFormDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title={editing ? `Editar "${editing.name}"` : 'Novo insumo / sub-receita'}
+      title={editing ? `Editar "${editing.name}"` : 'Novo Insumo ou Preparo'}
       description={
         kind === 'raw'
-          ? 'Item comprado de fornecedor — define custo unitário base.'
-          : 'Receita interna que serve de componente em produtos finais (ex.: molho da casa).'
+          ? 'Matéria-prima ou ingrediente comprado de fornecedores para uso nas receitas.'
+          : 'Receita ou preparo interno produzido na própria cozinha (ex.: molhos, massas).'
       }
       size="md"
       footer={
@@ -114,12 +176,12 @@ export function IngredientFormDialog({
             loading={mutation.isPending}
             disabled={!name.trim() || (kind === 'sub_recipe' && !batchYield.trim())}
           >
-            {editing ? 'Salvar' : 'Criar'}
+            {editing ? 'Salvar alterações' : 'Cadastrar'}
           </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {!editing && (
           <div className="flex gap-2">
             <button
@@ -127,111 +189,141 @@ export function IngredientFormDialog({
               onClick={() => setKind('raw')}
               className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-all ${
                 kind === 'raw'
-                  ? 'border-brand-500 bg-brand-500/10 text-brand-500'
-                  : 'border-surface-border-subtle text-ink-secondary'
+                  ? 'border-brand-500 bg-brand-500/10 text-brand-400'
+                  : 'border-surface-border-subtle text-ink-secondary hover:text-ink-primary'
               }`}
             >
-              Insumo (raw)
+              Insumo comprado
             </button>
             <button
               type="button"
               onClick={() => setKind('sub_recipe')}
               className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-all ${
                 kind === 'sub_recipe'
-                  ? 'border-brand-500 bg-brand-500/10 text-brand-500'
-                  : 'border-surface-border-subtle text-ink-secondary'
+                  ? 'border-brand-500 bg-brand-500/10 text-brand-400'
+                  : 'border-surface-border-subtle text-ink-secondary hover:text-ink-primary'
               }`}
             >
-              Sub-receita
+              Preparo da casa (Sub-receita)
             </button>
           </div>
         )}
 
         <Input
-          label="Nome"
+          label="Nome do item"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          placeholder="Ex: Doce de Leite, Farinha de Trigo..."
           required
           autoFocus
         />
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
-              Unidade
+            <label className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+              Unidade de medida
             </label>
             <select
               value={unit}
-              onChange={(e) => setUnit(e.target.value as IngredientUnit)}
-              className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none focus:border-brand-500"
+              onChange={(e) => handleUnitChange(e.target.value as IngredientUnit)}
+              className="h-10 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none focus:border-brand-500"
             >
               {UNITS.map((u) => (
                 <option key={u} value={u}>
-                  {INGREDIENT_UNIT_LABELS[u]} ({INGREDIENT_UNIT_FULL_LABELS[u]})
+                  {INGREDIENT_UNIT_FULL_LABELS[u]} ({INGREDIENT_UNIT_LABELS[u]})
                 </option>
               ))}
             </select>
           </div>
 
           {kind === 'raw' ? (
-            <Input
-              label={`Custo por ${INGREDIENT_UNIT_LABELS[unit]} (R$)`}
-              value={costPerUnit}
-              onChange={(e) => setCostPerUnit(e.target.value)}
-              placeholder="0,045"
-              inputMode="decimal"
-              hint="Use 4-8 casas para precisão (ex.: 0,045 = R$45/kg)."
-            />
+            unit === 'gram' || unit === 'milliliter' ? (
+              <Input
+                label={`Preço por ${unit === 'gram' ? 'Quilo (R$/kg)' : 'Litro (R$/L)'}`}
+                value={costBulk}
+                onChange={(e) => handleBulkChange(e.target.value)}
+                placeholder={unit === 'gram' ? '45,00' : '15,00'}
+                inputMode="decimal"
+                hint={`Equivale a R$ ${costPerUnit ? parseFloat(costPerUnit.replace(',', '.')).toFixed(4) : '0,0000'} por ${INGREDIENT_UNIT_LABELS[unit]}`}
+              />
+            ) : (
+              <Input
+                label={`Custo por ${INGREDIENT_UNIT_LABELS[unit]} (R$)`}
+                value={costPerUnit}
+                onChange={(e) => handleDirectCostChange(e.target.value)}
+                placeholder="0,00"
+                inputMode="decimal"
+                hint="Valor de custo unitário deste item."
+              />
+            )
           ) : (
             <Input
-              label={`Rendimento (${INGREDIENT_UNIT_LABELS[unit]} por preparo)`}
+              label={`Rendimento por preparo (${INGREDIENT_UNIT_LABELS[unit]})`}
               value={batchYield}
               onChange={(e) => setBatchYield(e.target.value)}
               placeholder="500"
               inputMode="decimal"
               required
-              hint="Quanto a receita rende a cada execução."
+              hint="Quanto a receita rende a cada lote produzido."
             />
           )}
         </div>
 
-        <div className="rounded-md border border-surface-border-subtle bg-surface-base/40 p-3">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
-            Alertas e sugestão de compra (opcional)
-          </p>
+        {kind === 'raw' && (unit === 'gram' || unit === 'milliliter') && (
+          <div className="rounded-lg border border-surface-border-subtle bg-surface-base/30 p-2.5 text-xs text-ink-secondary">
+            <div className="flex items-center justify-between">
+              <span>Custo calculado por {INGREDIENT_UNIT_LABELS[unit]}:</span>
+              <span className="font-mono font-semibold text-ink-primary">
+                R$ {costPerUnit ? parseFloat(costPerUnit.replace(',', '.')).toFixed(4) : '0,0000'} / {INGREDIENT_UNIT_LABELS[unit]}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-ink-tertiary">
+              Dica: Você pode informar o preço por quilo ou litro diretamente acima, e o sistema converte automaticamente para o custo das receitas.
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-surface-border-subtle bg-surface-base/40 p-3.5 space-y-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-ink-primary">
+              Controle de Reposição e Alertas (Opcional)
+            </p>
+            <p className="text-[11px] text-ink-tertiary">
+              Configure quando você quer ser alertado para repor o estoque.
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
               label={`Estoque mínimo (${INGREDIENT_UNIT_LABELS[unit]})`}
               value={minLevel}
               onChange={(e) => setMinLevel(e.target.value)}
-              placeholder="500"
+              placeholder="Ex: 500"
               inputMode="decimal"
-              hint="Saldo abaixo dispara notificação."
+              hint="Avisa quando o saldo for menor."
             />
             <Input
-              label="Cobertura desejada (dias)"
+              label="Dias de cobertura"
               value={targetDays}
               onChange={(e) => setTargetDays(e.target.value)}
               placeholder="7"
               type="number"
               min={1}
               max={90}
-              hint="Compra sugerida = consumo × dias."
+              hint="Sugere compra para durar X dias."
             />
           </div>
         </div>
 
         <Input
-          label="Notas (opcional)"
+          label="Observações (opcional)"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
+          placeholder="Ex: Marca preferida, fornecedor habitual..."
         />
 
         {kind === 'sub_recipe' && !editing && (
-          <p className="rounded-md border border-info/30 bg-info-soft px-3 py-2 text-xs text-ink-secondary">
-            Depois de criar, defina os componentes desta sub-receita usando o
-            botão <b>Editar receita</b> na listagem. O custo unitário será
-            calculado automaticamente.
+          <p className="rounded-lg border border-info/30 bg-info-soft px-3 py-2 text-xs text-ink-secondary">
+            Após cadastrar a sub-receita, utilize a opção <b>Editar receita</b> para adicionar os insumos que compõem este preparo. O custo será calculado automaticamente.
           </p>
         )}
       </div>

@@ -3,6 +3,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
+import { isValidSupplierDocument } from '@deliveryhub/shared';
+
 import { api } from '../../lib/api';
 import type { Supplier } from '../../lib/inventory-types';
 import { Button } from '../ui/button';
@@ -36,10 +38,10 @@ export function SupplierFormDialog({ open, onClose, editing }: SupplierFormDialo
     mutationFn: async () => {
       const body = {
         name,
-        document: document || undefined,
-        email: email || undefined,
-        phone: phone || undefined,
-        notes: notes || undefined,
+        document: document.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        notes: notes.trim(),
       };
       if (editing) {
         return api(`/inventory/suppliers/${editing.id}`, { method: 'PATCH', body });
@@ -66,7 +68,7 @@ export function SupplierFormDialog({ open, onClose, editing }: SupplierFormDialo
           <Button
             onClick={() => mutation.mutate()}
             loading={mutation.isPending}
-            disabled={!name.trim()}
+            disabled={!name.trim() || !isValidSupplierDocument(document)}
           >
             {editing ? 'Salvar' : 'Criar'}
           </Button>
@@ -74,12 +76,34 @@ export function SupplierFormDialog({ open, onClose, editing }: SupplierFormDialo
       }
     >
       <div className="flex flex-col gap-3">
-        <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+        {mutation.error && (
+          <p role="alert" className="text-sm text-danger-bright">
+            {mutation.error.message}
+          </p>
+        )}
+        <Input
+          label="Nome"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          autoFocus
+        />
         <div className="grid grid-cols-2 gap-3">
-          <Input label="CNPJ / Documento" value={document} onChange={(e) => setDocument(e.target.value)} />
+          <Input
+            label="CNPJ ou CPF"
+            hint="Validação do número, sem consulta à Receita."
+            error={isValidSupplierDocument(document) ? undefined : 'CNPJ ou CPF inválido.'}
+            value={document}
+            onChange={(e) => setDocument(e.target.value)}
+          />
           <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
-        <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input
+          label="E-mail"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
         <Input label="Observações" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
     </Dialog>

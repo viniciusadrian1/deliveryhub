@@ -5,9 +5,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  MapPin,
   Power,
   RefreshCw,
+  Send,
   XCircle,
 } from 'lucide-react';
 import Image from 'next/image';
@@ -18,7 +18,6 @@ import type { PlatformConnection, PlatformMeta } from '../../lib/integrations-ty
 import { PLATFORM_META } from '../../lib/integrations-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { DeliveryAreasDialog } from './delivery-areas-dialog';
 
 interface PlatformCardProps {
   code: string;
@@ -37,7 +36,27 @@ const FALLBACK_META: PlatformMeta = {
 export function PlatformCard({ code, connection, onConnect }: PlatformCardProps) {
   const qc = useQueryClient();
   const meta = PLATFORM_META[code] ?? { ...FALLBACK_META, name: code };
-  const [showAreas, setShowAreas] = useState(false);
+  const [simulateSuccess, setSimulateSuccess] = useState(false);
+  const [isCooldown, setIsCooldown] = useState(false);
+
+  const simulate = useMutation({
+    mutationFn: async () => {
+      setIsCooldown(true);
+      setTimeout(() => setIsCooldown(false), 3000);
+      return api('/orders/simulate', {
+        method: 'POST',
+        body: { platformCode: code, storeId: connection?.storeId },
+      });
+    },
+    onSuccess: () => {
+      setSimulateSuccess(true);
+      setTimeout(() => setSimulateSuccess(false), 4000);
+      void qc.invalidateQueries({ queryKey: ['orders'] });
+    },
+    onError: () => {
+      setIsCooldown(false);
+    },
+  });
 
   const disconnect = useMutation({
     mutationFn: async (id: string) => {
@@ -96,73 +115,74 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
   };
 
   return (
-    <div className="surface-card relative flex flex-col overflow-hidden p-5">
+    <div className="surface-card group relative flex flex-col justify-between overflow-hidden p-5 transition-all duration-200 hover:border-surface-border hover:shadow-md">
       {/* faixa colorida da plataforma no topo */}
       <div
-        className="absolute inset-x-0 top-0 h-1"
+        className="absolute inset-x-0 top-0 h-1.5"
         style={{ backgroundColor: meta.colorHex }}
       />
 
-      <div className="flex items-start justify-between gap-3">
-        <div className="relative flex h-12 w-20 items-center justify-center overflow-hidden rounded-lg border border-surface-border-subtle bg-white p-2">
-          {meta.logo ? (
-            <Image
-              src={meta.logo}
-              alt={`${meta.name} logo`}
-              width={64}
-              height={32}
-              className="h-full w-full object-contain"
-              style={meta.logoScale ? { transform: `scale(${meta.logoScale})` } : undefined}
-              unoptimized
-            />
-          ) : (
-            <span
-              className="text-sm font-bold uppercase"
-              style={{ color: meta.colorHex }}
-            >
-              {meta.name.slice(0, 2)}
-            </span>
+      <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-black/5 dark:ring-white/10 transition-transform duration-200 group-hover:scale-105">
+            {meta.logo ? (
+              <Image
+                src={meta.logo}
+                alt={`${meta.name} logo`}
+                width={48}
+                height={48}
+                className="h-full w-full rounded-xl object-contain"
+                unoptimized
+              />
+            ) : (
+              <span
+                className="text-sm font-bold uppercase"
+                style={{ color: meta.colorHex }}
+              >
+                {meta.name.slice(0, 2)}
+              </span>
+            )}
+          </div>
+          {renderStatus()}
+        </div>
+
+        <h3 className="mt-3.5 text-base font-semibold text-ink-primary">{meta.name}</h3>
+
+        <div className="mt-2 space-y-1 text-xs text-ink-tertiary">
+          {connection?.externalMerchantId && (
+            <p className="flex items-center gap-1.5 font-mono">
+              <span className="text-ink-secondary">merchant:</span>
+              <span className="truncate">{connection.externalMerchantId}</span>
+            </p>
+          )}
+          {connection?.lastSyncAt && (
+            <p className="flex items-center gap-1.5">
+              <Clock className="h-3 w-3" />
+              {new Date(connection.lastSyncAt).toLocaleString('pt-BR', {
+                dateStyle: 'short',
+                timeStyle: 'short',
+              })}
+            </p>
+          )}
+          {connection?.lastErrorMessage && (
+            <p className="flex items-start gap-1.5 text-danger-bright">
+              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span className="line-clamp-2">{connection.lastErrorMessage}</span>
+            </p>
+          )}
+          {!connection && meta.availability === 'available' && (
+            <p>Conecte para começar a receber pedidos e sincronizar cardápio.</p>
+          )}
+          {!connection && meta.availability === 'roadmap' && (
+            <p>{meta.reason ?? 'Integração no roadmap — credenciais pendentes.'}</p>
+          )}
+          {!connection && meta.availability === 'unavailable' && (
+            <p>{meta.reason ?? 'Plataforma sem API disponível para integração.'}</p>
           )}
         </div>
-        {renderStatus()}
       </div>
 
-      <h3 className="mt-3 text-base font-semibold text-ink-primary">{meta.name}</h3>
-
-      <div className="mt-3 flex-1 space-y-1 text-xs text-ink-tertiary">
-        {connection?.externalMerchantId && (
-          <p className="flex items-center gap-1.5 font-mono">
-            <span className="text-ink-secondary">merchant:</span>
-            <span className="truncate">{connection.externalMerchantId}</span>
-          </p>
-        )}
-        {connection?.lastSyncAt && (
-          <p className="flex items-center gap-1.5">
-            <Clock className="h-3 w-3" />
-            {new Date(connection.lastSyncAt).toLocaleString('pt-BR', {
-              dateStyle: 'short',
-              timeStyle: 'short',
-            })}
-          </p>
-        )}
-        {connection?.lastErrorMessage && (
-          <p className="flex items-start gap-1.5 text-danger-bright">
-            <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
-            <span className="line-clamp-2">{connection.lastErrorMessage}</span>
-          </p>
-        )}
-        {!connection && meta.availability === 'available' && (
-          <p>Conecte para começar a receber pedidos e sincronizar cardápio.</p>
-        )}
-        {!connection && meta.availability === 'roadmap' && (
-          <p>{meta.reason ?? 'Integração no roadmap — credenciais pendentes.'}</p>
-        )}
-        {!connection && meta.availability === 'unavailable' && (
-          <p>{meta.reason ?? 'Plataforma sem API disponível para integração.'}</p>
-        )}
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap items-center gap-2 pt-3 border-t border-surface-border-subtle/60">
         {(!connection || connection.status === 'revoked') &&
           meta.availability === 'available' && (
             <Button
@@ -204,21 +224,21 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
             <Button
               size="sm"
               variant="secondary"
+              onClick={() => simulate.mutate()}
+              loading={simulate.isPending}
+              disabled={isCooldown}
+              leftIcon={<Send className="h-3.5 w-3.5" />}
+            >
+              {isCooldown ? 'Enviando...' : 'Simular Pedido'}
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={onConnect}
               leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
             >
               Reconectar
             </Button>
-            {code === '99food' && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setShowAreas(true)}
-                leftIcon={<MapPin className="h-3.5 w-3.5" />}
-              >
-                Áreas de entrega
-              </Button>
-            )}
             <Button
               size="sm"
               variant="ghost"
@@ -244,11 +264,10 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
         )}
       </div>
 
-      {showAreas && connection && (
-        <DeliveryAreasDialog
-          storeId={connection.storeId}
-          onClose={() => setShowAreas(false)}
-        />
+      {simulateSuccess && (
+        <p className="mt-2 text-xs font-semibold text-success-bright">
+          ✓ Pedido de teste enviado! Acesse o Hub para visualizar em tempo real.
+        </p>
       )}
     </div>
   );

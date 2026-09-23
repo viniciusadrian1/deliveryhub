@@ -51,6 +51,18 @@ export interface OrderListItem {
   customer: { id: string; name: string } | null;
   /** Pedidos de cancelamento/reembolso pendentes (selo no card). */
   actionRequests: ActionRequestSummary[];
+  items?: Array<{
+    id: string;
+    nameSnapshot: string;
+    qty: number;
+    unitPriceCents: number;
+    notes?: string | null;
+    modifiers?: Array<{
+      id: string;
+      nameSnapshot: string;
+      qty: number;
+    }>;
+  }>;
 }
 
 export interface OrderItemDetail {

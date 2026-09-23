@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ChevronLeft, Edit2, Plus, Truck } from 'lucide-react';
+import { Archive, RotateCcw, ChevronLeft, Edit2, Plus, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
@@ -14,17 +14,27 @@ import { r } from '../../../../lib/routes';
 
 export default function SuppliersPage() {
   const qc = useQueryClient();
+  const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
 
-  const { data: suppliers = [], isLoading } = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: () => api<Supplier[]>('/inventory/suppliers'),
+  const {
+    data: allSuppliers = [],
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['suppliers', 'all'],
+    queryFn: () => api<Supplier[]>('/inventory/suppliers?includeArchived=true'),
   });
 
   const archive = useMutation({
-    mutationFn: (id: string) =>
-      api(`/inventory/suppliers/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api(`/inventory/suppliers/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
+  });
+
+  const suppliers = allSuppliers.filter((s) => (showArchived ? !!s.archivedAt : !s.archivedAt));
+  const restore = useMutation({
+    mutationFn: (id: string) => api(`/inventory/suppliers/${id}/restore`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
   });
 
@@ -57,14 +67,37 @@ export default function SuppliersPage() {
         </Button>
       </header>
 
+      <div className="mb-4 flex gap-2" role="group" aria-label="Filtrar fornecedores">
+        <Button
+          variant={showArchived ? 'ghost' : 'secondary'}
+          onClick={() => setShowArchived(false)}
+        >
+          Ativos
+        </Button>
+        <Button
+          variant={showArchived ? 'secondary' : 'ghost'}
+          onClick={() => setShowArchived(true)}
+        >
+          Arquivados
+        </Button>
+      </div>
+      {(error || archive.error || restore.error) && (
+        <p role="alert" className="mb-3 text-sm text-danger-bright">
+          {(error || archive.error || restore.error)?.message}
+        </p>
+      )}
       <section className="surface-card overflow-hidden">
         {isLoading ? (
           <p className="px-5 py-6 text-sm text-ink-tertiary">Carregando…</p>
         ) : suppliers.length === 0 ? (
           <EmptyState
             icon={Truck}
-            title="Nenhum fornecedor cadastrado"
-            description="Cadastre fornecedores para vincular às compras de insumos e manter histórico."
+            title={showArchived ? 'Nenhum fornecedor arquivado' : 'Nenhum fornecedor cadastrado'}
+            description={
+              showArchived
+                ? 'Os fornecedores arquivados aparecem aqui e podem ser restaurados.'
+                : 'Cadastre fornecedores para vincular às compras de insumos.'
+            }
           />
         ) : (
           <table className="w-full text-sm">
@@ -83,9 +116,7 @@ export default function SuppliersPage() {
                   <td className="px-5 py-2.5 font-mono text-xs text-ink-secondary">
                     {s.document ?? '—'}
                   </td>
-                  <td className="px-5 py-2.5 text-ink-secondary">
-                    {s.email ?? s.phone ?? '—'}
-                  </td>
+                  <td className="px-5 py-2.5 text-ink-secondary">{s.email ?? s.phone ?? '—'}</td>
                   <td className="px-5 py-2.5">
                     <div className="flex justify-end gap-1">
                       <button
@@ -98,15 +129,27 @@ export default function SuppliersPage() {
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Arquivar ${s.name}?`)) archive.mutate(s.id);
-                        }}
-                        className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
-                        aria-label="Arquivar"
-                      >
-                        <Archive className="h-3.5 w-3.5" />
-                      </button>
+                      {s.archivedAt ? (
+                        <button
+                          disabled={restore.isPending}
+                          aria-label={`Restaurar ${s.name}`}
+                          onClick={() => restore.mutate(s.id)}
+                          className="rounded-md p-1.5 text-brand-500"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button
+                          disabled={archive.isPending}
+                          onClick={() => {
+                            if (confirm(`Arquivar ${s.name}?`)) archive.mutate(s.id);
+                          }}
+                          className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
+                          aria-label="Arquivar"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

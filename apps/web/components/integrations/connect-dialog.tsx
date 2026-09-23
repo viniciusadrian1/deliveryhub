@@ -32,11 +32,9 @@ export function ConnectDialog({
   const [startError, setStartError] = useState<string | null>(null);
 
   // iFood usa OAuth Device (mostra um código). 99Food não tem código — só
-  // uma URL de autorização. Sem userCode, exibimos o fluxo simplificado.
+  // uma URL de autorização.
   const hasCode = Boolean(started?.userCode);
-  // Keeta: a loja autoriza no portal deles e a conexão ativa via webhook 1301 —
-  // não há "finalize" por polling. O dialog só mostra a URL e orienta a aguardar.
-  const webhookDriven = platformCode === 'keeta';
+  const isKeeta = platformCode === 'keeta';
   const expiryMs = started ? new Date(started.expiresAt).getTime() - Date.now() : 0;
   const expiryLabel = hasCode
     ? `Código expira em ${Math.max(0, Math.round(expiryMs / 60_000))} min`
@@ -71,8 +69,7 @@ export function ConnectDialog({
       if (!started) throw new Error('not_started');
       return api(`/integrations/connections/${started.connectionId}/finalize`, {
         method: 'POST',
-        // iFood: manda o código que a plataforma devolveu ao autorizar.
-        body: hasCode ? { authorizationCode: authCode.trim() } : {},
+        body: authCode.trim() ? { authorizationCode: authCode.trim() } : {},
       });
     },
     onMutate: () => setFinalizeError(null),
@@ -88,11 +85,9 @@ export function ConnectDialog({
         connection_still_pending:
           'Ainda não recebemos a autorização. Confira se você concluiu no portal da plataforma.',
         authorization_code_required:
-          'Cole o código que a plataforma mostrou depois que você autorizou.',
+          'Cole o código de autorização ou digite test para sandbox.',
         authorization_invalid_or_expired:
           'Código inválido ou expirado. Reinicie a conexão, autorize de novo e cole o código novo.',
-        '99food_store_authorization_expired':
-          'O portal 99Food não encontrou nenhum estabelecimento autorizado para este app. Verifique se a loja aparece no portal, autorize-a para o app Byte Burguer e tente novamente.',
       };
       setFinalizeError(msgs[raw] ?? raw);
     },
@@ -107,6 +102,7 @@ export function ConnectDialog({
   };
 
   // Pra iFood, só habilita "Já autorizei" quando o código foi colado.
+  // Pra 99Food ou quando não há código exigido, sempre pode finalizar.
   const canFinalize = !hasCode || authCode.trim().length > 0;
 
   return (
@@ -121,25 +117,19 @@ export function ConnectDialog({
       }
       footer={
         started ? (
-          webhookDriven ? (
-            <Button onClick={close} rightIcon={<CheckCircle2 className="h-4 w-4" />}>
-              Entendi, fechar
+          <>
+            <Button variant="ghost" onClick={close}>
+              Fechar
             </Button>
-          ) : (
-            <>
-              <Button variant="ghost" onClick={close}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => finalize.mutate()}
-                loading={finalize.isPending}
-                disabled={!canFinalize}
-                rightIcon={!finalize.isPending && <ArrowRight className="h-4 w-4" />}
-              >
-                {finalize.isPending ? 'Verificando…' : 'Já autorizei'}
-              </Button>
-            </>
-          )
+            <Button
+              onClick={() => finalize.mutate()}
+              loading={finalize.isPending}
+              disabled={!canFinalize}
+              rightIcon={!finalize.isPending && <ArrowRight className="h-4 w-4" />}
+            >
+              {finalize.isPending ? 'Verificando…' : 'Já autorizei'}
+            </Button>
+          </>
         ) : (
           <>
             <Button variant="ghost" onClick={close}>
@@ -235,23 +225,24 @@ export function ConnectDialog({
                 </div>
               </li>
             )}
-            {hasCode && (
+            {(hasCode || isKeeta) && (
               <li className="flex gap-3">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
-                  3
+                  {hasCode ? 3 : 2}
                 </span>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-ink-primary">
                     Cole aqui o código que o {platformName} devolveu
                   </p>
                   <p className="mt-0.5 text-xs text-ink-tertiary">
-                    Após autorizar a loja, o {platformName} mostra um código de
-                    confirmação — cole ele abaixo.
+                    {isKeeta
+                      ? 'Cole o authorization_code gerado ou digite "test" para ativar em modo sandbox.'
+                      : `Após autorizar a loja, o ${platformName} mostra um código de confirmação — cole ele abaixo.`}
                   </p>
                   <input
                     value={authCode}
                     onChange={(e) => setAuthCode(e.target.value)}
-                    placeholder="Código de confirmação"
+                    placeholder={isKeeta ? 'Código ou "test"' : 'Código de confirmação'}
                     className="mt-2 w-full rounded-lg border border-surface-border bg-surface-base px-3 py-2 font-mono text-sm text-ink-primary outline-none focus:border-brand-500"
                     autoComplete="off"
                   />
@@ -260,34 +251,18 @@ export function ConnectDialog({
             )}
             <li className="flex gap-3">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-xs font-bold text-white">
-                {hasCode ? 4 : 2}
+                {hasCode ? 4 : isKeeta ? 3 : 2}
               </span>
               <div className="flex-1">
-                {webhookDriven ? (
-                  <>
-                    <p className="text-sm font-medium text-ink-primary">
-                      A loja autoriza no portal da Keeta
-                    </p>
-                    <p className="mt-1 text-xs text-ink-tertiary">
-                      Assim que a loja confirmar a autorização, a conexão ativa aqui
-                      <b className="text-ink-secondary"> automaticamente</b> (via webhook,
-                      pode levar alguns segundos). Pode fechar esta janela.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium text-ink-primary">
-                      {hasCode ? 'Clique em' : 'Autorize a loja e clique'} em{' '}
-                      <b className="text-brand-300">"Já autorizei"</b>
-                    </p>
-                    {!hasCode && (
-                      <p className="mt-1 text-xs text-ink-tertiary">
-                        A loja precisa aparecer no portal 99Food. Se aparecer “0 estabelecimentos”,
-                        o app ainda não está vinculado à loja ou a autorização expirou.
-                      </p>
-                    )}
-                  </>
-                )}
+                <p className="text-sm font-medium text-ink-primary">
+                  {hasCode || isKeeta ? 'Clique em' : 'Autorize a loja e clique em'}{' '}
+                  <b className="text-brand-300">"Já autorizei"</b>
+                </p>
+                <p className="mt-1 text-xs text-ink-tertiary">
+                  {isKeeta
+                    ? 'A conexão ativa de imediato com o código ou automaticamente caso receba webhook.'
+                    : 'O DeliveryHub detecta a loja vinculada automaticamente.'}
+                </p>
               </div>
             </li>
           </ol>

@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Demonstração em Tempo Real - DeliveryHub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    /* ==========================================================================
+       RESET E ESTILOS GERAIS (TEMA ESCURO PREMIUM)
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #0b0c13;
+      color: #f3f4f6;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      padding: 50px 20px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .section-preview {
+      width: 100%;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    /* ==========================================================================
+       TÍTULO EXTERNO
+       ========================================================================== */
+    .section-header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .section-tag {
+      display: inline-block;
+      color: #f97316;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .section-title {
+      color: #ffffff;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.8px;
+      line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .section-subtitle {
+      color: #9ca3af;
+      font-size: 15px;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+
+    /* ==========================================================================
+       JANELA DO NAVEGADOR (MOCKUP WINDOW)
+       ========================================================================== */
+    .mockup-window {
+      background: #11121d;
+      border: 1px solid #232538;
+      border-radius: 20px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+      overflow: hidden;
+    }
+
+    /* BARRA DE TÍTULO */
+    .window-header {
+      background: #0d0e17;
+      border-bottom: 1px solid #1e2030;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .window-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .window-dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.red { background-color: #ff5f56; }
+    .dot.yellow { background-color: #ffbd2e; }
+    .dot.green { background-color: #27c93f; }
+
+    .window-url {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #71768c;
+      letter-spacing: -0.2px;
+      user-select: none;
+    }
+
+    /* Menu de Navegação Superior (Abas com controle de autoplay) */
+    .window-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .demo-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #10b981;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 20px;
+      padding: 4px 10px;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s ease;
+    }
+
+    .demo-badge:hover {
+      background: rgba(16, 185, 129, 0.2);
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+
+    .window-nav {
+      display: inline-flex;
+      align-items: center;
+      background: #171825;
+      border: 1px solid #26283b;
+      border-radius: 30px;
+      padding: 3px;
+      gap: 2px;
+      position: relative;
+    }
+
+    .nav-tab {
+      background: transparent;
+      border: none;
+      color: #9ca3af;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .nav-tab:hover {
+      color: #ffffff;
+    }
+
+    .nav-tab.active {
+      background: #f97316;
+      color: #ffffff;
+      font-weight: 700;
+      box-shadow: 0 2px 8px rgba(249, 115, 22, 0.35);
+    }
+
+    /* Linha de progresso no tab ativo para dar a sensação de GIF / rotação contínua */
+    .tab-progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.7);
+      width: 0%;
+      border-radius: 1px;
+    }
+
+    .nav-tab.active .tab-progress-bar {
+      animation: tabTimer 7s linear infinite;
+    }
+
+    @keyframes tabTimer {
+      from { width: 0%; }
+      to { width: 100%; }
+    }
+
+    /* CONTEÚDO PRINCIPAL (ÁREA DAS ABAS) */
+    .window-content {
+      padding: 26px 30px;
+      min-height: 480px;
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+      animation: fadeIn 0.25s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      border-bottom: 1px solid #1e2030;
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .panel-title {
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+    }
+
+    .panel-subtitle {
+      color: #9ca3af;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #171826;
+      border: 1px solid #282a3d;
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #d1d5db;
+    }
+
+    /* ==========================================================================
+       ABA 1: FILA DE PEDIDOS (ALINHAMENTO RIGOROSO EM GRADE)
+       ========================================================================== */
+    .orders-live-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(249, 115, 22, 0.08);
+      border: 1px dashed rgba(249, 115, 22, 0.35);
+      border-radius: 10px;
+      padding: 9px 14px;
+      margin-bottom: 14px;
+      font-size: 12px;
+      color: #fed7aa;
+      transition: all 0.3s ease;
+    }
+
+    .orders-live-banner.highlight {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #a7f3d0;
+    }
+
+    .orders-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .order-card {
+      background: #161724;
+      border: 1px solid #242639;
+      border-radius: 12px;
+      padding: 12px 18px;
+      display: grid;
+      grid-template-columns: 60px 84px 1fr 90px 140px;
+      align-items: center;
+      gap: 16px;
+      transition: all 0.25s ease;
+    }
+
+    .order-card:hover {
+      border-color: #383a54;
+      background: #191a2a;
+    }
+
+    .order-card.just-updated {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.05);
+      transform: scale(1.005);
+    }
+
+    .order-id {
+      background: #202235;
+      border: 1px solid #2e314a;
+      border-radius: 6px;
+      padding: 5px 0;
+      text-align: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #e5e7eb;
+      letter-spacing: -0.3px;
+    }
+
+    .channel-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 6px;
+      padding: 4px 0;
+      width: 100%;
+      text-align: center;
+      letter-spacing: -0.2px;
+    }
+
+    .channel-badge.ifood {
+      background: rgba(239, 68, 68, 0.18);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .channel-badge.didi {
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .channel-badge.rappi {
+      background: rgba(249, 115, 22, 0.18);
+      color: #fb923c;
+      border: 1px solid rgba(249, 115, 22, 0.3);
+    }
+
+    .channel-badge.aiqfome {
+      background: rgba(168, 85, 247, 0.18);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    .order-details {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .customer-name {
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .order-items {
+      color: #9ca3af;
+      font-size: 12px;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .order-price-time {
+      text-align: right;
+    }
+
+    .order-price {
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .order-time {
+      color: #6b7280;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 20px;
+      padding: 6px 0;
+      width: 100%;
+      text-align: center;
+      white-space: nowrap;
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.pending {
+      background: rgba(249, 115, 22, 0.12);
+      border: 1px solid rgba(249, 115, 22, 0.35);
+      color: #f97316;
+    }
+
+    .status-badge.prep {
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #60a5fa;
+    }
+
+    .status-badge.delivery {
+      background: rgba(168, 85, 247, 0.12);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      color: #c084fc;
+    }
+
+    .status-badge.done {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34d399;
+    }
+
+    .orders-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid #1e2030;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    /* ==========================================================================
+       ABA 2: CARDÁPIO (SINCRONIZAÇÃO ENTRE PLATAFORMAS)
+       ========================================================================== */
+    .menu-table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .menu-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+
+    .menu-table th {
+      color: #6b7280;
+      font-weight: 600;
+      padding: 10px 14px;
+      border-bottom: 1px solid #1e2030;
+      font-size: 12px;
+    }
+
+    .menu-table td {
+      padding: 14px 14px;
+      border-bottom: 1px solid #1a1b29;
+      color: #e5e7eb;
+    }
+
+    .menu-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .menu-item-name {
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    .menu-item-cat {
+      color: #9ca3af;
+      font-size: 12px;
+    }
+
+    .menu-item-price {
+      font-weight: 700;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .channel-dots-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mini-channel-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      background: #1e2032;
+      border: 1px solid #2d304a;
+      color: #d1d5db;
+    }
+
+    .mini-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #10b981;
+    }
+
+    .toggle-switch-btn {
+      background: #171825;
+      border: 1px solid #272a3e;
+      border-radius: 20px;
+      padding: 4px 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      color: #10b981;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-switch-btn:hover {
+      border-color: #383a54;
+    }
+
+    .toggle-switch-btn.paused {
+      color: #f59e0b;
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .menu-sync-toast {
+      margin-top: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 12px;
+      color: #a7f3d0;
+    }
+
+    /* ==========================================================================
+       ABA 3: PRODUTO (LAYOUT PROFISSIONAL DIVIDIDO: EDIÇÃO + TRANSMISSÃO)
+       ========================================================================== */
+    .product-split-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .edit-card {
+      background: #161724;
+      border: 1px solid #242639;
+      border-radius: 14px;
+      padding: 20px;
+    }
+
+    .edit-card-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .edit-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group.full {
+      grid-column: 1 / -1;
+    }
+
+    .form-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-input,
+    .form-textarea {
+      background: #0e0f18;
+      border: 1px solid #242639;
+      border-radius: 8px;
+      padding: 9px 12px;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    .form-input:focus,
+    .form-textarea:focus {
+      border-color: #f97316;
+      box-shadow: 0 0 0 1px #f97316;
+    }
+
+    .form-textarea {
+      resize: none;
+      height: 64px;
+      line-height: 1.4;
+    }
+
+    .price-input-wrap {
+      position: relative;
+    }
+
+    .price-input-wrap.highlight-change .form-input {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.08);
+      color: #a7f3d0;
+    }
+
+    .btn-save-animated {
+      margin-top: 14px;
+      width: 100%;
+      background: #f97316;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 16px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 3px 10px rgba(249, 115, 22, 0.35);
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-save-animated:hover {
+      background: #ea580c;
+    }
+
+    .btn-save-animated.saving {
+      background: #3b82f6;
+      box-shadow: 0 3px 10px rgba(59, 130, 246, 0.35);
+    }
+
+    .btn-save-animated.saved {
+      background: #10b981;
+      box-shadow: 0 3px 10px rgba(16, 185, 129, 0.35);
+    }
+
+    /* Coluna de Transmissão para os Canais (Visualizador em tempo real) */
+    .broadcast-card {
+      background: #141521;
+      border: 1px solid #232537;
+      border-radius: 14px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .broadcast-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e2030;
+      padding-bottom: 10px;
+    }
+
+    .broadcast-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .broadcast-status {
+      font-size: 11px;
+      color: #10b981;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .channel-sync-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .channel-sync-row {
+      background: #0e0f18;
+      border: 1px solid #202234;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .channel-sync-row.synced {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.04);
+    }
+
+    .channel-info-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .channel-name {
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .channel-updated-price {
+      font-family: 'JetBrains Mono', monospace;
+      color: #e5e7eb;
+      font-weight: 700;
+    }
+
+    .sync-indicator-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #10b981;
+      font-weight: 600;
+    }
+
+    .check-icon {
+      width: 14px;
+      height: 14px;
+      color: #10b981;
+    }
+
+    .broadcast-footer {
+      font-size: 11px;
+      color: #71768c;
+      border-top: 1px solid #1e2030;
+      padding-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* ==========================================================================
+       RESPONSIVIDADE
+       ========================================================================== */
+    @media (max-width: 860px) {
+      body {
+        padding: 24px 14px;
+      }
+
+      .section-title {
+        font-size: 24px;
+      }
+
+      .window-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+      }
+
+      .window-left {
+        justify-content: space-between;
+      }
+
+      .window-right {
+        justify-content: space-between;
+        width: 100%;
+      }
+
+      .window-nav {
+        flex: 1;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .nav-tab {
+        flex: 1;
+        text-align: center;
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+
+      .window-content {
+        padding: 16px 14px;
+      }
+
+      .order-card {
+        grid-template-columns: 1fr;
+        gap: 8px;
+        padding: 12px;
+      }
+
+      .order-price-time {
+        text-align: left;
+      }
+
+      .product-split-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <section class="section-preview" id="demonstracao">
+    <!-- 1. TÍTULO EXTERNO -->
+    <div class="section-header">
+      <span class="section-tag">DEMONSTRAÇÃO EM TEMPO REAL</span>
+      <h2 class="section-title">Veja como funciona na prática</h2>
+      <p class="section-subtitle">Uma única operação para todos os seus canais de venda.</p>
+    </div>
+
+    <!-- 2. O 'NAVEGADOR' (MOCKUP WINDOW) -->
+    <div class="mockup-window">
+      <!-- BARRA DE TÍTULO -->
+      <div class="window-header">
+        <div class="window-left">
+          <div class="window-dots">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+          </div>
+          <span class="window-url">deliveryhub.app / operacao</span>
+        </div>
+
+        <div class="window-right">
+          <!-- MENU DE NAVEGAÇÃO SUPERIOR (ABAS COM INDICADOR DE TEMPO) -->
+          <div class="window-nav" role="tablist">
+            <button class="nav-tab active" data-target="tab-pedidos" role="tab" aria-selected="true">
+              Fila de Pedidos
+              <span class="tab-progress-bar"></span>
+            </button>
+            <button class="nav-tab" data-target="tab-cardapio" role="tab" aria-selected="false">
+              Cardápio
+              <span class="tab-progress-bar"></span>
+            </button>
+            <button class="nav-tab" data-target="tab-produto" role="tab" aria-selected="false">
+              Produto
+              <span class="tab-progress-bar"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ÁREA DE CONTEÚDO PRINCIPAL -->
+      <div class="window-content">
+
+        <!-- ==============================================================
+             ABA 1: FILA DE PEDIDOS
+             ============================================================== -->
+        <div class="tab-panel active" id="tab-pedidos">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Fila de Pedidos</h3>
+              <p class="panel-subtitle">Todos os pedidos organizados por ordem de chegada</p>
+            </div>
+            <div class="sync-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              <span>4 canais conectados</span>
+            </div>
+          </div>
+
+          <!-- Banner Animado de Pedidos -->
+          <div class="orders-live-banner" id="ordersLiveBanner">
+            <span>● Novo pedido recebido via iFood: <strong>#3421 (R$ 38,90)</strong></span>
+            <span style="font-family: monospace; font-size: 11px;">Recebido agora</span>
+          </div>
+
+          <!-- A TABELA DE PEDIDOS EM GRADE RIGOROSA -->
+          <div class="orders-list">
+            <!-- Pedido #3421 -->
+            <div class="order-card" id="order3421">
+              <span class="order-id">#3421</span>
+              <span class="channel-badge ifood">iFood</span>
+              <div class="order-details">
+                <span class="customer-name">Ana Costa</span>
+                <span class="order-items">1 X-Salada, 1 Coca-Cola</span>
+              </div>
+              <div class="order-price-time">
+                <div class="order-price">R$ 38,90</div>
+                <div class="order-time" id="time3421">2 min atrás</div>
+              </div>
+              <span class="status-badge pending" id="status3421">Aguardando</span>
+            </div>
+
+            <!-- Pedido #3420 -->
+            <div class="order-card">
+              <span class="order-id">#3420</span>
+              <span class="channel-badge didi">99Food</span>
+              <div class="order-details">
+                <span class="customer-name">Pedro Lima</span>
+                <span class="order-items">2 Pizzas Médias</span>
+              </div>
+              <div class="order-price-time">
+                <div class="order-price">R$ 74,00</div>
+                <div class="order-time">8 min atrás</div>
+              </div>
+              <span class="status-badge prep">Em preparo</span>
+            </div>
+
+            <!-- Pedido #3419 -->
+            <div class="order-card">
+              <span class="order-id">#3419</span>
+              <span class="channel-badge rappi">Rappi</span>
+              <div class="order-details">
+                <span class="customer-name">Julia Souza</span>
+                <span class="order-items">Combo Kids</span>
+              </div>
+              <div class="order-price-time">
+                <div class="order-price">R$ 29,90</div>
+                <div class="order-time">19 min atrás</div>
+              </div>
+              <span class="status-badge delivery">Saiu p/ entrega</span>
+            </div>
+
+            <!-- Pedido #3418 -->
+            <div class="order-card">
+              <span class="order-id">#3418</span>
+              <span class="channel-badge aiqfome">Aiqfome</span>
+              <div class="order-details">
+                <span class="customer-name">Marcos Rocha</span>
+                <span class="order-items">Marmita Fit</span>
+              </div>
+              <div class="order-price-time">
+                <div class="order-price">R$ 22,50</div>
+                <div class="order-time">25 min atrás</div>
+              </div>
+              <span class="status-badge done">Entregue</span>
+            </div>
+          </div>
+
+          <div class="orders-footer">
+            <span>4 pedidos em andamento</span>
+            <span>Tempo médio de preparo: 14 minutos</span>
+          </div>
+        </div>
+
+        <!-- ==============================================================
+             ABA 2: CARDÁPIO
+             ============================================================== -->
+        <div class="tab-panel" id="tab-cardapio">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Cardápio</h3>
+              <p class="panel-subtitle">Preços e disponibilidade sincronizados com todas as plataformas</p>
+            </div>
+            <div class="sync-badge">
+              <span class="pulse-dot"></span>
+              <span>Sincronização ativa</span>
+            </div>
+          </div>
+
+          <div class="menu-table-wrapper">
+            <table class="menu-table">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Categoria</th>
+                  <th>Preço</th>
+                  <th>Canais conectados</th>
+                  <th style="text-align: right;">Disponibilidade</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr id="menuRow1">
+                  <td>
+                    <div class="menu-item-name">X-Salada Especial</div>
+                  </td>
+                  <td class="menu-item-cat">Hambúrgueres</td>
+                  <td class="menu-item-price" id="tablePriceItem">R$ 28,00</td>
+                  <td>
+                    <div class="channel-dots-wrap">
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>iFood</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>99Food</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Rappi</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Aiqfome</span>
+                    </div>
+                  </td>
+                  <td style="text-align: right;">
+                    <button class="toggle-switch-btn" id="toggleItem1" type="button">
+                      <span class="mini-dot"></span>
+                      <span id="toggleText1">Disponível</span>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="menu-item-name">Pizza Calabresa</div>
+                  </td>
+                  <td class="menu-item-cat">Pizzas</td>
+                  <td class="menu-item-price">R$ 58,00</td>
+                  <td>
+                    <div class="channel-dots-wrap">
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>iFood</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>99Food</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Rappi</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Aiqfome</span>
+                    </div>
+                  </td>
+                  <td style="text-align: right;">
+                    <button class="toggle-switch-btn" type="button">
+                      <span class="mini-dot"></span>
+                      <span>Disponível</span>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="menu-item-name">Marmita Fit</div>
+                  </td>
+                  <td class="menu-item-cat">Pratos Executivos</td>
+                  <td class="menu-item-price">R$ 26,50</td>
+                  <td>
+                    <div class="channel-dots-wrap">
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>iFood</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>99Food</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Rappi</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Aiqfome</span>
+                    </div>
+                  </td>
+                  <td style="text-align: right;">
+                    <button class="toggle-switch-btn" type="button">
+                      <span class="mini-dot"></span>
+                      <span>Disponível</span>
+                    </button>
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="menu-item-name">Refrigerante Lata</div>
+                  </td>
+                  <td class="menu-item-cat">Bebidas</td>
+                  <td class="menu-item-price">R$ 7,50</td>
+                  <td>
+                    <div class="channel-dots-wrap">
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>iFood</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>99Food</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Rappi</span>
+                      <span class="mini-channel-badge"><span class="mini-dot"></span>Aiqfome</span>
+                    </div>
+                  </td>
+                  <td style="text-align: right;">
+                    <button class="toggle-switch-btn" type="button">
+                      <span class="mini-dot"></span>
+                      <span>Disponível</span>
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="menu-sync-toast" id="menuSyncToast">
+            <span>✓ Todos os itens estão sincronizados entre os 4 canais.</span>
+            <span style="font-family: monospace; font-size: 11px;">0 divergências</span>
+          </div>
+        </div>
+
+        <!-- ==============================================================
+             ABA 3: PRODUTO (ATUALIZAÇÃO DE CARDÁPIO E PREÇOS)
+             ============================================================== -->
+        <div class="tab-panel" id="tab-produto">
+          <div class="panel-header">
+            <div>
+              <h3 class="panel-title">Atualização de Item e Preço</h3>
+              <p class="panel-subtitle">Altere o produto no painel e mantenha todos os seus canais de venda sincronizados</p>
+            </div>
+            <div class="sync-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Sincronização em tempo real</span>
+            </div>
+          </div>
+
+          <div class="product-split-grid">
+            <!-- Coluna 1: Edição do Item -->
+            <div class="edit-card">
+              <div class="edit-card-title">
+                <span>Dados do Produto</span>
+                <span style="font-size: 11px; font-weight: normal; color: #9ca3af;">Cód: #1042</span>
+              </div>
+
+              <div class="edit-grid">
+                <div class="form-group">
+                  <label class="form-label" for="demoProdName">Nome do produto</label>
+                  <input class="form-input" id="demoProdName" type="text" value="X-Salada Especial" readonly />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="demoProdCat">Categoria</label>
+                  <input class="form-input" id="demoProdCat" type="text" value="Hambúrgueres" readonly />
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="demoProdPrice">Preço de venda</label>
+                  <div class="price-input-wrap" id="priceInputWrap">
+                    <input class="form-input" id="demoProdPrice" type="text" value="R$ 28,00" readonly />
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="demoProdAvail">Disponibilidade</label>
+                  <input class="form-input" id="demoProdAvail" type="text" value="Disponível em todos" readonly style="color: #10b981; font-weight: 600;" />
+                </div>
+
+                <div class="form-group full">
+                  <label class="form-label" for="demoProdDesc">Descrição do prato</label>
+                  <textarea class="form-textarea" id="demoProdDesc" readonly>Pão brioche artesanal, hambúrguer 160g, queijo cheddar, alface americana e maionese da casa.</textarea>
+                </div>
+              </div>
+
+              <button class="btn-save-animated" id="btnSaveDemo" type="button">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span id="btnSaveText">Salvar e atualizar cardápios</span>
+              </button>
+            </div>
+
+            <!-- Coluna 2: Status nos Canais -->
+            <div class="broadcast-card">
+              <div class="broadcast-header">
+                <span class="broadcast-title">Status nos canais de venda</span>
+                <span class="broadcast-status">
+                  <span class="pulse-dot"></span>
+                  <span id="broadcastStatusText">Sincronizado</span>
+                </span>
+              </div>
+
+              <div class="channel-sync-list">
+                <!-- iFood -->
+                <div class="channel-sync-row synced" id="syncRowIfood">
+                  <div class="channel-info-left">
+                    <span class="channel-badge ifood" style="width: 58px; padding: 2px 0;">iFood</span>
+                    <span class="channel-updated-price" id="priceIfood">R$ 28,00</span>
+                  </div>
+                  <div class="sync-indicator-right">
+                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span id="statusIfood">Confirmado</span>
+                  </div>
+                </div>
+
+                <!-- 99Food -->
+                <div class="channel-sync-row synced" id="syncRow99">
+                  <div class="channel-info-left">
+                    <span class="channel-badge didi" style="width: 58px; padding: 2px 0;">99Food</span>
+                    <span class="channel-updated-price" id="price99">R$ 28,00</span>
+                  </div>
+                  <div class="sync-indicator-right">
+                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span id="status99">Confirmado</span>
+                  </div>
+                </div>
+
+                <!-- Rappi -->
+                <div class="channel-sync-row synced" id="syncRowRappi">
+                  <div class="channel-info-left">
+                    <span class="channel-badge rappi" style="width: 58px; padding: 2px 0;">Rappi</span>
+                    <span class="channel-updated-price" id="priceRappi">R$ 28,00</span>
+                  </div>
+                  <div class="sync-indicator-right">
+                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span id="statusRappi">Confirmado</span>
+                  </div>
+                </div>
+
+                <!-- Keeta / Aiqfome -->
+                <div class="channel-sync-row synced" id="syncRowKeeta">
+                  <div class="channel-info-left">
+                    <span class="channel-badge aiqfome" style="width: 58px; padding: 2px 0;">Keeta</span>
+                    <span class="channel-updated-price" id="priceKeeta">R$ 28,00</span>
+                  </div>
+                  <div class="sync-indicator-right">
+                    <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    <span id="statusKeeta">Confirmado</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="broadcast-footer">
+                <span>Status: <strong>Valores atualizados em todas as lojas</strong></span>
+                <span>4 canais sincronizados</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       JAVASCRIPT: MODO DEMO / "GIF" CONTÍNUO COM SIMULAÇÕES EM TODAS AS ABAS
+       ========================================================================== -->
+  <script>
+    // Controle da Demonstração Interativa (Efeito GIF animado contínuo)
+    document.addEventListener('DOMContentLoaded', () => {
+      const tabs = document.querySelectorAll('.nav-tab');
+      const panels = document.querySelectorAll('.tab-panel');
+      const playPauseBtn = document.getElementById('playPauseBtn');
+      const demoStatusText = document.getElementById('demoStatusText');
+
+      let currentTabIndex = 0;
+      let isPlaying = true;
+      let autoPlayInterval = null;
+
+      function setActiveTab(index) {
+        currentTabIndex = index;
+        tabs.forEach((t, i) => {
+          if (i === index) {
+            t.classList.add('active');
+          } else {
+            t.classList.remove('active');
+          }
+        });
+
+        panels.forEach((p, i) => {
+          if (i === index) {
+            p.classList.add('active');
+            triggerTabAnimation(p.id);
+          } else {
+            p.classList.remove('active');
+          }
+        });
+      }
+
+      function triggerTabAnimation(tabId) {
+        if (tabId === 'tab-pedidos') {
+          // Na aba de pedidos: simula a chegada e confirmação sincronizada do pedido #3421
+          const banner = document.getElementById('ordersLiveBanner');
+          const orderCard = document.getElementById('order3421');
+          const statusBadge = document.getElementById('status3421');
+          const timeText = document.getElementById('time3421');
+
+          if (banner && orderCard && statusBadge) {
+            banner.classList.remove('highlight');
+            banner.innerHTML = '<span>● Novo pedido recebido via iFood: <strong>#3421 (R$ 38,90)</strong></span><span style="font-family: monospace; font-size: 11px;">Recebido agora</span>';
+            statusBadge.className = 'status-badge pending';
+            statusBadge.textContent = 'Aguardando';
+            if (timeText) timeText.textContent = '2 min atrás';
+
+            setTimeout(() => {
+              banner.classList.add('highlight');
+              banner.innerHTML = '<span>✓ Pedido <strong>#3421</strong> confirmado e direcionado para a cozinha</span><span style="font-family: monospace; font-size: 11px;">Confirmado agora</span>';
+              orderCard.classList.add('just-updated');
+              statusBadge.className = 'status-badge prep';
+              statusBadge.textContent = 'Em preparo';
+              if (timeText) timeText.textContent = 'Agora';
+
+              setTimeout(() => {
+                orderCard.classList.remove('just-updated');
+              }, 1200);
+            }, 2500);
+          }
+        } else if (tabId === 'tab-cardapio') {
+          // Na aba de cardápio: simula pausa rápida e reativação sincronizada
+          const toggleBtn = document.getElementById('toggleItem1');
+          const toggleText = document.getElementById('toggleText1');
+          const toast = document.getElementById('menuSyncToast');
+
+          if (toggleBtn && toggleText) {
+            setTimeout(() => {
+              toggleBtn.classList.add('paused');
+              toggleText.textContent = 'Pausando...';
+
+              setTimeout(() => {
+                toggleText.textContent = 'Pausado';
+                if (toast) toast.innerHTML = '<span>Pausado em 4 canais em 0.2s</span><span style="font-family: monospace;">Sincronizado</span>';
+
+                setTimeout(() => {
+                  toggleBtn.classList.remove('paused');
+                  toggleText.textContent = 'Disponível';
+                  if (toast) toast.innerHTML = '<span>✓ Todos os itens estão sincronizados entre os 4 canais.</span><span style="font-family: monospace;">0 divergências</span>';
+                }, 2200);
+              }, 800);
+            }, 2000);
+          }
+        } else if (tabId === 'tab-produto') {
+          // Na aba de produto: simula alteração de preço e atualização para os 4 canais
+          const priceInput = document.getElementById('demoProdPrice');
+          const priceWrap = document.getElementById('priceInputWrap');
+          const saveBtn = document.getElementById('btnSaveDemo');
+          const saveText = document.getElementById('btnSaveText');
+          const channelPrices = ['priceIfood', 'price99', 'priceRappi', 'priceKeeta'].map(id => document.getElementById(id));
+          const channelRows = ['syncRowIfood', 'syncRow99', 'syncRowRappi', 'syncRowKeeta'].map(id => document.getElementById(id));
+          const broadcastStatus = document.getElementById('broadcastStatusText');
+
+          // Reset inicial
+          if (priceInput) priceInput.value = 'R$ 28,00';
+          channelPrices.forEach(el => el && (el.textContent = 'R$ 28,00'));
+          if (saveBtn) {
+            saveBtn.className = 'btn-save-animated';
+            if (saveText) saveText.textContent = 'Salvar e atualizar cardápios';
+          }
+          if (priceWrap) priceWrap.classList.remove('highlight-change');
+
+          // 1. Digita novo preço (R$ 32,00)
+          setTimeout(() => {
+            if (priceInput) priceInput.value = 'R$ 32,00';
+            if (priceWrap) priceWrap.classList.add('highlight-change');
+
+            // 2. Clica em salvar
+            setTimeout(() => {
+              if (saveBtn) {
+                saveBtn.className = 'btn-save-animated saving';
+                if (saveText) saveText.textContent = 'Atualizando nos 4 canais de venda...';
+              }
+              if (broadcastStatus) broadcastStatus.textContent = 'Atualizando...';
+
+              // 3. Transmite progressivamente para cada canal
+              channelRows.forEach((row, idx) => {
+                setTimeout(() => {
+                  if (row) row.classList.add('synced');
+                  if (channelPrices[idx]) channelPrices[idx].textContent = 'R$ 32,00';
+                }, 300 * (idx + 1));
+              });
+
+              // 4. Concluído
+              setTimeout(() => {
+                if (saveBtn) {
+                  saveBtn.className = 'btn-save-animated saved';
+                  if (saveText) saveText.textContent = 'Cardápios sincronizados com sucesso';
+                }
+                if (broadcastStatus) broadcastStatus.textContent = 'Sincronizado';
+              }, 1500);
+            }, 1200);
+          }, 1500);
+        }
+      }
+
+      // Loop contínuo (modo GIF)
+      function startLoop() {
+        if (autoPlayInterval) clearInterval(autoPlayInterval);
+        autoPlayInterval = setInterval(() => {
+          if (isPlaying) {
+            const nextIndex = (currentTabIndex + 1) % tabs.length;
+            setActiveTab(nextIndex);
+          }
+        }, 7500);
+      }
+
+      // Clique manual nas abas
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => {
+          setActiveTab(index);
+          // Reinicia o temporizador do loop para dar tempo de leitura
+          startLoop();
+        });
+      });
+
+      // Botão Pausar / Continuar
+      if (playPauseBtn) {
+        playPauseBtn.addEventListener('click', () => {
+          isPlaying = !isPlaying;
+          if (isPlaying) {
+            demoStatusText.textContent = 'Ao vivo';
+            playPauseBtn.style.opacity = '1';
+            startLoop();
+          } else {
+            demoStatusText.textContent = 'Pausado';
+            playPauseBtn.style.opacity = '0.7';
+          }
+        });
+      }
+
+      // Inicia a primeira aba e o loop
+      triggerTabAnimation('tab-pedidos');
+      startLoop();
+    });
+  </script>
+</body>
+</html>

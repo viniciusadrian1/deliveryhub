@@ -50,6 +50,7 @@ interface AuthContextValue {
     name: string;
     organizationName: string;
   }) => Promise<void>;
+  acceptInvitation: (input: { token: string; name?: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -132,6 +133,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push(r('/hub'));
   };
 
+  const acceptInvitation = async (input: { token: string; name?: string; password: string }) => {
+    const data = await api<AuthResultDto>('/auth/invitations/accept', {
+      method: 'POST',
+      body: input,
+      skipAuth: true,
+    });
+    await establishSession(data);
+    router.push(r('/hub'));
+  };
+
   const logout = async () => {
     const tokens = readTokens();
     if (tokens) {
@@ -151,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ state, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ state, loading, login, signup, logout, acceptInvitation }}>
       {children}
     </AuthContext.Provider>
   );

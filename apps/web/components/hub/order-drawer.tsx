@@ -18,10 +18,17 @@ import {
 import { useState } from 'react';
 
 import { api, ApiError } from '../../lib/api';
-import { formatCents, timeAgo } from '../../lib/format';
+import {
+  formatCents,
+  formatOrderNumber,
+  formatPhone,
+  getWhatsAppUrl,
+  timeAgo,
+} from '../../lib/format';
 import type { OrderDetail, OrderStatus, PaymentMethod } from '../../lib/hub-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { PlatformLogo } from '../ui/platform-logo';
 import { CourierDispatchDialog } from './courier-dispatch-dialog';
 import { OrderActionRequests } from './order-action-requests';
 
@@ -93,6 +100,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['orders'] });
       void qc.invalidateQueries({ queryKey: ['order', orderId] });
+      void qc.invalidateQueries({ queryKey: ['fin'] });
     },
   });
 
@@ -107,6 +115,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
       setRejectReason('');
       void qc.invalidateQueries({ queryKey: ['orders'] });
       void qc.invalidateQueries({ queryKey: ['order', orderId] });
+      void qc.invalidateQueries({ queryKey: ['fin'] });
     },
   });
 
@@ -116,6 +125,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['orders'] });
       void qc.invalidateQueries({ queryKey: ['order', orderId] });
+      void qc.invalidateQueries({ queryKey: ['fin'] });
     },
   });
 
@@ -141,13 +151,18 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-surface-border-subtle px-5 py-4">
-          <div>
-            <p className="text-[10px] uppercase tracking-wider text-ink-tertiary">
-              Pedido
-            </p>
-            <h2 className="font-mono text-sm font-semibold text-ink-primary">
-              {data ? `#${data.externalId.slice(0, 12)}` : '…'}
-            </h2>
+          <div className="flex items-center gap-3">
+            {data && (
+              <PlatformLogo code={data.platform.code} name={data.platform.name} size="md" />
+            )}
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-ink-tertiary">
+                PEDIDO
+              </p>
+              <h2 className="font-mono text-xl font-black text-ink-primary">
+                {data ? `#${formatOrderNumber(data.externalId)}` : '…'}
+              </h2>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -173,11 +188,13 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
 
           {data && (
             <div className="space-y-5">
-              <div className="flex items-center gap-2">
-                <Badge color={data.platform.colorHex}>{data.platform.name}</Badge>
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <Badge variant={STATUS_VARIANT[data.status]} dot>
                   {STATUS_LABELS[data.status]}
                 </Badge>
+                <span className="font-mono text-xs text-ink-secondary bg-surface-raised px-2 py-0.5 rounded border border-surface-border-subtle">
+                  ID: {data.externalId}
+                </span>
                 <span className="inline-flex items-center gap-1 text-xs text-ink-tertiary">
                   <Clock className="h-3 w-3" />
                   {timeAgo(data.placedAt)}
@@ -221,21 +238,38 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
               )}
 
               {data.customer && (
-                <div className="surface-card flex items-center gap-3 p-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-500/10 text-brand-400">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-ink-primary">
-                      {data.customer.name}
-                    </p>
-                    {data.customer.phone && (
-                      <p className="inline-flex items-center gap-1 text-xs text-ink-secondary">
-                        <Phone className="h-3 w-3" />
-                        {data.customer.phone}
+                <div className="surface-card flex items-center justify-between gap-3 p-3.5 rounded-xl border border-surface-border-subtle bg-surface-raised">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-brand-400 font-semibold text-sm">
+                      {data.customer.name ? data.customer.name.slice(0, 1).toUpperCase() : <User className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink-primary truncate">
+                        {data.customer.name}
                       </p>
-                    )}
+                      {formatPhone(data.customer.phone) ? (
+                        <p className="inline-flex items-center gap-1.5 text-xs text-ink-secondary mt-0.5">
+                          <Phone className="h-3 w-3 text-ink-tertiary" />
+                          <span>{formatPhone(data.customer.phone)}</span>
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-ink-tertiary mt-0.5">
+                          Telefone protegido pela plataforma
+                        </p>
+                      )}
+                    </div>
                   </div>
+                  {getWhatsAppUrl(data.customer.phone) && (
+                    <a
+                      href={getWhatsAppUrl(data.customer.phone)!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-success-soft/30 px-2.5 py-1 text-xs font-medium text-success-bright hover:bg-success-soft/50 transition-colors"
+                      title="Abrir no WhatsApp"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
                 </div>
               )}
 
@@ -252,7 +286,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-ink-primary">
-                            <span className="text-ink-tertiary">{item.qty}×</span>{' '}
+                            <span className="font-bold text-brand-400">{item.qty}×</span>{' '}
                             {item.nameSnapshot}
                           </p>
                           {item.notes && (
@@ -285,7 +319,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                 </ul>
               </div>
 
-              <div className="surface-card p-4">
+              <div className="surface-card p-4 rounded-xl border border-surface-border-subtle">
                 <Row label="Subtotal" value={formatCents(data.subtotalCents)} />
                 <Row label="Entrega" value={formatCents(data.deliveryFeeCents)} />
                 <Row
@@ -303,7 +337,7 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
                 <div className="my-2 h-px bg-surface-border-subtle" />
                 <Row label="Total" value={formatCents(data.totalCents)} bold />
                 <Row
-                  label="Líquido pra você"
+                  label="Valor Líquido"
                   value={formatCents(data.netCents)}
                   bold
                   tone="success"

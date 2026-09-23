@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../../lib/api';
 import { formatCents } from '../../lib/format';
+import { moneyInput, parseMoneyInputToCents } from '../../lib/money';
 import type { MenuItemSummary, PlatformConfig } from '../../lib/menu-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -52,7 +53,7 @@ export function PlatformConfigDialog({ open, onClose, storeId, item }: Props) {
     const p: Record<string, string> = {};
     const a: Record<string, boolean> = {};
     for (const c of configs) {
-      p[c.platform.code] = (c.sellingPriceCents / 100).toFixed(2);
+      p[c.platform.code] = moneyInput(c.sellingPriceCents);
       a[c.platform.code] = c.isAvailable;
     }
     setPriceByPlatform(p);
@@ -61,15 +62,7 @@ export function PlatformConfigDialog({ open, onClose, storeId, item }: Props) {
 
   const save = useMutation({
     mutationFn: async (platformCode: string) => {
-      const cents = Math.round(
-        // Remove separador de milhar (.) antes de trocar a virgula decimal — senao
-        // "3.500,00" viraria 3,5. Arredonda p/ centavos inteiros.
-        Math.round(
-          parseFloat(
-            (priceByPlatform[platformCode] ?? '0').replace(/\./g, '').replace(',', '.'),
-          ) * 100,
-        ) || 0,
-      );
+      const cents = parseMoneyInputToCents(priceByPlatform[platformCode]);
       return api(`/menu/items/${item.id}/platforms/${platformCode}`, {
         method: 'PUT',
         body: {

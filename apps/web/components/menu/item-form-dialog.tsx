@@ -25,6 +25,7 @@ import type {
 } from '../../lib/menu-types';
 import { SALES_KIND_DESCRIPTIONS, SALES_KIND_LABELS } from '../../lib/menu-types';
 import { formatCents } from '../../lib/format';
+import { moneyInput, parseMoneyInputToCents } from '../../lib/money';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -101,11 +102,11 @@ export function ItemFormDialog({
     if (!open) return;
     setName(editing?.name ?? '');
     setDescription(editing?.description ?? '');
-    setCategoryId(editing?.category?.id ?? categories[0]?.id ?? '');
+    setCategoryId(editing ? (editing.category?.id ?? '') : (categories[0]?.id ?? ''));
     setProductKind(editing?.productKind ?? 'single');
     setSalesKind(editing?.salesKind ?? 'main');
     setCostMode(editing?.costMode ?? 'manual');
-    setCostReais(editing ? (editing.costCents / 100).toFixed(2) : '');
+    setCostReais(editing ? moneyInput(editing.costCents) : '');
     setPrepTime(editing?.prepTimeMinutes?.toString() ?? '');
     setImageUrl(editing?.imageUrl ?? null);
     setRecipeRows([]);
@@ -145,8 +146,7 @@ export function ItemFormDialog({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const cents =
-        Math.round(parseFloat(costReais.replace(/\./g, '').replace(',', '.')) * 100) || 0;
+      const cents = parseMoneyInputToCents(costReais);
       const body = {
         name,
         description: description || undefined,

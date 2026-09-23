@@ -31,7 +31,7 @@ export function KpiCard({ label, value, icon: Icon, tone = 'neutral', delta, hin
           {label}
         </p>
         {Icon && (
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500/10 text-brand-400">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500/10 text-[#E85F00] dark:text-brand-400">
             <Icon className="h-4 w-4" />
           </div>
         )}

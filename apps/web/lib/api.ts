@@ -36,7 +36,7 @@ export async function api<T = unknown>(path: string, init: ApiRequestInit = {}):
     if (tokens) headers.Authorization = `Bearer ${tokens.accessToken}`;
   }
 
-  const res = await fetch(url, {
+  const res = await request(url, {
     ...init,
     headers,
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
@@ -47,7 +47,7 @@ export async function api<T = unknown>(path: string, init: ApiRequestInit = {}):
     if (refreshed) {
       const tokens = readTokens();
       if (tokens) headers.Authorization = `Bearer ${tokens.accessToken}`;
-      const retry = await fetch(url, {
+      const retry = await request(url, {
         ...init,
         headers,
         body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
@@ -64,7 +64,7 @@ async function finalize<T>(res: Response): Promise<T> {
   const text = await res.text();
   const json: unknown = text ? safeJson(text) : undefined;
   if (!res.ok) {
-    throw new ApiError(`api_${res.status}`, res.status, json ?? text);
+    throw new ApiError(errorMessage(res.status, json), res.status, json ?? text);
   }
   return (json ?? {}) as T;
 }
@@ -84,7 +84,7 @@ async function tryRefresh(): Promise<boolean> {
 
   refreshInFlight = (async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      const res = await request(`${API_BASE_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken: tokens.refreshToken }),
@@ -105,4 +105,48 @@ async function tryRefresh(): Promise<boolean> {
   })();
 
   return refreshInFlight;
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  already_a_member: 'Este e-mail já pertence a um membro desta organização.',
+  pending_invitation_exists: 'Já existe um convite pendente para este e-mail. Reenvie o convite.',
+  cannot_invite_higher_role: 'Você não pode convidar alguém com uma função superior à sua.',
+  invalid_invitation_token: 'Este convite expirou ou já foi utilizado. Peça um novo convite.',
+  invitation_email_failed: 'Não foi possível enviar o e-mail. Tente reenviar o convite.',
+  invalid_payroll_total: 'Verifique o salário e a quantidade de funcionários.',
+  new_user_requires_name_and_password: 'Informe seu nome e uma senha para criar a conta.',
+  invalid_credentials: 'E-mail ou senha incorretos.',
+  existing_user_password_required: 'Informe a senha da sua conta existente para aceitar o convite.',
+};
+export function errorMessage(status: number, body: unknown): string {
+  const message =
+    body && typeof body === 'object' && 'message' in body
+      ? (body as { message: unknown }).message
+      : null;
+  if (typeof message === 'string' && ERROR_MESSAGES[message]) return ERROR_MESSAGES[message];
+  const defaults: Record<number, string> = {
+    400: 'Verifique os campos informados.',
+    401: 'Sua sessão expirou. Entre novamente.',
+    403: 'Você não tem permissão para esta ação.',
+    404: 'Registro não encontrado.',
+    409: 'Não foi possível salvar porque este registro já existe.',
+    429: 'Muitas solicitações. Aguarde um pouco e tente novamente.',
+  };
+  return defaults[status] ?? 'O serviço está indisponível no momento. Tente novamente.';
+}
+async function request(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: init.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)])
+        : AbortSignal.timeout(30000),
+    });
+  } catch (error) {
+    if (init.signal?.aborted) throw error;
+    throw new ApiError(
+      'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.',
+      0,
+    );
+  }
 }

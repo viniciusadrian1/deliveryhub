@@ -35,8 +35,7 @@ export function PurchaseFormDialog({
 
   const { data: ingredients = [] } = useQuery({
     queryKey: ['inventory', 'ingredients', storeId, 'raw'],
-    queryFn: () =>
-      api<Ingredient[]>(`/inventory/ingredients?storeId=${storeId}&kind=raw`),
+    queryFn: () => api<Ingredient[]>(`/inventory/ingredients?storeId=${storeId}&kind=raw`),
     enabled: open,
   });
 
@@ -58,8 +57,8 @@ export function PurchaseFormDialog({
   }, [open, defaultIngredientId]);
 
   const ingredient = ingredients.find((i) => i.id === ingredientId);
-  const qtyNum = parseFloat(quantity) || 0;
-  const costNum = parseFloat(unitCost) || 0;
+  const qtyNum = parseFloat(quantity.replace(',', '.')) || 0;
+  const costNum = parseFloat(unitCost.replace(',', '.')) || 0;
   const total = qtyNum * costNum;
 
   const mutation = useMutation({
@@ -98,7 +97,7 @@ export function PurchaseFormDialog({
           <Button
             onClick={() => mutation.mutate()}
             loading={mutation.isPending}
-            disabled={!ingredientId || !quantity || !unitCost}
+            disabled={!ingredientId || qtyNum <= 0 || !unitCost || costNum < 0}
           >
             Registrar compra
           </Button>
@@ -106,6 +105,11 @@ export function PurchaseFormDialog({
       }
     >
       <div className="flex flex-col gap-3">
+        {mutation.error && (
+          <p role="alert" className="text-sm text-danger-bright">
+            {mutation.error.message}
+          </p>
+        )}
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
             Insumo
@@ -162,9 +166,7 @@ export function PurchaseFormDialog({
         {total > 0 && (
           <div className="rounded-md border border-brand-500/30 bg-brand-500/5 px-3 py-2 text-sm text-ink-primary">
             Total da nota:{' '}
-            <span className="font-bold tabular text-brand-500">
-              R$ {total.toFixed(2)}
-            </span>
+            <span className="font-bold tabular text-brand-500">R$ {total.toFixed(2)}</span>
           </div>
         )}
 
@@ -177,8 +179,11 @@ export function PurchaseFormDialog({
           />
           <Input
             label="Nº da nota"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={80}
             value={invoiceNumber}
-            onChange={(e) => setInvoiceNumber(e.target.value)}
+            onChange={(e) => setInvoiceNumber(e.target.value.replace(/\D/g, ''))}
           />
         </div>
 
