@@ -45,6 +45,10 @@ async function bootstrap() {
   if (env.MODE === 'worker') {
     // Sprint 5+: inicializa BullMQ consumers em vez do servidor HTTP.
     console.warn('[main] worker mode — consumers ainda não implementados (Sprint 5+)');
+    // Mantém o container vivo até os consumers serem implementados. Encerrar
+    // aqui fazia o Docker reiniciar o worker indefinidamente e mascarava o
+    // estado real da fila.
+    await new Promise<void>(() => undefined);
     return;
   }
 
