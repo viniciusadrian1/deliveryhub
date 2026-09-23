@@ -6,12 +6,13 @@ import { z } from 'zod';
 
 /**
  * Decimal vindo do frontend como string (preserva precisao em transito).
- * Aceita "0", "1.5", "0.045", etc. Conversao final para Prisma.Decimal
+ * Aceita "0", "1.5", "0.045", "0,045", etc. Conversao final para Prisma.Decimal
  * acontece no service.
  */
 const decimalString = z
   .union([z.number(), z.string()])
   .transform((v) => String(v).trim())
+  .transform((v) => v.replace(',', '.'))
   .refine((v) => /^[-+]?\d+(\.\d+)?$/.test(v), 'expected_decimal')
   .refine((v) => Number.isFinite(parseFloat(v)), 'invalid_decimal');
 

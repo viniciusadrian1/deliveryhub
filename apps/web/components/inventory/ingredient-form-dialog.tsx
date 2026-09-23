@@ -53,6 +53,9 @@ export function IngredientFormDialog({
 
   const mutation = useMutation({
     mutationFn: async () => {
+      const normalizeDecimal = (value: string) => value.trim().replace(',', '.');
+      const costValue = costPerUnit.trim() ? normalizeDecimal(costPerUnit) : undefined;
+      const batchYieldValue = batchYield.trim() ? normalizeDecimal(batchYield) : undefined;
       const minLevelValue = minLevel.trim() ? minLevel : null;
       const targetDaysValue = targetDays.trim() ? parseInt(targetDays, 10) : null;
       if (editing) {
@@ -61,8 +64,8 @@ export function IngredientFormDialog({
           body: {
             name,
             unit,
-            costPerUnit: kind === 'raw' ? costPerUnit : undefined,
-            batchYield: kind === 'sub_recipe' ? batchYield : undefined,
+            costPerUnit: kind === 'raw' ? costValue : undefined,
+            batchYield: kind === 'sub_recipe' ? batchYieldValue : undefined,
             minLevel: minLevelValue,
             targetDays: targetDaysValue,
             notes,
@@ -76,8 +79,8 @@ export function IngredientFormDialog({
           kind,
           name,
           unit,
-          costPerUnit: kind === 'raw' ? costPerUnit : undefined,
-          batchYield: kind === 'sub_recipe' ? batchYield : undefined,
+          costPerUnit: kind === 'raw' ? costValue : undefined,
+          batchYield: kind === 'sub_recipe' ? batchYieldValue : undefined,
           minLevel: minLevelValue,
           targetDays: targetDaysValue,
           notes,
