@@ -406,6 +406,9 @@ model OrderItem {
   qty            Int
   unitPriceCents Int     @map("unit_price_cents")
   totalCents     Int     @map("total_cents")
+  /// Snapshot do CMV unitário no momento da ingestão do pedido. Nulo apenas
+  /// em pedidos antigos ou itens que não foram associados ao cardápio.
+  costCentsSnapshot Int?  @map("cost_cents_snapshot")
   notes          String?
 
   order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { PausesService } from './pauses.service.js';
+import { loadEnv } from '../../config/env.js';
 
 /**
  * Cron que reabre pausas com `ends_at` vencido. Roda a cada minuto.
@@ -19,6 +20,7 @@ export class PausesScheduler {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async runAutoReopen(): Promise<void> {
+    if (loadEnv().MODE !== 'worker') return;
     try {
       const result = await this.pauses.reopenExpired();
       if (result.reopened > 0 || result.errors > 0) {

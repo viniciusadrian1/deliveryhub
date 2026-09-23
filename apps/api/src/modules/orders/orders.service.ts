@@ -694,9 +694,9 @@ export class OrdersService {
           where: {
             organizationId: ctx.organizationId,
             storeId: ctx.storeId,
-            platformConfigs: { some: { platformId: ctx.platformId, externalId: it.externalId } },
+          platformConfigs: { some: { platformId: ctx.platformId, externalId: it.externalId } },
           },
-          select: { id: true },
+          select: { id: true, costCents: true },
         });
 
         const orderItem = await tx.orderItem.create({
@@ -708,6 +708,7 @@ export class OrdersService {
             qty: it.qty,
             unitPriceCents: it.unitPriceCents,
             totalCents: it.totalCents,
+            costCentsSnapshot: matched?.costCents ?? null,
             notes: it.notes ?? null,
           },
         });

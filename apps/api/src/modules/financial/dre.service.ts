@@ -95,6 +95,7 @@ export class DreService {
         items: {
           select: {
             qty: true,
+            costCentsSnapshot: true,
             menuItem: { select: { costCents: true } },
           },
         },
@@ -110,7 +111,7 @@ export class DreService {
         o.platformFeeCents + o.processingFeeCents + o.flatFeeCents;
       for (const item of o.items) {
         // qty é Int no schema; menuItem opcional (pedidos que não bateram com cardápio têm null)
-        const unitCost = item.menuItem?.costCents ?? 0;
+        const unitCost = item.costCentsSnapshot ?? item.menuItem?.costCents ?? 0;
         cogsCents += unitCost * item.qty;
       }
     }

@@ -49,6 +49,7 @@ export class OrdersPoller {
 
   @Cron(CronExpression.EVERY_30_SECONDS)
   async run(): Promise<void> {
+    if (loadEnv().MODE !== 'worker') return;
     let connections: Array<{
       id: string;
       externalMerchantId: string | null;

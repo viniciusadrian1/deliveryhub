@@ -43,14 +43,13 @@ async function bootstrap() {
   initSentry(env);
 
   if (env.MODE === 'worker') {
-    // Sprint 5+: inicializa BullMQ consumers em vez do servidor HTTP.
-    console.warn('[main] worker mode — consumers ainda não implementados (Sprint 5+)');
-    // Mantém o container vivo até os consumers serem implementados. Encerrar
-    // aqui fazia o Docker reiniciar o worker indefinidamente e mascarava o
-    // estado real da fila.
+    const worker = await NestFactory.createApplicationContext(AppModule, { bufferLogs: true });
+    worker.enableShutdownHooks();
+    console.warn('[main] worker mode — poller de pedidos e scheduler de pausas ativos');
+    // O contexto mantém os Cron jobs ativos. O timer também garante que o
+    // processo continue vivo mesmo se não houver conexões ou jobs pendentes.
     setInterval(() => undefined, 60_000);
     await new Promise<void>(() => undefined);
-    return;
   }
 
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
