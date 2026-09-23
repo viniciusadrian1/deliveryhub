@@ -21,8 +21,7 @@
     "clean": "rimraf dist .turbo"
   },
   "dependencies": {
-    "@deliveryhub/ifood": "workspace:*",
-    "@deliveryhub/shared": "workspace:*"
+    "@deliveryhub/ifood": "workspace:*"
   },
   "devDependencies": {
     "@deliveryhub/config": "workspace:*",

@@ -13,29 +13,33 @@ import {
   PiggyBank,
   Plus,
   Receipt,
+  ShoppingBag,
   Trash2,
   TrendingDown,
   TrendingUp,
   Wallet,
   Zap,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ExpenseFormDialog } from '../../../components/financial/expense-form-dialog';
+import { OrderDrawer } from '../../../components/hub/order-drawer';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Dialog } from '../../../components/ui/dialog';
 import { EmptyState } from '../../../components/ui/empty-state';
 import { KpiCard } from '../../../components/ui/kpi-card';
+import { PlatformLogo } from '../../../components/ui/platform-logo';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
+import { getSocket } from '../../../lib/socket';
 import {
   EXPENSE_CATEGORY_LABELS,
   EXPENSE_RECURRENCE_LABELS,
   type DreReport,
   type Expense,
 } from '../../../lib/expense-types';
-import { formatCents } from '../../../lib/format';
+import { formatCents, formatOrderNumber } from '../../../lib/format';
 
 type FinTab = 'overview' | 'expenses' | 'dre';
 
@@ -45,6 +49,31 @@ interface Summary {
   revenueNetCents: number;
   totalFeesCents: number;
   avgTicketCents: number;
+  deliveredCount?: number;
+  deliveredGrossCents?: number;
+  deliveredNetCents?: number;
+  pendingCount?: number;
+  pendingGrossCents?: number;
+  pendingNetCents?: number;
+}
+
+interface SalesOrder {
+  id: string;
+  externalId: string;
+  status: 'placed' | 'accepted' | 'preparing' | 'ready' | 'dispatched' | 'delivered' | 'cancelled';
+  totalCents: number;
+  netCents: number;
+  platformFeeCents: number;
+  placedAt: string;
+  deliveredAt: string | null;
+  platform: {
+    code: string;
+    name: string;
+    colorHex: string;
+  };
+  customer: {
+    name: string;
+  } | null;
 }
 
 interface DailyPoint {
@@ -105,6 +134,19 @@ const STATUS_BADGE: Record<
   pending: { variant: 'neutral', label: 'Aguardando' },
 };
 
+const ORDER_STATUS_META: Record<
+  SalesOrder['status'],
+  { variant: 'success' | 'warning' | 'info' | 'brand' | 'danger' | 'neutral'; label: string }
+> = {
+  placed: { variant: 'brand', label: 'Novo' },
+  accepted: { variant: 'warning', label: 'Aceito' },
+  preparing: { variant: 'warning', label: 'Em preparo' },
+  ready: { variant: 'info', label: 'Pronto' },
+  dispatched: { variant: 'info', label: 'Despachado' },
+  delivered: { variant: 'success', label: 'Concluído' },
+  cancelled: { variant: 'danger', label: 'Cancelado' },
+};
+
 export default function FinancialPage() {
   const qc = useQueryClient();
   const { state } = useAuth();
@@ -115,6 +157,24 @@ export default function FinancialPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [tab, setTab] = useState<FinTab>('overview');
+  const [orderFilter, setOrderFilter] = useState<'all' | 'delivered' | 'in_progress'>('all');
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+    const onOrderChange = () => {
+      void qc.invalidateQueries({ queryKey: ['fin'] });
+      void qc.invalidateQueries({ queryKey: ['expenses'] });
+      void qc.invalidateQueries({ queryKey: ['dre'] });
+    };
+    socket.on('order.created', onOrderChange);
+    socket.on('order.updated', onOrderChange);
+    return () => {
+      socket.off('order.created', onOrderChange);
+      socket.off('order.updated', onOrderChange);
+    };
+  }, [qc]);
 
   const params = `storeId=${encodeURIComponent(storeId ?? '')}&from=${from}&to=${to}`;
 
@@ -123,6 +183,48 @@ export default function FinancialPage() {
     queryFn: () => api<Summary>(`/financial/summary?${params}`),
     enabled: !!storeId,
   });
+
+  const { data: salesOrders = [] } = useQuery({
+    queryKey: ['fin', 'orders', storeId, from, to],
+    queryFn: () => api<SalesOrder[]>(`/financial/orders?${params}&limit=100`),
+    enabled: !!storeId,
+  });
+
+  const filteredOrders = salesOrders.filter((order) => {
+    if (orderFilter === 'delivered') return order.status === 'delivered';
+    if (orderFilter === 'in_progress') return !['delivered', 'cancelled'].includes(order.status);
+    return true;
+  });
+
+  const setQuickRange = (preset: 'today' | '7d' | '30d' | 'month') => {
+    const today = todayISO();
+    if (preset === 'today') {
+      setFrom(today);
+      setTo(today);
+    } else if (preset === '7d') {
+      setFrom(daysAgoISO(7));
+      setTo(today);
+    } else if (preset === '30d') {
+      setFrom(daysAgoISO(30));
+      setTo(today);
+    } else if (preset === 'month') {
+      const firstDay = new Date().toISOString().slice(0, 8) + '01';
+      setFrom(firstDay);
+      setTo(today);
+    }
+  };
+
+  const isPresetActive = (preset: 'today' | '7d' | '30d' | 'month') => {
+    const today = todayISO();
+    if (preset === 'today') return from === today && to === today;
+    if (preset === '7d') return from === daysAgoISO(7) && to === today;
+    if (preset === '30d') return from === daysAgoISO(30) && to === today;
+    if (preset === 'month') {
+      const firstDay = new Date().toISOString().slice(0, 8) + '01';
+      return from === firstDay && to === today;
+    }
+    return false;
+  };
 
   const { data: daily = [] } = useQuery({
     queryKey: ['fin', 'daily', storeId, from, to],
@@ -195,7 +297,58 @@ export default function FinancialPage() {
             Faturamento, margem total, repasses esperados e conciliação bancária.
           </p>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex items-center gap-1 rounded-lg border border-surface-border bg-surface-raised p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setQuickRange('today')}
+              className={clsx(
+                'rounded px-2.5 py-1 font-medium transition-colors',
+                isPresetActive('today')
+                  ? 'bg-brand-500 text-white font-semibold shadow-sm'
+                  : 'text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay',
+              )}
+            >
+              Hoje
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuickRange('7d')}
+              className={clsx(
+                'rounded px-2.5 py-1 font-medium transition-colors',
+                isPresetActive('7d')
+                  ? 'bg-brand-500 text-white font-semibold shadow-sm'
+                  : 'text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay',
+              )}
+            >
+              7 dias
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuickRange('30d')}
+              className={clsx(
+                'rounded px-2.5 py-1 font-medium transition-colors',
+                isPresetActive('30d')
+                  ? 'bg-brand-500 text-white font-semibold shadow-sm'
+                  : 'text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay',
+              )}
+            >
+              30 dias
+            </button>
+            <button
+              type="button"
+              onClick={() => setQuickRange('month')}
+              className={clsx(
+                'rounded px-2.5 py-1 font-medium transition-colors',
+                isPresetActive('month')
+                  ? 'bg-brand-500 text-white font-semibold shadow-sm'
+                  : 'text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay',
+              )}
+            >
+              Mês
+            </button>
+          </div>
+
           <div className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-raised px-3 py-1.5">
             <Clock className="h-3.5 w-3.5 text-ink-tertiary" />
             <input
@@ -257,30 +410,45 @@ export default function FinancialPage() {
 
       {tab === 'overview' && (
         <>
-      {/* KPIs */}
+      {/* KPIs - Apenas pedidos concluídos contam como entrada financeira */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          label="Faturamento bruto"
+          label="Faturamento bruto (Entradas)"
           value={formatCents(summary?.revenueGrossCents ?? 0)}
           icon={TrendingUp}
-          hint={`${summary?.orderCount ?? 0} pedido${summary?.orderCount === 1 ? '' : 's'}`}
+          hint={
+            summary?.pendingGrossCents && summary.pendingGrossCents > 0
+              ? `${summary.orderCount} concluído${summary.orderCount === 1 ? '' : 's'} · ${formatCents(summary.pendingGrossCents)} a confirmar`
+              : `${summary?.orderCount ?? 0} pedido${summary?.orderCount === 1 ? '' : 's'} concluídos`
+          }
         />
         <KpiCard
-          label="Taxas pagas"
+          label="Taxas de plataforma"
           value={formatCents(summary?.totalFeesCents ?? 0)}
           icon={Receipt}
           tone="muted"
+          hint={
+            summary?.revenueGrossCents
+              ? `${((summary.totalFeesCents / summary.revenueGrossCents) * 100).toFixed(1)}% do faturamento`
+              : 'Taxas de pedidos concluídos'
+          }
         />
         <KpiCard
           label="Líquido pra você"
           value={formatCents(summary?.revenueNetCents ?? 0)}
           icon={PiggyBank}
           tone="success"
+          hint={
+            summary?.pendingNetCents && summary.pendingNetCents > 0
+              ? `${formatCents(summary.pendingNetCents)} previsto em andamento`
+              : 'Entradas líquidas confirmadas'
+          }
         />
         <KpiCard
           label="Ticket médio"
           value={formatCents(summary?.avgTicketCents ?? 0)}
           icon={BarChart3}
+          hint="Média de pedidos concluídos"
         />
       </section>
 
@@ -337,20 +505,15 @@ export default function FinancialPage() {
             <ul className="divide-y divide-surface-border-subtle">
               {byPlatform.map((p) => (
                 <li key={p.platformCode} className="flex items-center gap-3 px-5 py-3">
-                  <div
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-xs font-bold uppercase text-white"
-                    style={{ backgroundColor: p.colorHex }}
-                  >
-                    {p.platformName.slice(0, 2)}
-                  </div>
+                  <PlatformLogo code={p.platformCode} name={p.platformName} size="sm" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-ink-primary">{p.platformName}</p>
                     <p className="text-xs text-ink-tertiary">
-                      {p.orderCount} pedido{p.orderCount === 1 ? '' : 's'}
+                      {p.orderCount} pedido{p.orderCount === 1 ? '' : 's'} concluído{p.orderCount === 1 ? '' : 's'}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-mono tabular text-ink-primary">
+                    <p className="text-sm font-mono font-semibold tabular text-ink-primary">
                       {formatCents(p.revenueGrossCents)}
                     </p>
                     <p className="text-xs text-ink-tertiary tabular">
@@ -406,6 +569,224 @@ export default function FinancialPage() {
           )}
         </section>
       </div>
+
+      {/* Extrato de Vendas e Faturamento */}
+      <section className="surface-card overflow-hidden">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border-subtle px-5 py-3">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="h-4 w-4 text-brand-400" />
+            <div>
+              <h2 className="text-sm font-semibold text-ink-primary">Extrato de vendas e faturamento</h2>
+              <p className="text-xs text-ink-tertiary">
+                Valores brutos, taxas das plataformas e valor líquido detalhado por pedido.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-surface-border bg-surface-base p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setOrderFilter('all')}
+                className={clsx(
+                  'rounded-md px-2.5 py-1 font-medium transition-colors',
+                  orderFilter === 'all'
+                    ? 'bg-surface-raised text-ink-primary shadow-sm'
+                    : 'text-ink-tertiary hover:text-ink-secondary',
+                )}
+              >
+                Todos ({salesOrders.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderFilter('delivered')}
+                className={clsx(
+                  'rounded-md px-2.5 py-1 font-medium transition-colors',
+                  orderFilter === 'delivered'
+                    ? 'bg-surface-raised text-ink-primary shadow-sm'
+                    : 'text-ink-tertiary hover:text-ink-secondary',
+                )}
+              >
+                Concluídos ({salesOrders.filter((o) => o.status === 'delivered').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderFilter('in_progress')}
+                className={clsx(
+                  'rounded-md px-2.5 py-1 font-medium transition-colors',
+                  orderFilter === 'in_progress'
+                    ? 'bg-surface-raised text-ink-primary shadow-sm'
+                    : 'text-ink-tertiary hover:text-ink-secondary',
+                )}
+              >
+                Em andamento ({salesOrders.filter((o) => !['delivered', 'cancelled'].includes(o.status)).length})
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {filteredOrders.length === 0 ? (
+          <div className="px-5 py-8">
+            <EmptyState
+              icon={ShoppingBag}
+              title="Nenhum pedido encontrado"
+              description={
+                orderFilter === 'delivered'
+                  ? 'Nenhum pedido marcado como concluído no período selecionado.'
+                  : 'Não foram encontrados pedidos nas datas filtradas.'
+              }
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-surface-border-subtle text-left text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
+                  <th className="px-5 py-2.5">Horário / Data</th>
+                  <th className="px-5 py-2.5">Pedido</th>
+                  <th className="px-5 py-2.5">Plataforma</th>
+                  <th className="px-5 py-2.5">Cliente</th>
+                  <th className="px-5 py-2.5">Status</th>
+                  <th className="px-5 py-2.5 text-right">Valor Bruto</th>
+                  <th className="px-5 py-2.5 text-right">Taxas</th>
+                  <th className="px-5 py-2.5 text-right">Valor Líquido</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredOrders.map((order) => {
+                  const statusMeta = ORDER_STATUS_META[order.status] ?? {
+                    variant: 'neutral' as const,
+                    label: order.status,
+                  };
+                  const dateObj = new Date(order.placedAt);
+                  const timeStr = dateObj.toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
+                  const dateStr = dateObj.toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                  });
+
+                  const isDelivered = order.status === 'delivered';
+
+                  return (
+                    <tr
+                      key={order.id}
+                      onClick={() => setSelectedOrderId(order.id)}
+                      className="cursor-pointer border-t border-surface-border-subtle/60 transition-colors hover:bg-surface-overlay/50"
+                      title="Clique para ver detalhes do pedido"
+                    >
+                      <td className="whitespace-nowrap px-5 py-3 text-xs text-ink-secondary">
+                        <span className="font-semibold text-ink-primary">{timeStr}</span>
+                        <span className="ml-1.5 text-ink-tertiary">{dateStr}</span>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 font-mono font-bold text-ink-primary">
+                        #{formatOrderNumber(order.externalId)}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <PlatformLogo code={order.platform.code} name={order.platform.name} size="xs" />
+                          <span className="text-xs font-semibold text-ink-primary">{order.platform.name}</span>
+                        </div>
+                      </td>
+                      <td className="max-w-[150px] truncate px-5 py-3 font-medium text-ink-primary">
+                        {order.customer?.name || 'Cliente'}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3">
+                        <Badge variant={statusMeta.variant} dot>
+                          {statusMeta.label}
+                        </Badge>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right font-mono font-medium tabular text-ink-primary">
+                        {formatCents(order.totalCents)}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right font-mono tabular text-ink-tertiary">
+                        - {formatCents(order.platformFeeCents)}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right font-mono tabular">
+                        {isDelivered ? (
+                          <span className="font-bold text-success-bright">
+                            {formatCents(order.netCents)}
+                          </span>
+                        ) : (
+                          <div className="flex flex-col items-end">
+                            <span className="text-ink-tertiary">{formatCents(order.netCents)}</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500/90">
+                              (A confirmar)
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {filteredOrders.length > 0 && (() => {
+                const deliveredInFilter = filteredOrders.filter((o) => o.status === 'delivered');
+                const inProgressInFilter = filteredOrders.filter((o) => !['delivered', 'cancelled'].includes(o.status));
+
+                const deliveredGross = deliveredInFilter.reduce((sum, o) => sum + o.totalCents, 0);
+                const deliveredFees = deliveredInFilter.reduce((sum, o) => sum + o.platformFeeCents, 0);
+                const deliveredNet = deliveredInFilter.reduce((sum, o) => sum + o.netCents, 0);
+
+                const inProgressGross = inProgressInFilter.reduce((sum, o) => sum + o.totalCents, 0);
+                const inProgressFees = inProgressInFilter.reduce((sum, o) => sum + o.platformFeeCents, 0);
+                const inProgressNet = inProgressInFilter.reduce((sum, o) => sum + o.netCents, 0);
+
+                return (
+                  <tfoot>
+                    <tr className="border-t-2 border-surface-border bg-emerald-500/5 text-xs font-semibold">
+                      <td colSpan={5} className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block h-2.5 w-2.5 rounded-full bg-success-bright" />
+                          <span className="font-bold text-ink-primary">
+                            Entradas Confirmadas (Apenas Concluídos):
+                          </span>
+                          <span className="text-ink-secondary">
+                            {deliveredInFilter.length} pedido{deliveredInFilter.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right font-mono font-bold tabular text-ink-primary">
+                        {formatCents(deliveredGross)}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right font-mono tabular text-ink-tertiary">
+                        - {formatCents(deliveredFees)}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-3 text-right font-mono text-sm font-black tabular text-success-bright">
+                        {formatCents(deliveredNet)}
+                      </td>
+                    </tr>
+                    {inProgressInFilter.length > 0 && (
+                      <tr className="border-t border-surface-border-subtle bg-surface-raised/20 text-xs text-ink-tertiary">
+                        <td colSpan={5} className="px-5 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />
+                            <span>A Confirmar (Em andamento · não somado às entradas):</span>
+                            <span>
+                              {inProgressInFilter.length} pedido{inProgressInFilter.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-2.5 text-right font-mono tabular text-ink-tertiary">
+                          {formatCents(inProgressGross)}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-2.5 text-right font-mono tabular text-ink-tertiary">
+                          - {formatCents(inProgressFees)}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-2.5 text-right font-mono font-medium tabular text-amber-500/80">
+                          {formatCents(inProgressNet)}{' '}
+                          <span className="text-[10px] font-bold uppercase text-amber-500/90">(previsto)</span>
+                        </td>
+                      </tr>
+                    )}
+                  </tfoot>
+                );
+              })()}
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* Conciliação */}
       <section className="surface-card overflow-hidden">
@@ -468,8 +849,11 @@ export default function FinancialPage() {
                     key={p.id}
                     className="border-t border-surface-border-subtle/60 hover:bg-surface-overlay/40"
                   >
-                    <td className="px-5 py-3">
-                      <Badge color={p.platform.colorHex}>{p.platform.name}</Badge>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <PlatformLogo code={p.platform.code} name={p.platform.name} size="xs" />
+                        <span className="text-xs font-semibold text-ink-primary">{p.platform.name}</span>
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-xs text-ink-secondary">
                       {new Date(p.referencePeriodStart).toLocaleDateString('pt-BR')} →{' '}
@@ -554,6 +938,10 @@ export default function FinancialPage() {
           )}
         </div>
       </Dialog>
+
+      {selectedOrderId && (
+        <OrderDrawer orderId={selectedOrderId} onClose={() => setSelectedOrderId(null)} />
+      )}
     </div>
   );
 }
@@ -575,7 +963,11 @@ function ExpensesTab({ storeId }: { storeId: string }) {
   const remove = useMutation({
     mutationFn: (id: string) =>
       api(`/financial/expenses/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['expenses'] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['expenses'] });
+      void qc.invalidateQueries({ queryKey: ['fin'] });
+      void qc.invalidateQueries({ queryKey: ['dre'] });
+    },
   });
 
   const totalActive = expenses.reduce((s, e) => s + e.amountCents, 0);
@@ -699,6 +1091,16 @@ function ExpensesTab({ storeId }: { storeId: string }) {
 // Tab: DRE (Demonstrativo de Resultado)
 // =====================================================================
 
+function formatISODateBR(isoString: string): string {
+  if (!isoString) return '';
+  const datePart = isoString.slice(0, 10);
+  const parts = datePart.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return new Date(isoString).toLocaleDateString('pt-BR');
+}
+
 function DreTab({
   storeId,
   from,
@@ -709,7 +1111,7 @@ function DreTab({
   to: string;
 }) {
   const { data: dre, isLoading } = useQuery({
-    queryKey: ['dre', storeId, from, to],
+    queryKey: ['fin', 'dre', storeId, from, to],
     queryFn: () =>
       api<DreReport>(
         `/financial/expenses/dre?storeId=${storeId}&from=${from}&to=${to}`,
@@ -735,8 +1137,7 @@ function DreTab({
         <header className="border-b border-surface-border-subtle px-5 py-3">
           <h2 className="text-sm font-semibold">Demonstrativo de Resultado</h2>
           <p className="mt-0.5 text-[11px] text-ink-tertiary">
-            Período: {new Date(dre.period.from).toLocaleDateString('pt-BR')} →{' '}
-            {new Date(dre.period.to).toLocaleDateString('pt-BR')}
+            Período: {formatISODateBR(dre.period.from)} → {formatISODateBR(dre.period.to)}
           </p>
         </header>
         <div className="divide-y divide-surface-border-subtle px-5">

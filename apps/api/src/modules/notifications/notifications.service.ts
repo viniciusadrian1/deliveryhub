@@ -113,6 +113,19 @@ export class NotificationsService {
     });
   }
 
+  async markUnread(auth: AuthContext, id: string): Promise<void> {
+    const n = await this.prisma.notification.findFirst({
+      where: { id, userId: auth.userId },
+      select: { id: true, readAt: true },
+    });
+    if (!n) throw new NotFoundException('notification_not_found');
+    if (!n.readAt) return;
+    await this.prisma.notification.update({
+      where: { id },
+      data: { readAt: null },
+    });
+  }
+
   async markAllRead(auth: AuthContext): Promise<{ updated: number }> {
     const r = await this.prisma.notification.updateMany({
       where: { userId: auth.userId, readAt: null },

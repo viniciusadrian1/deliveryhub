@@ -78,6 +78,14 @@ export class FinancialController {
     return this.dashboard.revenueByPlatform(auth, q.storeId, q.from, q.to);
   }
 
+  @Get('financial/orders')
+  salesOrders(
+    @CurrentUser() auth: AuthContext,
+    @Query(new ZodValidationPipe(dashboardQuerySchema)) q: DashboardQuery,
+  ) {
+    return this.dashboard.salesOrders(auth, q.storeId, q.from, q.to);
+  }
+
   // ===== Bank =====
 
   @Post('bank/import')

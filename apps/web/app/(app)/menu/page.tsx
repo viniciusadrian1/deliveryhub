@@ -84,8 +84,7 @@ export default function MenuPage() {
         <div>
           <h1>Cardápio</h1>
           <p className="mt-1 text-sm text-ink-secondary">
-            CMV por item + preço por plataforma. A margem real fica visível no{' '}
-            <b className="text-ink-primary">Simulador de Margem</b>.
+            Gerencie categorias, produtos, fotos e valores do seu cardápio.
           </p>
         </div>
         <div className="flex gap-2">
@@ -176,21 +175,36 @@ export default function MenuPage() {
                         className="border-t border-surface-border-subtle/60 transition-colors hover:bg-surface-overlay/40"
                       >
                         <td className="px-5 py-3">
-                          <div className="font-medium text-ink-primary">{item.name}</div>
-                          {item.description && (
-                            <div className="mt-0.5 line-clamp-1 text-xs text-ink-secondary">
-                              {item.description}
+                          <div className="flex items-center gap-3">
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="h-12 w-12 shrink-0 rounded-lg object-cover border border-surface-border-subtle shadow-sm bg-surface-raised"
+                              />
+                            ) : (
+                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-surface-raised border border-surface-border-subtle text-ink-tertiary">
+                                <UtensilsCrossed className="h-5 w-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-ink-primary">{item.name}</div>
+                              {item.description && (
+                                <div className="mt-0.5 line-clamp-1 text-xs text-ink-secondary">
+                                  {item.description}
+                                </div>
+                              )}
+                              {item.allergens.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {item.allergens.map((a) => (
+                                    <Badge key={a} variant="warning">
+                                      {a}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {item.allergens.length > 0 && (
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {item.allergens.map((a) => (
-                                <Badge key={a} variant="warning">
-                                  {a}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
+                          </div>
                         </td>
                         <td className="px-5 py-3 text-right font-mono tabular text-ink-primary">
                           {formatCents(item.costCents)}

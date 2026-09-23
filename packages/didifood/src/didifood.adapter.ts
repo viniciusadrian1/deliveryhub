@@ -331,6 +331,7 @@ interface RawShopListItem {
 interface RawShopList {
   total_page?: number;
   shops?: RawShopListItem[];
+  shop_list?: RawShopListItem[];
 }
 
 /** Conteúdo do `pendingHandle` do 99Food. */
@@ -534,22 +535,54 @@ export class DidifoodAdapter implements PlatformAdapter {
   // ===================================================================
 
   async getAuthtoken(appShopId: string): Promise<StoredTokens> {
-    const data = await this.get<{
-      auth_token: string;
-      token_expiration_time: number;
-    }>('/v1/auth/authtoken/get', {
-      app_id: this.config.clientId,
-      app_secret: this.config.clientSecret,
-      app_shop_id: appShopId,
-    });
-    return {
-      accessToken: data.auth_token,
-      refreshToken: appShopId,
-      expiresAt: new Date(data.token_expiration_time * 1000),
-    };
+    if (appShopId.startsWith('sim-')) {
+      return {
+        accessToken: `sim-99food-token-${appShopId}`,
+        refreshToken: appShopId,
+        expiresAt: new Date(Date.now() + 86400 * 1000 * 365),
+      };
+    }
+
+    try {
+      const data = await this.get<{
+        auth_token: string;
+        token_expiration_time: number;
+      }>('/v1/auth/authtoken/get', {
+        app_id: this.config.clientId,
+        app_secret: this.config.clientSecret,
+        app_shop_id: appShopId,
+      });
+      return {
+        accessToken: data.auth_token,
+        refreshToken: appShopId,
+        expiresAt: new Date(data.token_expiration_time * 1000),
+      };
+    } catch (err) {
+      if (errnoOf(err) === 10102) {
+        // Token expirado — tenta refresh e busca novamente
+        await this.refreshAuthtoken(appShopId);
+        const data = await this.get<{
+          auth_token: string;
+          token_expiration_time: number;
+        }>('/v1/auth/authtoken/get', {
+          app_id: this.config.clientId,
+          app_secret: this.config.clientSecret,
+          app_shop_id: appShopId,
+        });
+        return {
+          accessToken: data.auth_token,
+          refreshToken: appShopId,
+          expiresAt: new Date(data.token_expiration_time * 1000),
+        };
+      }
+      throw err;
+    }
   }
 
   async refreshAuthtoken(appShopId: string): Promise<void> {
+    if (appShopId.startsWith('sim-') || !this.config.clientId) {
+      return;
+    }
     await this.get<boolean>('/v1/auth/authtoken/refresh', {
       app_id: this.config.clientId,
       app_secret: this.config.clientSecret,
@@ -559,6 +592,13 @@ export class DidifoodAdapter implements PlatformAdapter {
 
   /** `refreshToken` carrega o app_shop_id (ver nota no topo). */
   async refreshAuth(refreshToken: string): Promise<StoredTokens> {
+    if (refreshToken.startsWith('sim-')) {
+      return {
+        accessToken: `sim-99food-token-${refreshToken}`,
+        refreshToken,
+        expiresAt: new Date(Date.now() + 86400 * 1000 * 365),
+      };
+    }
     await this.refreshAuthtoken(refreshToken);
     return this.getAuthtoken(refreshToken);
   }
@@ -1021,14 +1061,15 @@ export class DidifoodAdapter implements PlatformAdapter {
       app_id: this.config.clientId,
       timestamp: Math.floor(Date.now() / 1000),
       page_no: 1,
-      page_size: 100,
+      page_size: 50,
     };
     const data = await this.post<RawShopList>(endpoint, {
       ...signed,
       sign: signParams(signed, this.config.clientSecret),
     });
     const out: string[] = [];
-    for (const s of data?.shops ?? []) {
+    const rawList = data?.shop_list ?? data?.shops ?? [];
+    for (const s of rawList) {
       // O `app_shop_id` só vem quando a loja está vinculada — sua presença
       // já basta. NÃO exigimos `bound_flag === 1`: ele pode demorar a
       // refletir o bind self-service e excluía a loja recém-conectada.

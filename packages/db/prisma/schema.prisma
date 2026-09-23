@@ -1273,6 +1273,7 @@ model Expense {
   category       ExpenseCategory
   /// Valor em centavos (BRL).
   amountCents    Int               @map("amount_cents")
+  employeeCount  Int               @default(1) @map("employee_count")
   recurrence     ExpenseRecurrence @default(one_time)
   /// Dia do mês (1-28) ou dia da semana (0-6) dependendo da recurrence.
   /// Pra one_time é ignorado.

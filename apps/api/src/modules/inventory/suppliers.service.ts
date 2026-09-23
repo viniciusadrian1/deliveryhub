@@ -3,10 +3,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { TenantPrismaService } from '../../common/tenant/tenant-prisma.service.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
-import {
-  type CreateSupplierInput,
-  type UpdateSupplierInput,
-} from './dto/inventory.dto.js';
+import { type CreateSupplierInput, type UpdateSupplierInput } from './dto/inventory.dto.js';
 
 @Injectable()
 export class SuppliersService {
@@ -78,6 +75,23 @@ export class SuppliersService {
       diff: diffFields(existing, updated, ['name', 'document', 'email', 'phone', 'notes']),
     });
     return updated;
+  }
+
+  async restore(auth: AuthContext, id: string) {
+    await this.findOne(auth, id);
+    const supplier = await this.tenantPrisma.tx.supplier.update({
+      where: { id },
+      data: { archivedAt: null },
+    });
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'supplier',
+      entityId: id,
+      action: 'update',
+      diff: { archived: false },
+    });
+    return supplier;
   }
 
   async archive(auth: AuthContext, id: string) {

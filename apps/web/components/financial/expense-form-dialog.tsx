@@ -3,16 +3,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
+import { moneyInput, parseMoneyCents } from '../../lib/money';
 import { api } from '../../lib/api';
-import type {
-  Expense,
-  ExpenseCategory,
-  ExpenseRecurrence,
-} from '../../lib/expense-types';
-import {
-  EXPENSE_CATEGORY_LABELS,
-  EXPENSE_RECURRENCE_LABELS,
-} from '../../lib/expense-types';
+import type { Expense, ExpenseCategory, ExpenseRecurrence } from '../../lib/expense-types';
+import { EXPENSE_CATEGORY_LABELS, EXPENSE_RECURRENCE_LABELS } from '../../lib/expense-types';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -24,15 +18,11 @@ interface ExpenseFormDialogProps {
   editing?: Expense | null;
 }
 
-export function ExpenseFormDialog({
-  open,
-  onClose,
-  storeId,
-  editing,
-}: ExpenseFormDialogProps) {
+export function ExpenseFormDialog({ open, onClose, storeId, editing }: ExpenseFormDialogProps) {
   const qc = useQueryClient();
   const [name, setName] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('rent');
+  const [employeeCount, setEmployeeCount] = useState('1');
   const [amountReais, setAmountReais] = useState('');
   const [recurrence, setRecurrence] = useState<ExpenseRecurrence>('one_time');
   const [dueDay, setDueDay] = useState('');
@@ -44,28 +34,38 @@ export function ExpenseFormDialog({
     if (!open) return;
     setName(editing?.name ?? '');
     setCategory(editing?.category ?? 'rent');
-    setAmountReais(editing ? (editing.amountCents / 100).toFixed(2) : '');
+    setEmployeeCount(String(editing?.employeeCount ?? 1));
+    setAmountReais(
+      editing
+        ? moneyInput(
+            editing.amountCents /
+              (editing.category === 'payroll' ? (editing.employeeCount ?? 1) : 1),
+          )
+        : '',
+    );
     setRecurrence(editing?.recurrence ?? 'one_time');
     setDueDay(editing?.dueDay?.toString() ?? '');
     setOccurredAt(
-      editing?.occurredAt
-        ? new Date(editing.occurredAt).toISOString().slice(0, 10)
-        : '',
+      editing?.occurredAt ? new Date(editing.occurredAt).toISOString().slice(0, 10) : '',
     );
     setPaymentMethod(editing?.paymentMethod ?? '');
     setNotes(editing?.notes ?? '');
   }, [open, editing]);
 
+  const unitCents = parseMoneyCents(amountReais);
+  const count = category === 'payroll' ? Number(employeeCount) : 1;
+  const validCount = Number.isInteger(count) && count >= 1 && count <= 10000;
+  const totalCents = (unitCents ?? 0) * count;
   const mutation = useMutation({
     mutationFn: async () => {
-      // Remove os pontos de milhar (pt-BR) antes de trocar a vírgula decimal,
-      // senão "3.500,00" viraria "3.500.00" e parseFloat pararia em 3,5.
-      const cents =
-        Math.round(parseFloat(amountReais.replace(/\./g, '').replace(',', '.')) * 100) || 0;
+      if (unitCents === null || !validCount || totalCents > 2147483647)
+        throw new Error('Verifique o valor e a quantidade de funcionários.');
+      const cents = totalCents;
       const body = {
         name,
         category,
         amountCents: cents,
+        employeeCount: count,
         recurrence,
         dueDay: dueDay ? parseInt(dueDay, 10) : null,
         occurredAt: occurredAt ? new Date(occurredAt).toISOString() : undefined,
@@ -82,6 +82,7 @@ export function ExpenseFormDialog({
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['expenses'] });
+      void qc.invalidateQueries({ queryKey: ['fin'] });
       void qc.invalidateQueries({ queryKey: ['dre'] });
       onClose();
     },
@@ -101,7 +102,7 @@ export function ExpenseFormDialog({
           <Button
             onClick={() => mutation.mutate()}
             loading={mutation.isPending}
-            disabled={!name.trim() || !amountReais}
+            disabled={!name.trim() || unitCents === null || !validCount || totalCents > 2147483647}
           >
             {editing ? 'Salvar' : 'Cadastrar'}
           </Button>
@@ -109,6 +110,11 @@ export function ExpenseFormDialog({
       }
     >
       <div className="flex flex-col gap-3">
+        {mutation.error && (
+          <p role="alert" className="text-sm text-danger-bright">
+            {mutation.error.message}
+          </p>
+        )}
         <Input
           label="Nome"
           placeholder="Ex.: Aluguel do salão"
@@ -136,7 +142,7 @@ export function ExpenseFormDialog({
             </select>
           </div>
           <Input
-            label="Valor (R$)"
+            label={category === 'payroll' ? 'Salário por funcionário (R$)' : 'Valor (R$)'}
             placeholder="3500,00"
             value={amountReais}
             onChange={(e) => setAmountReais(e.target.value)}
@@ -144,6 +150,25 @@ export function ExpenseFormDialog({
           />
         </div>
 
+        {category === 'payroll' && (
+          <div className="space-y-3">
+            <Input
+              label="Quantidade de funcionários"
+              type="number"
+              min={1}
+              max={10000}
+              step={1}
+              value={employeeCount}
+              onChange={(e) => setEmployeeCount(e.target.value)}
+            />
+            {unitCents !== null && validCount && (
+              <p className="text-sm font-semibold" aria-live="polite">
+                Total por pagamento:{' '}
+                {(totalCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </p>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
@@ -219,11 +244,7 @@ export function ExpenseFormDialog({
           value={paymentMethod}
           onChange={(e) => setPaymentMethod(e.target.value)}
         />
-        <Input
-          label="Notas (opcional)"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
+        <Input label="Notas (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
     </Dialog>
   );

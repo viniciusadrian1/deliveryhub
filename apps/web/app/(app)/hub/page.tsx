@@ -1,6 +1,7 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { Inbox, Radio, Volume2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -11,15 +12,20 @@ import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import type { OrderEventPayload, OrderListItem, OrderStatus } from '../../../lib/hub-types';
 import { getSocket } from '../../../lib/socket';
+import { playOrderAlert } from '../../../lib/sound';
 
-const COLUMNS: { status: OrderStatus | OrderStatus[]; title: string; accent?: boolean }[] = [
+const COLUMNS: {
+  status: OrderStatus | OrderStatus[];
+  title: string;
+  accent?: boolean;
+  variant?: 'danger';
+}[] = [
   { status: 'placed', title: 'Novos', accent: true },
   { status: ['accepted', 'preparing'], title: 'Em preparo' },
   { status: 'ready', title: 'Prontos' },
   { status: 'dispatched', title: 'Despachados' },
-  // ponytail: entregue + cancelado = "concluído" no sentido do iFood (pedido finalizado).
-  // limit=100 na query já corta o histórico; se crescer, filtrar por data aqui.
-  { status: ['delivered', 'cancelled'], title: 'Concluídos' },
+  { status: 'delivered', title: 'Concluídos' },
+  { status: 'cancelled', title: 'Cancelados', variant: 'danger' },
 ];
 
 function HubBoard() {
@@ -46,7 +52,7 @@ function HubBoard() {
     queryKey: ['orders', storeId],
     queryFn: () =>
       api<OrderListItem[]>(
-        `/orders?storeId=${encodeURIComponent(storeId ?? '')}&limit=100`,
+        `/orders?storeId=${encodeURIComponent(storeId ?? '')}&limit=100&withItems=true`,
       ),
     enabled: !!storeId,
     refetchInterval: 30_000,
@@ -59,20 +65,15 @@ function HubBoard() {
 
     const onCreated = (_payload: OrderEventPayload) => {
       void qc.invalidateQueries({ queryKey: ['orders', storeId] });
+      void qc.invalidateQueries({ queryKey: ['fin'] });
       if (soundOn) {
-        try {
-          const audio = new Audio(
-            'data:audio/wav;base64,UklGRhwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
-          );
-          audio.play().catch(() => undefined);
-        } catch {
-          /* autoplay bloqueado */
-        }
+        playOrderAlert();
       }
     };
     const onUpdated = (payload: OrderEventPayload) => {
       void qc.invalidateQueries({ queryKey: ['orders', storeId] });
       void qc.invalidateQueries({ queryKey: ['order', payload.orderId] });
+      void qc.invalidateQueries({ queryKey: ['fin'] });
     };
 
     socket.on('order.created', onCreated);
@@ -119,17 +120,24 @@ function HubBoard() {
             atualizando em tempo real · {data?.length ?? 0} pedido{data?.length === 1 ? '' : 's'} no total
           </p>
         </div>
-        <button
-          onClick={() => setSoundOn(!soundOn)}
-          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-            soundOn
-              ? 'border-surface-border-strong bg-surface-raised text-ink-primary'
-              : 'border-surface-border-subtle bg-surface-raised/50 text-ink-tertiary'
-          }`}
-        >
-          <Volume2 className="h-3.5 w-3.5" />
-          Som {soundOn ? 'ligado' : 'desligado'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              if (next) playOrderAlert();
+            }}
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              soundOn
+                ? 'border-brand-500/30 bg-brand-500/10 text-brand-600 dark:text-brand-400'
+                : 'border-surface-border-subtle bg-surface-raised/50 text-ink-tertiary'
+            }`}
+            title={soundOn ? 'Som ativo (clique para silenciar)' : 'Som desligado (clique para ativar e testar)'}
+          >
+            <Volume2 className="h-3.5 w-3.5" />
+            Som {soundOn ? 'ligado' : 'desligado'}
+          </button>
+        </div>
       </header>
 
       {error && (
@@ -138,37 +146,40 @@ function HubBoard() {
         </p>
       )}
 
-      <div className="flex flex-1 min-h-0 gap-3 overflow-x-auto pb-2">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 xl:gap-2.5 flex-1 min-h-0 w-full items-start">
         {COLUMNS.map((col) => {
           const orders = grouped[col.title] ?? [];
           return (
             <section
               key={col.title}
-              className="flex w-[300px] shrink-0 flex-col rounded-xl border border-surface-border-subtle bg-surface-base/40"
+              className="flex min-w-0 flex-col rounded-xl border border-surface-border-subtle bg-surface-base/40 overflow-hidden shadow-xs"
             >
-              <header className="flex items-center justify-between border-b border-surface-border-subtle px-3 py-2.5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+              <header className="flex items-center justify-between border-b border-surface-border-subtle px-2.5 py-2 bg-surface-base/60 shrink-0">
+                <h2 className="text-[11px] font-bold uppercase tracking-wider text-ink-secondary truncate">
                   {col.title}
                 </h2>
                 <span
-                  className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                  className={clsx(
+                    'rounded-full px-2 py-0.5 text-[11px] font-bold tabular shrink-0',
                     col.accent && orders.length > 0
-                      ? 'bg-brand-500/15 text-brand-300'
-                      : 'bg-surface-overlay text-ink-secondary'
-                  }`}
+                      ? 'bg-brand-500/15 text-brand-400 font-extrabold'
+                      : col.variant === 'danger' && orders.length > 0
+                        ? 'bg-danger-soft text-danger-bright'
+                        : 'bg-surface-overlay text-ink-tertiary',
+                  )}
                 >
                   {orders.length}
                 </span>
               </header>
-              <div className="flex-1 space-y-2 overflow-y-auto p-2">
+              <div className="flex-1 space-y-2 overflow-y-auto p-2 min-h-[380px]">
                 {isLoading && orders.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-surface-border-subtle p-4 text-center text-xs text-ink-tertiary">
+                  <div className="rounded-lg border border-dashed border-surface-border-subtle/70 p-4 text-center text-xs text-ink-tertiary">
                     Carregando…
                   </div>
                 )}
                 {!isLoading && orders.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-surface-border-subtle p-4 text-center text-xs text-ink-tertiary">
-                    {col.accent ? 'Aguardando novos pedidos' : 'Vazio'}
+                  <div className="rounded-lg border border-dashed border-surface-border-subtle/70 p-3.5 text-center text-xs text-ink-tertiary">
+                    {col.accent ? 'Aguardando pedidos' : 'Vazio'}
                   </div>
                 )}
                 {orders.map((order) => (

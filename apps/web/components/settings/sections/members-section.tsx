@@ -1,10 +1,9 @@
 'use client';
 
-import { useMutation } from '@tanstack/react-query';
-import { Mail, UserPlus } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-
 import { api } from '../../../lib/api';
+import { useAuth } from '../../../lib/auth-context';
 import {
   type InvitationCreated,
   type MembershipRole,
@@ -12,107 +11,150 @@ import {
 } from '../../../lib/settings-types';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
-import { ComingSoon, SettingsSection } from '../section';
+import { SettingsSection } from '../section';
 
-const INVITABLE_ROLES: MembershipRole[] = ['manager', 'staff', 'financial'];
-
+interface PendingInvitation {
+  id: string;
+  email: string;
+  role: MembershipRole;
+  expiresAt: string;
+}
 export function MembersSection() {
+  const { state } = useAuth();
+  const allowed = state?.role === 'owner' || state?.role === 'manager';
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<MembershipRole>('staff');
-  const [success, setSuccess] = useState<{ email: string; expiresAt: string } | null>(
-    null,
-  );
-
+  const [success, setSuccess] = useState<(InvitationCreated & { email: string }) | null>(null);
+  const qc = useQueryClient();
+  const key = ['invitations', state?.organization.id];
+  const pending = useQuery({
+    queryKey: key,
+    queryFn: () => api<PendingInvitation[]>('/organizations/invitations'),
+    enabled: allowed,
+  });
   const invite = useMutation({
-    mutationFn: async () => {
-      const trimmed = email.trim();
-      if (!trimmed) throw new Error('Informe um e-mail.');
-      const result = await api<InvitationCreated>('/organizations/invitations', {
-        method: 'POST',
-        body: { email: trimmed, role },
-      });
-      return result;
-    },
-    onSuccess: (result) => {
-      setSuccess({ email: email.trim(), expiresAt: result.expiresAt });
+    mutationFn: (input: { email: string; role: MembershipRole }) =>
+      api<InvitationCreated>('/organizations/invitations', { method: 'POST', body: input }),
+    onSuccess: (result, input) => {
+      setSuccess({ ...result, email: input.email });
       setEmail('');
+      void qc.invalidateQueries({ queryKey: key });
     },
   });
-
-  const expiresLabel = success
-    ? new Date(success.expiresAt).toLocaleDateString('pt-BR', {
-        day: '2-digit',
-        month: 'short',
-      })
-    : null;
-
+  if (!allowed)
+    return (
+      <p className="text-sm text-ink-secondary">
+        Apenas proprietários e gerentes podem convidar membros.
+      </p>
+    );
   return (
-    <div className="flex flex-col gap-4">
+    <div className="space-y-4">
       <SettingsSection
         title="Convidar pessoa"
-        description="Envie um convite por e-mail. O acesso é liberado quando a pessoa aceitar."
+        description="Convide alguém para trabalhar na sua loja e escolha a função de acesso."
       >
-        <div className="grid gap-3 sm:grid-cols-[1fr_180px_auto]">
+        <form
+          className="grid gap-3 sm:grid-cols-[1fr_160px_auto]"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setSuccess(null);
+            invite.mutate({ email: email.trim().toLowerCase(), role });
+          }}
+        >
           <Input
             label="E-mail"
             type="email"
-            placeholder="colega@suaempresa.com.br"
+            required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            leftIcon={<Mail className="h-4 w-4" />}
             disabled={invite.isPending}
           />
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
-              Função
-            </label>
+          <label className="flex flex-col gap-1.5 text-xs text-ink-secondary">
+            Função
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as MembershipRole)}
-              disabled={invite.isPending}
-              className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none transition-colors hover:border-surface-border-strong focus:border-brand-500"
+              className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm"
             >
-              {INVITABLE_ROLES.map((r) => (
+              {(['manager', 'staff', 'financial'] as const).map((r) => (
                 <option key={r} value={r}>
                   {ROLE_LABELS[r]}
                 </option>
               ))}
             </select>
-          </div>
+          </label>
           <div className="flex items-end">
-            <Button
-              onClick={() => invite.mutate()}
-              loading={invite.isPending}
-              disabled={!email.trim()}
-              leftIcon={<UserPlus className="h-4 w-4" />}
-            >
+            <Button type="submit" loading={invite.isPending}>
               Enviar convite
             </Button>
           </div>
-        </div>
-
+        </form>
         {invite.error && (
-          <p className="mt-3 rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-xs font-medium text-danger-bright">
-            {(invite.error as Error).message || 'Falha ao enviar convite.'}
+          <p role="alert" className="mt-3 text-sm text-danger-bright">
+            {invite.error.message}
           </p>
         )}
         {success && (
-          <p className="mt-3 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-xs font-medium text-success-bright">
-            Convite enviado para <b>{success.email}</b> — expira em {expiresLabel}.
-          </p>
+          <div className="mt-4 space-y-2 text-sm" role="status">
+            <p>
+              {success.delivery === 'email' ? 'Convite enviado' : 'Convite criado'} para{' '}
+              <b>{success.email}</b>. Válido até{' '}
+              {new Date(success.expiresAt).toLocaleDateString('pt-BR')}.
+            </p>
+            {success.invitationUrl && (
+              <>
+                <p>
+                  O envio por e-mail não está configurado. Copie este link e envie à pessoa
+                  convidada.
+                </p>
+                <Input
+                  label="Link do convite"
+                  readOnly
+                  value={success.invitationUrl}
+                  onFocus={(e) => e.target.select()}
+                />
+              </>
+            )}
+          </div>
         )}
       </SettingsSection>
-
       <SettingsSection
-        title="Membros da organização"
-        description="Lista completa de quem tem acesso a este DeliveryHub."
-        action={<ComingSoon>em breve</ComingSoon>}
+        title="Convites pendentes"
+        description="Reenviar gera um novo link e invalida o anterior."
       >
-        <div className="flex flex-col items-center gap-2 py-6 text-center">
-          <p className="text-sm text-ink-secondary">
-            Em breve você poderá ver, editar funções e remover membros aqui.
+        {pending.isLoading && <p>Carregando…</p>}
+        {pending.error && (
+          <p role="alert" className="text-sm text-danger-bright">
+            {pending.error.message}
           </p>
-        </div>
+        )}
+        {pending.data?.length === 0 && (
+          <p className="text-sm text-ink-secondary">Nenhum convite pendente.</p>
+        )}
+        <ul className="divide-y divide-surface-border-subtle">
+          {pending.data?.map((item) => (
+            <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="break-all text-sm">{item.email}</p>
+                <p className="text-xs text-ink-secondary">
+                  {ROLE_LABELS[item.role]} · até{' '}
+                  {new Date(item.expiresAt).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={invite.isPending || (state?.role !== 'owner' && item.role === 'owner')}
+                onClick={() => {
+                  setSuccess(null);
+                  invite.mutate({ email: item.email, role: item.role });
+                }}
+              >
+                Reenviar
+              </Button>
+            </li>
+          ))}
+        </ul>
       </SettingsSection>
     </div>
   );

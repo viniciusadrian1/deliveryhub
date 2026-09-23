@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { CurrentUser } from '../../common/auth/current-user.decorator.js';
@@ -19,6 +19,18 @@ import { InvitationsService } from './invitations.service.js';
 export class InvitationsController {
   constructor(private readonly invitations: InvitationsService) {}
 
+  @Get('organizations/invitations')
+  @Roles('owner', 'manager')
+  list(@CurrentUser() auth: AuthContext) {
+    return this.invitations.list(auth.orgId);
+  }
+
+  @Public()
+  @Get('auth/invitations/preview')
+  preview(@Query('token') token = '') {
+    return this.invitations.preview(token);
+  }
+
   @Post('organizations/invitations')
   @Roles('owner', 'manager')
   @HttpCode(201)
@@ -26,7 +38,7 @@ export class InvitationsController {
     @Body(new ZodValidationPipe(createInvitationSchema)) body: CreateInvitationInput,
     @CurrentUser() auth: AuthContext,
     @Req() req: Request,
-  ): Promise<{ id: string; expiresAt: Date }> {
+  ) {
     return this.invitations.create(
       auth.orgId,
       auth.userId,

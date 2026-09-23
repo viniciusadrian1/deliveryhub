@@ -57,11 +57,11 @@ async function bootstrap() {
     origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Ifood-Signature'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Ifood-Signature', 'Accept', 'Origin', 'X-Requested-With', 'baggage', 'sentry-trace'],
   });
 
-  await app.listen(env.API_PORT, '0.0.0.0');
-  console.warn(`[main] API listening on http://0.0.0.0:${env.API_PORT}`);
+  await app.listen(env.API_PORT);
+  console.warn(`[main] API listening on port ${env.API_PORT} (IPv4 + IPv6 dual-stack)`);
 }
 
 bootstrap().catch((err) => {

@@ -22,7 +22,8 @@ export const createExpenseSchema = z
     storeId: z.string().uuid(),
     name: z.string().min(1).max(200).trim(),
     category: z.enum(EXPENSE_CATEGORIES),
-    amountCents: z.number().int().min(0),
+    amountCents: z.number().int().min(0).max(2147483647),
+    employeeCount: z.number().int().min(1).max(10000).default(1),
     recurrence: z.enum(EXPENSE_RECURRENCES).default('one_time'),
     /**
      * Dia do mês (1-28) para monthly OU dia da semana (0-6) para weekly.
@@ -47,7 +48,8 @@ export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
 export const updateExpenseSchema = z.object({
   name: z.string().min(1).max(200).trim().optional(),
   category: z.enum(EXPENSE_CATEGORIES).optional(),
-  amountCents: z.number().int().min(0).optional(),
+  amountCents: z.number().int().min(0).max(2147483647).optional(),
+  employeeCount: z.number().int().min(1).max(10000).optional(),
   recurrence: z.enum(EXPENSE_RECURRENCES).optional(),
   dueDay: z.number().int().min(0).max(28).nullable().optional(),
   occurredAt: z.coerce.date().optional(),
@@ -76,7 +78,16 @@ export const dreQuerySchema = z.object({
   /** Início do período (inclusivo). Default = primeiro dia do mês corrente. */
   from: z.coerce.date().optional(),
   /** Fim do período (inclusivo). Default = agora. */
-  to: z.coerce.date().optional(),
+  to: z.coerce
+    .date()
+    .transform((d) => {
+      const end = new Date(d);
+      if (end.getUTCHours() === 0 && end.getUTCMinutes() === 0 && end.getUTCSeconds() === 0) {
+        end.setUTCHours(23, 59, 59, 999);
+      }
+      return end;
+    })
+    .optional(),
 });
 
 export type DreQuery = z.infer<typeof dreQuerySchema>;

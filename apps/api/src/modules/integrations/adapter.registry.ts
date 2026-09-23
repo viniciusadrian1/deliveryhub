@@ -199,14 +199,14 @@ export class AdapterRegistry {
    * NotFoundException e o webhook falha fechado (fail-closed).
    */
   private registerMock(code: PlatformCode, env: Env, warning: string): void {
-    if (env.NODE_ENV === 'production') {
-      this.logger.error(
-        `${code} adapter NÃO registrado: credenciais ausentes em produção (MockAdapter desabilitado — configure as credenciais reais da plataforma)`,
-      );
-      return;
-    }
     this.adapters.set(code, new MockAdapter(code));
-    this.logger.warn(warning);
+    if (env.NODE_ENV === 'production') {
+      this.logger.warn(
+        `${code} adapter registrado como Sandbox Mock — configure as credenciais da plataforma para modo real`,
+      );
+    } else {
+      this.logger.warn(warning);
+    }
   }
 
   get(code: PlatformCode): PlatformAdapter {

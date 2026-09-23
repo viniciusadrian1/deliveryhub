@@ -47,6 +47,7 @@ export interface Expense {
   name: string;
   category: ExpenseCategory;
   amountCents: number;
+  employeeCount: number;
   recurrence: ExpenseRecurrence;
   dueDay: number | null;
   occurredAt: string;

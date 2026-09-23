@@ -14,11 +14,13 @@ export class FinancialDashboardService {
 
   async summary(auth: AuthContext, storeId: string, from: Date, to: Date) {
     await this.assertStore(auth.orgId, storeId);
-    const result = await this.prisma.order.aggregate({
+
+    // Contabiliza como entrada financeira apenas pedidos concluídos (delivered)
+    const deliveredAgg = await this.prisma.order.aggregate({
       where: {
         organizationId: auth.orgId,
         storeId,
-        status: { not: 'cancelled' },
+        status: 'delivered',
         placedAt: { gte: from, lte: to },
       },
       _sum: {
@@ -32,33 +34,56 @@ export class FinancialDashboardService {
       _count: { _all: true },
     });
 
-    const revenueGross = Number(result._sum.totalCents ?? 0);
-    const revenueNet = Number(result._sum.netCents ?? 0);
-    const totalFees =
-      Number(result._sum.platformFeeCents ?? 0) +
-      Number(result._sum.processingFeeCents ?? 0) +
-      Number(result._sum.flatFeeCents ?? 0);
+    // Pedidos ainda em andamento (não cancelados e não concluídos) para previsão
+    const inProgressAgg = await this.prisma.order.aggregate({
+      where: {
+        organizationId: auth.orgId,
+        storeId,
+        status: { notIn: ['delivered', 'cancelled'] },
+        placedAt: { gte: from, lte: to },
+      },
+      _sum: {
+        totalCents: true,
+        netCents: true,
+        platformFeeCents: true,
+        processingFeeCents: true,
+        flatFeeCents: true,
+      },
+      _count: { _all: true },
+    });
+
+    const deliveredGross = Number(deliveredAgg._sum.totalCents ?? 0);
+    const deliveredNet = Number(deliveredAgg._sum.netCents ?? 0);
+    const deliveredFees =
+      Number(deliveredAgg._sum.platformFeeCents ?? 0) +
+      Number(deliveredAgg._sum.processingFeeCents ?? 0) +
+      Number(deliveredAgg._sum.flatFeeCents ?? 0);
+    const deliveredCount = deliveredAgg._count._all;
 
     return {
       from,
       to,
-      orderCount: result._count._all,
-      revenueGrossCents: revenueGross,
-      revenueNetCents: revenueNet,
-      totalFeesCents: totalFees,
-      avgTicketCents: Math.round(Number(result._avg.totalCents ?? 0)),
+      orderCount: deliveredCount,
+      revenueGrossCents: deliveredGross,
+      revenueNetCents: deliveredNet,
+      totalFeesCents: deliveredFees,
+      avgTicketCents: deliveredCount > 0 ? Math.round(deliveredGross / deliveredCount) : 0,
+      deliveredCount,
+      deliveredGrossCents: deliveredGross,
+      deliveredNetCents: deliveredNet,
+      pendingCount: inProgressAgg._count._all,
+      pendingGrossCents: Number(inProgressAgg._sum.totalCents ?? 0),
+      pendingNetCents: Number(inProgressAgg._sum.netCents ?? 0),
     };
   }
 
   async dailySeries(auth: AuthContext, storeId: string, from: Date, to: Date) {
     await this.assertStore(auth.orgId, storeId);
-    // GROUP BY data — usamos raw SQL pois Prisma não tem aggregate por dia nativo.
+    // GROUP BY data — apenas pedidos concluídos (entradas efetivas)
     const rows = await this.prisma.$queryRaw<
       { day: Date; orders: bigint; gross_cents: bigint; net_cents: bigint }[]
     >`
       SELECT
-        -- placed_at é timestamp sem tz guardando UTC; converte pro dia local (BRT)
-        -- antes de truncar, senão pedidos do jantar caem no dia UTC seguinte.
         date_trunc('day', placed_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date AS day,
         COUNT(*)::bigint              AS orders,
         SUM(total_cents)::bigint      AS gross_cents,
@@ -66,7 +91,7 @@ export class FinancialDashboardService {
       FROM "order"
       WHERE organization_id = ${auth.orgId}
         AND store_id = ${storeId}
-        AND status <> 'cancelled'
+        AND status = 'delivered'
         AND placed_at >= ${from}
         AND placed_at <= ${to}
       GROUP BY day
@@ -89,8 +114,6 @@ export class FinancialDashboardService {
     limit: number,
   ) {
     await this.assertStore(auth.orgId, storeId);
-    // Margem por item de pedido = (unit_price - menu_item.cost_cents) * qty
-    // Items sem menu_item_id (matching falhou) entram com cost=0.
     const rows = await this.prisma.$queryRaw<
       {
         menu_item_id: string | null;
@@ -113,7 +136,7 @@ export class FinancialDashboardService {
       LEFT JOIN menu_item mi ON mi.id = oi.menu_item_id
       WHERE o.organization_id = ${auth.orgId}
         AND o.store_id = ${storeId}
-        AND o.status <> 'cancelled'
+        AND o.status = 'delivered'
         AND o.placed_at >= ${from}
         AND o.placed_at <= ${to}
       GROUP BY oi.menu_item_id
@@ -153,7 +176,7 @@ export class FinancialDashboardService {
       INNER JOIN platform p ON p.id = o.platform_id
       WHERE o.organization_id = ${auth.orgId}
         AND o.store_id = ${storeId}
-        AND o.status <> 'cancelled'
+        AND o.status = 'delivered'
         AND o.placed_at >= ${from}
         AND o.placed_at <= ${to}
       GROUP BY p.code, p.name, p.color_hex
@@ -174,6 +197,32 @@ export class FinancialDashboardService {
           ? Math.round((Number(r.gross_cents) / totalGross) * 10_000) / 100
           : 0,
     }));
+  }
+
+  async salesOrders(auth: AuthContext, storeId: string, from: Date, to: Date, limit = 100) {
+    await this.assertStore(auth.orgId, storeId);
+    return this.prisma.order.findMany({
+      where: {
+        organizationId: auth.orgId,
+        storeId,
+        status: { not: 'cancelled' },
+        placedAt: { gte: from, lte: to },
+      },
+      select: {
+        id: true,
+        externalId: true,
+        status: true,
+        totalCents: true,
+        netCents: true,
+        platformFeeCents: true,
+        placedAt: true,
+        deliveredAt: true,
+        platform: { select: { code: true, name: true, colorHex: true } },
+        customer: { select: { name: true } },
+      },
+      orderBy: { placedAt: 'desc' },
+      take: limit,
+    });
   }
 
   private async assertStore(orgId: string, storeId: string): Promise<void> {

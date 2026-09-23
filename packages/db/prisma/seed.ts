@@ -50,12 +50,15 @@ const TEST_USER = {
 async function seedPlatforms(): Promise<number> {
   const platforms = [
     { code: 'ifood', name: 'iFood', colorHex: '#EA1D2C', active: true },
-    { code: 'rappi', name: 'Rappi', colorHex: '#FF441F', active: false },
+    { code: 'rappi', name: 'Rappi', colorHex: '#FF441F', active: true },
     { code: '99food', name: '99Food', colorHex: '#FE3324', active: true },
     { code: 'keeta', name: 'Keeta', colorHex: '#FFCC00', active: true },
-    { code: 'ubereats', name: 'Uber Eats', colorHex: '#06C167', active: false },
-    { code: 'aiqfome', name: 'AiQfome', colorHex: '#E2231A', active: false },
+    { code: 'aiqfome', name: 'AiQfome', colorHex: '#7B1FA2', active: true },
   ];
+
+  // Remove qualquer vestígio de Uber Eats
+  await prisma.platformConnection.deleteMany({ where: { platform: { code: 'ubereats' } } });
+  await prisma.platform.deleteMany({ where: { code: 'ubereats' } });
 
   for (const p of platforms) {
     await prisma.platform.upsert({

@@ -82,7 +82,7 @@ export class DreService {
       where: {
         organizationId: auth.orgId,
         storeId: query.storeId,
-        status: { not: 'cancelled' },
+        status: 'delivered',
         placedAt: { gte: from, lte: to },
       },
       select: {
@@ -186,7 +186,11 @@ function resolvePeriod(q: { from?: Date; to?: Date }): { from: Date; to: Date } 
   const now = new Date();
   const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   const from = q.from ?? defaultFrom;
-  const to = q.to ?? now;
+  let to = q.to ?? now;
+  if (to.getUTCHours() === 0 && to.getUTCMinutes() === 0 && to.getUTCSeconds() === 0) {
+    to = new Date(to);
+    to.setUTCHours(23, 59, 59, 999);
+  }
   return { from, to };
 }
 

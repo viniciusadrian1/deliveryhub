@@ -17,7 +17,7 @@ const variantClasses: Record<Variant, string> = {
   warning: 'bg-warning-soft text-warning-bright ring-1 ring-inset ring-warning/30',
   danger: 'bg-danger-soft text-danger-bright ring-1 ring-inset ring-danger/30',
   info: 'bg-info-soft text-info ring-1 ring-inset ring-info/30',
-  brand: 'bg-brand-500/15 text-brand-300 ring-1 ring-inset ring-brand-500/30',
+  brand: 'bg-brand-500/10 text-[#C2410C] dark:bg-brand-500/15 dark:text-brand-300 ring-1 ring-inset ring-brand-500/30',
 };
 
 const dotClasses: Record<Variant, string> = {

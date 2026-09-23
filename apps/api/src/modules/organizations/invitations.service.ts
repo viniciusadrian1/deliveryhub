@@ -7,6 +7,7 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 
 import type { Role } from '@deliveryhub/shared';
@@ -62,7 +63,7 @@ export class InvitationsService {
     email: string,
     role: Role,
     session: SessionContext = {},
-  ): Promise<{ id: string; expiresAt: Date }> {
+  ): Promise<{ id: string; expiresAt: Date; delivery: 'email' | 'link'; invitationUrl?: string }> {
     // Anti-escalação: ninguém convida acima do próprio papel.
     if (ROLE_RANK[role] > ROLE_RANK[inviterRole]) {
       throw new ForbiddenException('cannot_invite_higher_role');
@@ -81,9 +82,6 @@ export class InvitationsService {
     const pending = await this.prisma.invitation.findFirst({
       where: { organizationId, email, acceptedAt: null, revokedAt: null },
     });
-    if (pending && pending.expiresAt > new Date()) {
-      throw new ConflictException('pending_invitation_exists');
-    }
 
     const plainToken = randomBytes(32).toString('base64url');
     const tokenHash = this.tokens.hashRefreshToken(plainToken);
@@ -109,19 +107,36 @@ export class InvitationsService {
 
     const link = `${this.env.WEB_BASE_URL}/auth/invitations/accept?token=${encodeURIComponent(plainToken)}`;
 
-    await this.email.send({
-      to: email,
-      subject: `Convite para ${org.name} — DeliveryHub`,
-      text:
-        `Olá!\n\nVocê foi convidado para entrar na organização "${org.name}" no DeliveryHub` +
-        ` com o papel ${role}.\n\nAceite o convite (válido por 7 dias):\n${link}\n\n` +
-        `Se você não esperava este convite, ignore este e-mail.\n\nDeliveryHub`,
-      html:
-        `<p>Olá!</p>` +
-        `<p>Você foi convidado para entrar na organização <strong>${org.name}</strong> no DeliveryHub com o papel <strong>${role}</strong>.</p>` +
-        `<p><a href="${link}">Aceitar convite</a> (válido por 7 dias)</p>` +
-        `<p>Se você não esperava este convite, ignore este e-mail.</p>`,
-    });
+    try {
+      if (this.email.configured)
+        await this.email.send({
+          to: email,
+          subject: `Convite para ${org.name} — DeliveryHub`,
+          text:
+            `Olá!\n\nVocê foi convidado para entrar na organização "${org.name}" no DeliveryHub` +
+            ` com o papel ${role}.\n\nAceite o convite (válido por 7 dias):\n${link}\n\n` +
+            `Se você não esperava este convite, ignore este e-mail.\n\nDeliveryHub`,
+          html:
+            `<p>Olá!</p>` +
+            `<p>Você foi convidado para entrar na organização <strong>${org.name}</strong> no DeliveryHub com o papel <strong>${role}</strong>.</p>` +
+            `<p><a href="${link}">Aceitar convite</a> (válido por 7 dias)</p>` +
+            `<p>Se você não esperava este convite, ignore este e-mail.</p>`,
+        });
+    } catch {
+      await this.prisma.invitation.delete({ where: { id: created.id } });
+      throw new ServiceUnavailableException('invitation_email_failed');
+    }
+    if (pending)
+      await this.prisma.invitation.updateMany({
+        where: {
+          organizationId,
+          email,
+          acceptedAt: null,
+          revokedAt: null,
+          id: { not: created.id },
+        },
+        data: { revokedAt: new Date() },
+      });
 
     await this.audit.record({
       organizationId,
@@ -134,7 +149,43 @@ export class InvitationsService {
       userAgent: session.userAgent,
     });
 
-    return { id: created.id, expiresAt };
+    return {
+      id: created.id,
+      expiresAt,
+      delivery: this.email.configured ? 'email' : 'link',
+      ...(this.email.configured ? {} : { invitationUrl: link }),
+    };
+  }
+
+  async list(organizationId: string) {
+    return this.prisma.invitation.findMany({
+      where: { organizationId, acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+      select: { id: true, email: true, role: true, expiresAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async preview(plainToken: string) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { tokenHash: this.tokens.hashRefreshToken(plainToken) },
+      include: { organization: { select: { name: true } } },
+    });
+    if (
+      !invitation ||
+      invitation.acceptedAt ||
+      invitation.revokedAt ||
+      invitation.expiresAt <= new Date()
+    )
+      throw new UnauthorizedException('invalid_invitation_token');
+    const user = await this.prisma.user.findUnique({
+      where: { email: invitation.email },
+      select: { id: true },
+    });
+    return {
+      email: invitation.email,
+      organizationName: invitation.organization.name,
+      existingUser: Boolean(user),
+    };
   }
 
   async accept(
@@ -159,6 +210,13 @@ export class InvitationsService {
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email: invitation.email } });
+
+    if (
+      existing &&
+      (!password || !(await this.passwords.verify(existing.passwordHash, password)))
+    ) {
+      throw new UnauthorizedException('existing_user_password_required');
+    }
 
     // Hash de senha é CPU-bound — computa FORA da transação (só p/ usuário novo).
     let passwordHash: string | undefined;
@@ -224,7 +282,7 @@ export class InvitationsService {
         kind: 'invitation_accepted',
         title: 'Convite aceito',
         body: `${user.name} aceitou seu convite para entrar como ${invitation.role}.`,
-        linkUrl: '/settings/team',
+        linkUrl: '/settings#members',
         email: inviter.email,
       });
     }

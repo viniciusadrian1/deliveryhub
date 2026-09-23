@@ -14,14 +14,17 @@ import {
   VolumeX,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '../../../components/ui/badge';
+import { PlatformLogo } from '../../../components/ui/platform-logo';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
+import { formatOrderNumber } from '../../../lib/format';
 import type { OrderEventPayload, OrderStatus } from '../../../lib/hub-types';
 import { r } from '../../../lib/routes';
 import { getSocket } from '../../../lib/socket';
+import { playKitchenAlert, unlockAudio } from '../../../lib/sound';
 
 /** Os status que importam pra cozinha: pedido aceito até ficar pronto. */
 const KITCHEN_STATUSES: readonly OrderStatus[] = ['accepted', 'preparing', 'ready'];
@@ -73,6 +76,22 @@ export default function KdsPage() {
   const [now, setNow] = useState(Date.now());
   const storeId = state?.storeId ?? null;
 
+  const initialLoadDoneRef = useRef(false);
+  const knownOrderIdsRef = useRef<Set<string>>(new Set());
+
+  // Desbloqueia o AudioContext no primeiro toque/clique na tela
+  useEffect(() => {
+    const handleGesture = () => {
+      unlockAudio();
+    };
+    window.addEventListener('click', handleGesture, { passive: true });
+    window.addEventListener('touchstart', handleGesture, { passive: true });
+    return () => {
+      window.removeEventListener('click', handleGesture);
+      window.removeEventListener('touchstart', handleGesture);
+    };
+  }, []);
+
   // Tick a cada segundo pra atualizar os timers
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -98,7 +117,37 @@ export default function KdsPage() {
     refetchInterval: 15_000, // failsafe se socket cair
   });
 
-  // Live updates
+  // Toca alerta sonoro sempre que um novo pedido ingressar na fila da cozinha
+  useEffect(() => {
+    if (!orders) return;
+
+    if (!initialLoadDoneRef.current) {
+      if (orders.length > 0) {
+        orders.forEach((o) => knownOrderIdsRef.current.add(o.id));
+        initialLoadDoneRef.current = true;
+      }
+      return;
+    }
+
+    // Verifica se algum pedido novo chegou à fila da cozinha
+    let hasNewOrder = false;
+    for (const o of orders) {
+      if (!knownOrderIdsRef.current.has(o.id)) {
+        hasNewOrder = true;
+        break;
+      }
+    }
+
+    if (hasNewOrder) {
+      if (soundOn) {
+        playKitchenAlert();
+      }
+    }
+
+    knownOrderIdsRef.current = new Set(orders.map((o) => o.id));
+  }, [orders, soundOn]);
+
+  // Live updates via WebSocket
   useEffect(() => {
     if (!storeId) return;
     const socket = getSocket();
@@ -107,11 +156,13 @@ export default function KdsPage() {
     const refetch = () => {
       void qc.invalidateQueries({ queryKey: ['kds-orders', storeId] });
     };
+
     const onCreated = (_p: OrderEventPayload) => {
       refetch();
-      if (soundOn) playBeep();
     };
-    const onUpdated = (_p: OrderEventPayload) => refetch();
+    const onUpdated = (_p: OrderEventPayload) => {
+      refetch();
+    };
 
     socket.on('order.created', onCreated);
     socket.on('order.updated', onUpdated);
@@ -119,7 +170,7 @@ export default function KdsPage() {
       socket.off('order.created', onCreated);
       socket.off('order.updated', onUpdated);
     };
-  }, [storeId, qc, soundOn]);
+  }, [storeId, qc]);
 
   // Mutations para transições — não bloqueiam UI (otimista invalida)
   const accept = useMutation({
@@ -184,14 +235,21 @@ export default function KdsPage() {
         <div className="flex items-center gap-2">
           <ClockDisplay />
           <button
-            onClick={() => setSoundOn(!soundOn)}
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              if (next) {
+                unlockAudio();
+                playKitchenAlert();
+              }
+            }}
             className={clsx(
               'flex h-10 w-10 items-center justify-center rounded-lg transition-colors',
               soundOn
-                ? 'bg-surface-raised text-ink-primary'
-                : 'bg-surface-base text-ink-tertiary',
+                ? 'bg-brand-500/20 text-brand-400 hover:bg-brand-500/30'
+                : 'bg-surface-base text-ink-tertiary hover:text-ink-secondary',
             )}
-            title={soundOn ? 'Som ligado' : 'Som desligado'}
+            title={soundOn ? 'Som ativo (clique para silenciar)' : 'Som desligado (clique para ativar e testar)'}
             aria-label="Toggle som"
           >
             {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
@@ -284,13 +342,23 @@ function KdsOrderTile({
         borderClass,
       )}
     >
-      {/* Cabeçalho do card */}
-      <header className="flex items-center justify-between border-b border-surface-border-subtle bg-surface-base/40 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Badge color={order.platform.colorHex}>{order.platform.name}</Badge>
-          <span className="font-mono text-xs text-ink-tertiary">
-            #{order.externalId.slice(0, 8)}
-          </span>
+      {/* Cabeçalho do card: Logo da plataforma e número de pedido de fácil leitura estilo comanda */}
+      <header className="flex items-center justify-between border-b border-surface-border-subtle bg-surface-base/40 px-4 py-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <PlatformLogo code={order.platform.code} name={order.platform.name} size="md" />
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-ink-tertiary">
+                PEDIDO
+              </span>
+              <span className="font-mono text-xl font-black tracking-tight text-ink-primary">
+                #{formatOrderNumber(order.externalId)}
+              </span>
+            </div>
+            <p className="text-xs font-medium text-ink-secondary truncate">
+              {order.platform.name}
+            </p>
+          </div>
         </div>
         <div
           className={clsx(
@@ -406,16 +474,4 @@ function ClockDisplay() {
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function playBeep() {
-  try {
-    const audio = new Audio(
-      // Tom de 880Hz por ~250ms (pra cozinha barulhenta — som mais agudo)
-      'data:audio/wav;base64,UklGRsQDAABXQVZFZm10IBAAAAABAAEARKwAAESsAAABAAgAZGF0YaADAAB/f3+AgIB/f3+AgICAgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgICAgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgIB/f3+AgICAgIB/f3+AgIA=',
-    );
-    audio.play().catch(() => undefined);
-  } catch {
-    /* autoplay bloqueado */
-  }
 }

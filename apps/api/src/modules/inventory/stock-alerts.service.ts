@@ -64,10 +64,7 @@ export class StockAlertsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async summarize(
-    organizationId: string,
-    storeId: string,
-  ): Promise<StockSummary[]> {
+  async summarize(organizationId: string, storeId: string): Promise<StockSummary[]> {
     const ingredients = await this.prisma.ingredient.findMany({
       where: { organizationId, storeId, archivedAt: null },
       select: {
@@ -103,6 +100,7 @@ export class StockAlertsService {
         storeId,
         createdAt: { gte: windowStart },
         quantity: { lt: 0 },
+        reason: { in: ['sale', 'recipe_consumption', 'waste'] },
       },
       _sum: { quantity: true },
     });
@@ -120,21 +118,24 @@ export class StockAlertsService {
       const avgDailyConsumption = consumed.div(CONSUMPTION_WINDOW_DAYS);
       const targetDays = ing.targetDays ?? DEFAULT_TARGET_DAYS;
 
-      const daysOfCover = avgDailyConsumption.greaterThan(0)
-        ? Math.round(balance.div(avgDailyConsumption).toNumber())
-        : null;
+      const isZeroOrNegative = balance.lessThanOrEqualTo(0);
+      const daysOfCover = isZeroOrNegative
+        ? 0
+        : avgDailyConsumption.greaterThan(0)
+          ? Math.max(0, balance.div(avgDailyConsumption).toNumber())
+          : null;
 
-      const belowMinimum = ing.minLevel
-        ? balance.lessThan(ing.minLevel)
-        : false;
+      const belowMinimum = ing.minLevel ? balance.lessThan(ing.minLevel) : false;
 
       const needsRestock =
-        (ing.minLevel && belowMinimum) ||
-        (daysOfCover !== null && daysOfCover < targetDays);
+        (ing.minLevel && belowMinimum) || (daysOfCover !== null && daysOfCover < targetDays);
 
       // Sugestão = (consumoDiário × targetDays) − saldo atual.
       // Mínimo zero (não sugerimos negativo se já tem demais).
-      const targetAmount = avgDailyConsumption.mul(targetDays);
+      const targetAmount = Prisma.Decimal.max(
+        avgDailyConsumption.mul(targetDays),
+        ing.minLevel ?? 0,
+      );
       const suggestedPurchase = targetAmount.greaterThan(balance)
         ? targetAmount.sub(balance)
         : new Prisma.Decimal(0);
@@ -154,6 +155,49 @@ export class StockAlertsService {
         targetDays,
       };
     });
+  }
+
+  /**
+   * Verifica se a loja possui itens abaixo do mínimo e dispara notificação no sino
+   * para os gestores caso ainda não tenham sido notificados recentemente.
+   */
+  async checkAndNotifyStore(organizationId: string, storeId: string): Promise<void> {
+    try {
+      const summary = await this.summarize(organizationId, storeId);
+      const lowItems = summary.filter((s) => s.belowMinimum);
+      if (lowItems.length === 0) return;
+
+      const targets = await this.prisma.membership.findMany({
+        where: {
+          organizationId,
+          role: { in: ['owner', 'manager'] },
+        },
+        select: { userId: true },
+      });
+
+      for (const target of targets) {
+        const recentlySent = await this.wasRecentlyNotified(target.userId, storeId);
+        if (recentlySent) continue;
+
+        await this.notifications.create({
+          userId: target.userId,
+          organizationId,
+          kind: 'stock_low',
+          title: `Estoque baixo: ${lowItems.length} ${
+            lowItems.length === 1 ? 'insumo precisa de atenção' : 'insumos precisam de atenção'
+          }`,
+          body:
+            lowItems
+              .slice(0, 3)
+              .map((i) => `${i.ingredientName} (${i.balance.toFixed(2)} ${i.unit})`)
+              .join(' · ') + (lowItems.length > 3 ? `… e mais ${lowItems.length - 3}` : ''),
+          linkUrl: '/inventory',
+          metadata: { storeId, count: lowItems.length },
+        });
+      }
+    } catch (err) {
+      this.logger.error({ err, organizationId, storeId }, 'stock_alert_check_failed');
+    }
   }
 
   /**
@@ -186,10 +230,7 @@ export class StockAlertsService {
           });
 
           for (const target of targets) {
-            const recentlySent = await this.wasRecentlyNotified(
-              target.userId,
-              store.id,
-            );
+            const recentlySent = await this.wasRecentlyNotified(target.userId, store.id);
             if (recentlySent) continue;
 
             await this.notifications.create({
@@ -199,44 +240,40 @@ export class StockAlertsService {
               title: `Estoque baixo: ${lowItems.length} ${
                 lowItems.length === 1 ? 'insumo' : 'insumos'
               }`,
-              body: lowItems
-                .slice(0, 3)
-                .map((i) => `${i.ingredientName} (${i.balance.toFixed(2)} ${i.unit})`)
-                .join(' · ') + (lowItems.length > 3 ? `…e mais ${lowItems.length - 3}` : ''),
+              body:
+                lowItems
+                  .slice(0, 3)
+                  .map((i) => `${i.ingredientName} (${i.balance.toFixed(2)} ${i.unit})`)
+                  .join(' · ') + (lowItems.length > 3 ? `…e mais ${lowItems.length - 3}` : ''),
               linkUrl: '/inventory',
               metadata: { storeId: store.id, count: lowItems.length },
             });
             totalNotificationsFired++;
           }
         } catch (err) {
-          this.logger.error(
-            { err, orgId: org.id, storeId: store.id },
-            'stock_alert_failed',
-          );
+          this.logger.error({ err, orgId: org.id, storeId: store.id }, 'stock_alert_failed');
         }
       }
     }
 
-    this.logger.log(
-      { totalNotificationsFired },
-      'stock_alerts_daily_check_done',
-    );
+    this.logger.log({ totalNotificationsFired }, 'stock_alerts_daily_check_done');
   }
 
   /** Verifica se já mandamos notificação `stock_low` pra esse user/store nas últimas 24h. */
   private async wasRecentlyNotified(userId: string, storeId: string): Promise<boolean> {
     const cutoff = new Date(Date.now() - NOTIFICATION_COOLDOWN_HOURS * 3600 * 1000);
-    const recent = await this.prisma.notification.findFirst({
+    const recents = await this.prisma.notification.findMany({
       where: {
         userId,
         kind: 'stock_low',
         createdAt: { gte: cutoff },
-        // metadata é Json — Prisma suporta filtro JSON path
-        metadata: { path: ['storeId'], equals: storeId },
       },
-      select: { id: true },
+      select: { metadata: true },
     });
-    return !!recent;
+    return recents.some((r) => {
+      const meta = r.metadata as Record<string, any> | null;
+      return meta?.storeId === storeId;
+    });
   }
 }
 

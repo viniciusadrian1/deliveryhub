@@ -5,7 +5,13 @@ import { PLATFORMS } from '@deliveryhub/shared';
 const periodSchema = z.object({
   storeId: z.string().uuid(),
   from: z.coerce.date(),
-  to: z.coerce.date(),
+  to: z.coerce.date().transform((d) => {
+    const end = new Date(d);
+    if (end.getUTCHours() === 0 && end.getUTCMinutes() === 0 && end.getUTCSeconds() === 0) {
+      end.setUTCHours(23, 59, 59, 999);
+    }
+    return end;
+  }),
 });
 
 export const dashboardQuerySchema = periodSchema;

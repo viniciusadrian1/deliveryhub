@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@deliveryhub/db';
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
@@ -69,6 +69,7 @@ export class ExpensesService {
   }
 
   async create(auth: AuthContext, input: CreateExpenseInput) {
+    validatePayroll(input.category, input.amountCents, input.employeeCount);
     const created = await this.tenantPrisma.tx.expense.create({
       data: {
         organizationId: auth.orgId,
@@ -76,6 +77,7 @@ export class ExpensesService {
         name: input.name,
         category: input.category,
         amountCents: input.amountCents,
+        employeeCount: input.category === 'payroll' ? input.employeeCount : 1,
         recurrence: input.recurrence,
         dueDay: input.dueDay ?? null,
         occurredAt: input.occurredAt ?? new Date(),
@@ -104,18 +106,22 @@ export class ExpensesService {
 
   async update(auth: AuthContext, id: string, input: UpdateExpenseInput) {
     const existing = await this.findOne(auth, id);
+    const category = input.category ?? existing.category;
+    const employeeCount =
+      category === 'payroll' ? (input.employeeCount ?? existing.employeeCount) : 1;
+    validatePayroll(category, input.amountCents ?? existing.amountCents, employeeCount);
     const updated = await this.tenantPrisma.tx.expense.update({
       where: { id },
       data: {
         name: input.name ?? undefined,
         category: input.category ?? undefined,
         amountCents: input.amountCents ?? undefined,
+        employeeCount,
         recurrence: input.recurrence ?? undefined,
         dueDay: input.dueDay === undefined ? undefined : input.dueDay,
         occurredAt: input.occurredAt ?? undefined,
         endedAt: input.endedAt === undefined ? undefined : input.endedAt,
-        paymentMethod:
-          input.paymentMethod === undefined ? undefined : input.paymentMethod,
+        paymentMethod: input.paymentMethod === undefined ? undefined : input.paymentMethod,
         notes: input.notes === undefined ? undefined : input.notes,
       },
     });
@@ -143,5 +149,16 @@ export class ExpensesService {
       entityId: id,
       action: 'delete',
     });
+  }
+}
+
+export function validatePayroll(category: string, totalCents: number, count: number) {
+  if (
+    !Number.isInteger(count) ||
+    count < 1 ||
+    count > 10000 ||
+    (category === 'payroll' && totalCents % count !== 0)
+  ) {
+    throw new BadRequestException('invalid_payroll_total');
   }
 }

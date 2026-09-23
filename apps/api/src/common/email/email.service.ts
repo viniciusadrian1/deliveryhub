@@ -58,9 +58,11 @@ class ResendEmailSender implements EmailSender {
 @Injectable()
 export class EmailService {
   private readonly sender: EmailSender;
+  readonly configured: boolean;
 
   constructor() {
     const env = loadEnv();
+    this.configured = Boolean(env.RESEND_API_KEY);
     this.sender = env.RESEND_API_KEY
       ? new ResendEmailSender(env.RESEND_API_KEY, env.EMAIL_FROM)
       : new ConsoleEmailSender();

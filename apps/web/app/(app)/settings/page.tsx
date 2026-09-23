@@ -5,12 +5,13 @@ import {
   Bell,
   Building2,
   Palette,
+  PlayCircle,
   Shield,
   User as UserIcon,
   Users,
   type LucideIcon,
 } from 'lucide-react';
-import { useState, type ReactElement } from 'react';
+import { useState, useEffect, type ReactElement } from 'react';
 
 import { AccountSection } from '../../../components/settings/sections/account-section';
 import { AppearanceSection } from '../../../components/settings/sections/appearance-section';
@@ -18,6 +19,7 @@ import { MembersSection } from '../../../components/settings/sections/members-se
 import { NotificationsSection } from '../../../components/settings/sections/notifications-section';
 import { OrganizationSection } from '../../../components/settings/sections/organization-section';
 import { PrivacySection } from '../../../components/settings/sections/privacy-section';
+import { SimulationSection } from '../../../components/settings/sections/simulation-section';
 
 type SectionKey =
   | 'account'
@@ -25,7 +27,8 @@ type SectionKey =
   | 'members'
   | 'notifications'
   | 'appearance'
-  | 'privacy';
+  | 'privacy'
+  | 'simulation';
 
 interface NavItem {
   key: SectionKey;
@@ -71,6 +74,12 @@ const NAV: NavItem[] = [
     description: 'Exportar, consentimentos, anonimizar',
     icon: Shield,
   },
+  {
+    key: 'simulation',
+    label: 'Simulador de Pedidos',
+    description: 'Testes de fluxo operacional e pedidos fictícios',
+    icon: PlayCircle,
+  },
 ];
 
 const SECTION_COMPONENTS: Record<SectionKey, () => ReactElement | null> = {
@@ -80,10 +89,20 @@ const SECTION_COMPONENTS: Record<SectionKey, () => ReactElement | null> = {
   notifications: NotificationsSection,
   appearance: AppearanceSection,
   privacy: PrivacySection,
+  simulation: SimulationSection,
 };
 
 export default function SettingsPage() {
   const [active, setActive] = useState<SectionKey>('account');
+  useEffect(() => {
+    const sync = () => {
+      const key = window.location.hash.slice(1) as SectionKey;
+      if (NAV.some((n) => n.key === key)) setActive(key);
+    };
+    sync();
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
   const ActiveSection = SECTION_COMPONENTS[active];
 
   return (
@@ -107,7 +126,10 @@ export default function SettingsPage() {
               return (
                 <li key={item.key}>
                   <button
-                    onClick={() => setActive(item.key)}
+                    onClick={() => {
+                      setActive(item.key);
+                      window.location.hash = item.key;
+                    }}
                     className={clsx(
                       'group flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors',
                       isActive

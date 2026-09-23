@@ -5,3 +5,5 @@ export type PlatformCode = (typeof PLATFORMS)[number];
 
 export const ROLES = ['owner', 'manager', 'staff', 'financial'] as const;
 export type Role = (typeof ROLES)[number];
+
+export { isValidSupplierDocument } from './documents.js';

@@ -22,19 +22,23 @@ const config: Config = {
         brand: ['var(--font-brand)', 'var(--font-sans)', 'sans-serif'],
       },
       colors: {
-        // ====== Brand (theme-invariant) ======
-        // Laranja queimado — distinto de iFood (vermelho puro) e Rappi (laranja vivo).
+        // ====== Brand (identidade visual padronizada com 3 tons) ======
+        // Principal: #FF6B00 | Hover: #E85F00 | Secundaria: #FF8A33
         brand: {
+          DEFAULT: '#FF6B00',
           50: '#fff7ed',
           100: '#ffedd5',
           200: '#fed7aa',
-          300: '#fdba74',
-          400: '#fb923c',
-          500: '#f97316',
-          600: '#ea580c',
-          700: '#c2410c',
+          300: '#FF8A33',
+          400: '#FF8A33',
+          500: '#FF6B00',
+          600: '#E85F00',
+          700: '#E85F00',
           800: '#9a3412',
           900: '#7c2d12',
+          primary: '#FF6B00',
+          hover: '#E85F00',
+          secondary: '#FF8A33',
         },
         // ====== Surfaces (themed via CSS vars) ======
         surface: {
@@ -72,7 +76,7 @@ const config: Config = {
           soft: 'var(--info-soft)',
           DEFAULT: '#3b82f6',
         },
-        // ====== Plataformas (cores oficiais — theme-invariant) ======
+        // ====== Plataformas (cores oficiais) ======
         platform: {
           ifood: '#EA1D2C',
           rappi: '#FF441F',
@@ -93,10 +97,10 @@ const config: Config = {
         sm: 'var(--shadow-sm)',
         DEFAULT: 'var(--shadow-md)',
         lg: 'var(--shadow-lg)',
-        glow: '0 0 0 1px rgba(249, 115, 22, 0.45), 0 0 32px -4px rgba(249, 115, 22, 0.35)',
+        glow: '0 0 0 1px rgba(255, 107, 0, 0.35), 0 4px 16px -2px rgba(255, 107, 0, 0.25)',
       },
       backgroundImage: {
-        'brand-gradient': 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+        'brand-gradient': 'linear-gradient(135deg, #FF6B00 0%, #E85F00 100%)',
         'surface-gradient': 'var(--surface-gradient)',
         'hero-radial': 'var(--hero-radial)',
       },

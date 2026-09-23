@@ -40,6 +40,12 @@ function readSystem(): ResolvedTheme {
 
 function readStored(): Theme {
   if (typeof window === 'undefined') return 'system';
+  try {
+    const urlParam = new URLSearchParams(window.location.search).get('theme');
+    if (urlParam === 'light' || urlParam === 'dark') return urlParam;
+  } catch {
+    // Ignore URL parsing errors
+  }
   const v = window.localStorage.getItem(STORAGE_KEY);
   if (v === 'light' || v === 'dark' || v === 'system') return v;
   return 'system';
@@ -107,9 +113,12 @@ export function useTheme(): ThemeContextValue {
 export const THEME_INIT_SCRIPT = `(() => {
   try {
     var key = '${STORAGE_KEY}';
-    var stored = localStorage.getItem(key);
+    var urlTheme = new URLSearchParams(window.location.search).get('theme');
+    var stored = urlTheme || localStorage.getItem(key);
     var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     var dark = stored === 'dark' || ((stored === 'system' || !stored) && prefersDark);
+    if (stored === 'light') dark = false;
     if (dark) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   } catch (e) {}
 })();`;

@@ -108,6 +108,8 @@ export interface ConsentLogEntry {
 }
 
 export interface InvitationCreated {
+  delivery: 'email' | 'link';
+  invitationUrl?: string;
   id: string;
   expiresAt: string;
 }

@@ -56,10 +56,7 @@ export class SuppliersController {
   constructor(private readonly suppliers: SuppliersService) {}
 
   @Get()
-  list(
-    @CurrentUser() auth: AuthContext,
-    @Query('includeArchived') includeArchived?: string,
-  ) {
+  list(@CurrentUser() auth: AuthContext, @Query('includeArchived') includeArchived?: string) {
     return this.suppliers.list(auth, { includeArchived: includeArchived === 'true' });
   }
 
@@ -86,6 +83,12 @@ export class SuppliersController {
     @Body(new ZodValidationPipe(updateSupplierSchema)) body: UpdateSupplierInput,
   ) {
     return this.suppliers.update(auth, id, body);
+  }
+
+  @Post(':id/restore')
+  @Roles('owner', 'manager')
+  restore(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
+    return this.suppliers.restore(auth, id);
   }
 
   @Delete(':id')
@@ -214,11 +217,9 @@ export class StockController {
    * Computado live (consumo dos últimos 30 dias, sem cache).
    */
   @Get('alerts')
-  async alertsSummary(
-    @CurrentUser() auth: AuthContext,
-    @Query('storeId') storeId: string,
-  ) {
+  async alertsSummary(@CurrentUser() auth: AuthContext, @Query('storeId') storeId: string) {
     const summary = await this.alerts.summarize(auth.orgId, storeId);
+    void this.alerts.checkAndNotifyStore(auth.orgId, storeId);
     // Serialização: Decimal vira string pra preservar precisão na response.
     return summary.map((s) => ({
       ingredientId: s.ingredientId,

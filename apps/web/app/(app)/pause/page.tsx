@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
   AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
   CircleDot,
   Clock,
   PauseCircle,
@@ -21,6 +23,7 @@ import { Button } from '../../../components/ui/button';
 import { Dialog } from '../../../components/ui/dialog';
 import { EmptyState } from '../../../components/ui/empty-state';
 import { Input } from '../../../components/ui/input';
+import { PlatformLogo } from '../../../components/ui/platform-logo';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import type { PlatformConnection } from '../../../lib/integrations-types';
@@ -49,6 +52,7 @@ interface StatusValidation {
   state?: string;
   message?: string;
 }
+
 interface MerchantStatus {
   operation?: string;
   available: boolean;
@@ -56,6 +60,7 @@ interface MerchantStatus {
   validations: StatusValidation[];
   message?: string;
 }
+
 interface StoreStatusEntry {
   platform: string;
   supported: boolean;
@@ -64,11 +69,12 @@ interface StoreStatusEntry {
 }
 
 const REASON_LABEL: Record<string, string> = {
-  kitchen_overloaded: 'Cozinha sobrecarregada',
+  kitchen_overloaded: 'Cozinha sobrecarregada / Alta demanda',
   end_of_shift: 'Fim de expediente',
-  out_of_stock: 'Falta de insumo',
-  scheduled: 'Programada',
-  other: 'Outro',
+  out_of_stock: 'Falta momentânea de insumo',
+  maintenance: 'Manutenção ou limpeza no restaurante',
+  scheduled: 'Pausa programada',
+  other: 'Outro motivo operacional',
 };
 
 const DURATION_PRESETS = [
@@ -143,6 +149,7 @@ export default function PausePage() {
       void qc.invalidateQueries({ queryKey: ['pauses'] });
       setOpen(false);
       setReasonNote('');
+      setSelectedPlatforms([]);
     },
   });
 
@@ -163,7 +170,7 @@ export default function PausePage() {
       <EmptyState
         icon={PauseCircle}
         title="Nenhuma loja configurada"
-        description="Crie uma loja primeiro."
+        description="Selecione ou configure uma loja nas configurações."
       />
     );
   }
@@ -172,29 +179,26 @@ export default function PausePage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <div className="flex items-start gap-2">
-          <h1>Pausa Multiplataforma</h1>
-          <Badge variant="brand" dot>
-            Diferencial
-          </Badge>
+      {/* Cabeçalho */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1>Controle de Disponibilidade &amp; Pausa</h1>
+          <p className="mt-1 text-sm text-ink-secondary">
+            Pause temporariamente o recebimento de novos pedidos em uma ou todas as plataformas integradas com reabertura programada.
+          </p>
         </div>
-        <p className="mt-2 text-sm text-ink-secondary">
-          Pause em uma, várias ou todas as plataformas — total, por categoria ou item.
-          Reabertura automática no horário definido.
-        </p>
       </header>
 
-      {/* Status banner */}
+      {/* Banner de Status Principal */}
       <section
         className={clsx(
-          'surface-card relative overflow-hidden p-6',
-          isOpen ? 'border-success/40' : 'border-warning/40',
+          'surface-card relative overflow-hidden p-6 border',
+          isOpen ? 'border-success/30' : 'border-warning/30',
         )}
       >
         <div
           className={clsx(
-            'pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-20 blur-3xl',
+            'pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full opacity-15 blur-3xl',
             isOpen ? 'bg-success' : 'bg-warning',
           )}
         />
@@ -209,127 +213,115 @@ export default function PausePage() {
               )}
             >
               {isOpen ? (
-                <CircleDot className="h-6 w-6 animate-pulse" />
+                <CircleDot className="h-7 w-7 animate-pulse" />
               ) : (
-                <PauseCircle className="h-6 w-6" />
+                <PauseCircle className="h-7 w-7" />
               )}
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-ink-tertiary">
-                Status atual
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary">
+                Status Operacional da Loja
               </p>
               <p
                 className={clsx(
-                  'text-lg font-bold',
+                  'text-xl font-extrabold',
                   isOpen ? 'text-success-bright' : 'text-warning-bright',
                 )}
               >
                 {isOpen
-                  ? 'Aberta em todas as plataformas conectadas'
-                  : `${active.length} pausa${active.length === 1 ? '' : 's'} ativa${active.length === 1 ? '' : 's'}`}
+                  ? 'Aberta e operando em todos os canais conectados'
+                  : `${active.length} ${active.length === 1 ? 'pausa ativa' : 'pausas ativas'}`}
               </p>
               <p className="mt-0.5 text-xs text-ink-secondary">
                 {isOpen
-                  ? `${activeConnections.length} plataforma${activeConnections.length === 1 ? '' : 's'} ${activeConnections.length === 1 ? 'conectada' : 'conectadas'}`
-                  : 'Pedidos podem não estar chegando em todas as plataformas'}
+                  ? `${activeConnections.length} ${activeConnections.length === 1 ? 'plataforma conectada' : 'plataformas conectadas'} recebendo pedidos normalmente`
+                  : 'O recebimento de pedidos está suspenso temporariamente nos canais selecionados'}
               </p>
             </div>
           </div>
+
           <Button
             size="lg"
             variant={isOpen ? 'primary' : 'secondary'}
             onClick={() => setOpen(true)}
             leftIcon={<PauseCircle className="h-4 w-4" />}
           >
-            Pausar loja
+            Pausar recebimento
           </Button>
         </div>
       </section>
 
-      {/* Status da loja por plataforma (GET /merchants/{id}/status) */}
+      {/* Grid com Status da Loja por Plataforma */}
       <section className="surface-card overflow-hidden">
-        <header className="flex items-center justify-between gap-2 border-b border-surface-border-subtle px-5 py-3">
+        <header className="flex items-center justify-between gap-2 border-b border-surface-border-subtle px-5 py-3.5">
           <div className="flex items-center gap-2">
-            <Store className="h-4 w-4 text-ink-tertiary" />
-            <h2 className="text-sm font-semibold text-ink-primary">Status da loja</h2>
+            <Store className="h-4 w-4 text-brand-400" />
+            <h2 className="text-sm font-semibold text-ink-primary">
+              Status de Conexão por Plataforma
+            </h2>
           </div>
           <Button
-            size="sm"
+            size="xs"
             variant="ghost"
             onClick={() => void refetchStatus()}
             loading={statusLoading}
             leftIcon={<RotateCcw className="h-3 w-3" />}
           >
-            Atualizar
+            Sincronizar status
           </Button>
         </header>
+
         {storeStatus.length === 0 ? (
-          <p className="px-5 py-6 text-center text-sm text-ink-tertiary">
-            Nenhuma plataforma conectada.
+          <p className="px-5 py-8 text-center text-sm text-ink-tertiary">
+            Nenhuma plataforma conectada no momento.
           </p>
         ) : (
-          <ul className="divide-y divide-surface-border-subtle">
+          <div className="divide-y divide-surface-border-subtle">
             {storeStatus.map((entry) => {
               const meta = PLATFORM_META[entry.platform];
               const op = entry.statuses[0];
               const available = op?.available ?? false;
+
               return (
-                <li key={entry.platform} className="px-5 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium text-ink-primary">
-                      {meta?.name ?? entry.platform}
-                    </span>
+                <div key={entry.platform} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+                  <div className="flex items-center gap-3">
+                    <PlatformLogo platform={entry.platform} size="sm" />
+                    <div>
+                      <p className="text-sm font-semibold text-ink-primary">
+                        {meta?.name ?? entry.platform}
+                      </p>
+                      {op?.message ? (
+                        <p className="text-xs text-ink-secondary">{op.message}</p>
+                      ) : (
+                        <p className="text-xs text-ink-tertiary">Canal integrado</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
                     {!entry.supported ? (
-                      <Badge variant="neutral">Sem status</Badge>
+                      <Badge variant="neutral">Status indisponível</Badge>
                     ) : entry.error ? (
-                      <Badge variant="danger">Erro</Badge>
+                      <Badge variant="danger" dot>Erro na plataforma</Badge>
                     ) : available ? (
-                      <Badge variant="success" dot>
-                        Online
-                      </Badge>
+                      <Badge variant="success" dot>Online e disponível</Badge>
                     ) : (
-                      <Badge variant="warning" dot>
-                        Indisponível
-                      </Badge>
+                      <Badge variant="warning" dot>Pausada / Fechada</Badge>
                     )}
                   </div>
-                  {op?.message && (
-                    <p className="mt-1 text-xs text-ink-secondary">{op.message}</p>
-                  )}
-                  {op?.validations && op.validations.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {op.validations.map((v) => (
-                        <li
-                          key={v.id}
-                          className="flex items-center gap-1.5 text-xs text-ink-tertiary"
-                        >
-                          <CircleDot
-                            className={clsx(
-                              'h-3 w-3 shrink-0',
-                              v.state === 'OK' ? 'text-success-bright' : 'text-warning-bright',
-                            )}
-                          />
-                          {v.message ?? v.id}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {entry.error && (
-                    <p className="mt-1 text-xs text-danger-bright">{entry.error}</p>
-                  )}
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
         )}
       </section>
 
-      {/* Pausas ativas */}
+      {/* Pausas Ativas */}
       {active.length > 0 && (
         <section className="surface-card overflow-hidden">
           <header className="flex items-center gap-2 border-b border-surface-border-subtle px-5 py-3">
             <PauseCircle className="h-4 w-4 text-warning-bright" />
-            <h2 className="text-sm font-semibold text-ink-primary">Pausas ativas</h2>
+            <h2 className="text-sm font-semibold text-ink-primary">Pausas em Andamento</h2>
             <Badge variant="warning">{active.length}</Badge>
           </header>
           <ul className="divide-y divide-surface-border-subtle">
@@ -345,11 +337,11 @@ export default function PausePage() {
         </section>
       )}
 
-      {/* Histórico */}
+      {/* Histórico de Pausas */}
       <section className="surface-card overflow-hidden">
         <header className="flex items-center gap-2 border-b border-surface-border-subtle px-5 py-3">
           <RotateCcw className="h-4 w-4 text-ink-tertiary" />
-          <h2 className="text-sm font-semibold text-ink-primary">Histórico</h2>
+          <h2 className="text-sm font-semibold text-ink-primary">Histórico Recente</h2>
           <Badge variant="neutral">{history.length}</Badge>
         </header>
         {history.length === 0 ? (
@@ -365,11 +357,12 @@ export default function PausePage() {
         )}
       </section>
 
+      {/* Modal de Pausa */}
       <Dialog
         open={open}
         onClose={() => setOpen(false)}
-        title="Pausar loja"
-        description="A pausa é propagada para as plataformas selecionadas em tempo real."
+        title="Pausar Recebimento de Pedidos"
+        description="A pausa será comunicada em tempo real para os canais de delivery selecionados."
         size="md"
         footer={
           <>
@@ -387,60 +380,66 @@ export default function PausePage() {
         }
       >
         <div className="space-y-5">
-          {/* plataformas */}
+          {/* Seleção de Plataformas */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-              Plataformas
-            </p>
-            <p className="mt-1 text-xs text-ink-tertiary">
-              Vazio = todas as plataformas conectadas ({activeConnections.length})
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {activeConnections.length === 0 && (
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+                Plataformas afetadas
+              </label>
+              <span className="text-[11px] text-ink-tertiary">
+                {selectedPlatforms.length === 0
+                  ? `Todas as ${activeConnections.length} conectadas`
+                  : `${selectedPlatforms.length} selecionada(s)`}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {activeConnections.length === 0 ? (
                 <p className="text-xs text-danger-bright">
-                  Nenhuma plataforma ativa. Conecte em Integrações primeiro.
+                  Nenhuma plataforma ativa encontrada. Conecte em Integrações primeiro.
                 </p>
+              ) : (
+                activeConnections.map((c) => {
+                  const meta = PLATFORM_META[c.platformCode];
+                  const selected = selectedPlatforms.includes(c.platformCode);
+                  return (
+                    <button
+                      key={c.platformCode}
+                      type="button"
+                      onClick={() => togglePlatform(c.platformCode)}
+                      className={clsx(
+                        'flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-all',
+                        selected
+                          ? 'border-brand-500 bg-brand-500/10 text-brand-400 shadow-sm'
+                          : 'border-surface-border bg-surface-base text-ink-secondary hover:border-surface-border-strong hover:text-ink-primary',
+                      )}
+                    >
+                      <PlatformLogo platform={c.platformCode} size="xs" />
+                      <span>{meta?.name ?? c.platformCode}</span>
+                      {selected && <span className="text-brand-400">✓</span>}
+                    </button>
+                  );
+                })
               )}
-              {activeConnections.map((c) => {
-                const meta = PLATFORM_META[c.platformCode];
-                const selected = selectedPlatforms.includes(c.platformCode);
-                return (
-                  <button
-                    key={c.platformCode}
-                    type="button"
-                    onClick={() => togglePlatform(c.platformCode)}
-                    className={clsx(
-                      'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all',
-                      selected
-                        ? 'text-white shadow-sm'
-                        : 'border border-surface-border bg-surface-base text-ink-secondary hover:border-surface-border-strong hover:text-ink-primary',
-                    )}
-                    style={selected ? { backgroundColor: meta?.colorHex ?? '#888' } : {}}
-                  >
-                    {selected && '✓ '}
-                    {meta?.name ?? c.platformCode}
-                  </button>
-                );
-              })}
             </div>
           </div>
 
-          {/* duração */}
+          {/* Duração da Pausa */}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-              Duração
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <label className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+              Duração da pausa
+            </label>
+            <div className="mt-2 flex flex-wrap gap-2">
               {DURATION_PRESETS.map((p) => (
                 <button
                   key={p.label}
                   type="button"
                   onClick={() => setDuration(p.minutes)}
                   className={clsx(
-                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all',
+                    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all',
                     duration === p.minutes
-                      ? 'bg-brand-gradient text-white shadow-sm'
-                      : 'border border-surface-border bg-surface-base text-ink-secondary hover:border-surface-border-strong hover:text-ink-primary',
+                      ? 'border-brand-500 bg-brand-500 text-white shadow-sm'
+                      : 'border-surface-border bg-surface-base text-ink-secondary hover:border-surface-border-strong hover:text-ink-primary',
                   )}
                 >
                   <Clock className="h-3 w-3" />
@@ -450,15 +449,15 @@ export default function PausePage() {
             </div>
           </div>
 
-          {/* motivo */}
+          {/* Motivo da Pausa */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-              Motivo
+              Motivo operacional
             </label>
             <select
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary focus:border-brand-500 focus:outline-none"
+              className="h-10 rounded-lg border border-surface-border bg-surface-raised px-3 text-xs text-ink-primary focus:border-brand-500 focus:outline-none"
             >
               {Object.entries(REASON_LABEL).map(([v, l]) => (
                 <option key={v} value={v}>
@@ -468,11 +467,12 @@ export default function PausePage() {
             </select>
           </div>
 
+          {/* Observação */}
           <Input
-            label="Observação (opcional)"
+            label="Observação interna (opcional)"
             value={reasonNote}
             onChange={(e) => setReasonNote(e.target.value)}
-            placeholder="Ex.: voltamos em 30 min"
+            placeholder="Ex.: alta demanda de salão, reposição de estoque"
           />
         </div>
       </Dialog>
@@ -493,8 +493,14 @@ function PauseRow({
   const ScopeIcon =
     pause.scope === 'store' ? Store : pause.scope === 'item' ? UtensilsCrossed : PowerOff;
 
+  const fmtDateTime = (iso: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  };
+
   return (
-    <li className="flex items-start justify-between gap-4 px-5 py-3">
+    <li className="flex flex-wrap items-center justify-between gap-4 px-5 py-3.5">
       <div className="flex flex-1 items-start gap-3 min-w-0">
         <div
           className={clsx(
@@ -510,56 +516,57 @@ function PauseRow({
           <div className="flex flex-wrap items-center gap-2">
             {isActive ? (
               <Badge variant="warning" dot>
-                Ativa
+                Pausa ativa
               </Badge>
             ) : pause.cancelledAt ? (
-              <Badge variant="neutral">Cancelada</Badge>
+              <Badge variant="neutral">Encerrada manualmente</Badge>
             ) : (
               <Badge variant="success">Reaberta</Badge>
             )}
-            <p className="text-sm font-medium text-ink-primary">
+            <p className="text-sm font-semibold text-ink-primary">
               {pause.scope === 'store' && 'Loja inteira'}
-              {pause.scope === 'category' && `Categoria · ${pause.category?.name ?? '—'}`}
-              {pause.scope === 'item' && `Item · ${pause.menuItem?.name ?? '—'}`}
+              {pause.scope === 'category' && `Categoria: ${pause.category?.name ?? '—'}`}
+              {pause.scope === 'item' && `Produto: ${pause.menuItem?.name ?? '—'}`}
             </p>
-            <span className="text-xs text-ink-tertiary">
-              {REASON_LABEL[pause.reason] ?? pause.reason}
+            <span className="text-xs text-ink-secondary">
+              · {REASON_LABEL[pause.reason] ?? pause.reason}
             </span>
           </div>
+
           {pause.reasonNote && (
-            <p className="mt-1 text-xs italic text-ink-secondary">"{pause.reasonNote}"</p>
+            <p className="mt-0.5 text-xs italic text-ink-secondary">"{pause.reasonNote}"</p>
           )}
+
           <p className="mt-1 text-xs text-ink-tertiary">
-            Início: {new Date(pause.startsAt).toLocaleString('pt-BR')}
-            {pause.endsAt && ` · Termina: ${new Date(pause.endsAt).toLocaleString('pt-BR')}`}
-            {!pause.endsAt && isActive && ' · Indefinida'}
+            Início: {fmtDateTime(pause.startsAt)}
+            {pause.endsAt && ` · Previsão de término: ${fmtDateTime(pause.endsAt)}`}
+            {!pause.endsAt && isActive && ' · Sem previsão (manual)'}
           </p>
+
           {pause.errorMessage && (
-            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-danger/30 bg-danger-soft px-2 py-1.5 text-xs text-danger-bright">
-              <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+            <div className="mt-2 flex items-start gap-1.5 rounded-md border border-danger/30 bg-danger-soft px-2.5 py-1.5 text-xs text-danger-bright">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {pause.errorMessage}
             </div>
           )}
         </div>
       </div>
+
       {onCancel && isActive && (
         <Button
           size="sm"
           variant="secondary"
           onClick={onCancel}
           loading={cancelling}
-          leftIcon={<Play className="h-3 w-3" />}
+          leftIcon={<Play className="h-3.5 w-3.5" />}
         >
           Reabrir agora
         </Button>
       )}
+
       {!isActive && pause.cancelledAt && (
-        <span className="inline-flex items-center gap-1 text-xs text-ink-tertiary">
-          <X className="h-3 w-3" />
-          {new Date(pause.cancelledAt).toLocaleString('pt-BR', {
-            dateStyle: 'short',
-            timeStyle: 'short',
-          })}
+        <span className="text-xs text-ink-tertiary">
+          Reaberta às {fmtDateTime(pause.cancelledAt)}
         </span>
       )}
     </li>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isValidSupplierDocument } from '@deliveryhub/shared';
 
 // =====================================================================
 // Common
@@ -11,19 +12,13 @@ import { z } from 'zod';
  */
 const decimalString = z
   .union([z.number(), z.string()])
-  .transform((v) => String(v).trim())
+  .transform((v) => String(v).trim().replace(',', '.'))
   .refine((v) => /^[-+]?\d+(\.\d+)?$/.test(v), 'expected_decimal')
   .refine((v) => Number.isFinite(parseFloat(v)), 'invalid_decimal');
 
-const positiveDecimal = decimalString.refine(
-  (v) => parseFloat(v) > 0,
-  'must_be_positive',
-);
+const positiveDecimal = decimalString.refine((v) => parseFloat(v) > 0, 'must_be_positive');
 
-const nonNegativeDecimal = decimalString.refine(
-  (v) => parseFloat(v) >= 0,
-  'must_be_non_negative',
-);
+const nonNegativeDecimal = decimalString.refine((v) => parseFloat(v) >= 0, 'must_be_non_negative');
 
 const INGREDIENT_UNITS = ['gram', 'kilogram', 'milliliter', 'liter', 'unit'] as const;
 const INGREDIENT_KINDS = ['raw', 'sub_recipe'] as const;
@@ -44,7 +39,12 @@ const STOCK_MOVEMENT_REASONS = [
 
 export const createSupplierSchema = z.object({
   name: z.string().min(1).max(200).trim(),
-  document: z.string().max(40).trim().optional(),
+  document: z
+    .string()
+    .trim()
+    .max(40)
+    .refine(isValidSupplierDocument, 'Informe um CNPJ ou CPF válido.')
+    .optional(),
   email: z.string().email().max(200).optional().or(z.literal('')),
   phone: z.string().max(40).trim().optional(),
   address: z.record(z.string(), z.unknown()).optional(),
@@ -103,7 +103,12 @@ export const createPurchaseSchema = z.object({
   supplierId: z.string().uuid().nullable().optional(),
   quantity: positiveDecimal,
   unitCost: nonNegativeDecimal,
-  invoiceNumber: z.string().max(80).trim().optional(),
+  invoiceNumber: z
+    .string()
+    .trim()
+    .max(80)
+    .regex(/^\d*$/, 'O número da nota deve conter apenas números.')
+    .optional(),
   purchasedAt: z.coerce.date().optional(),
   notes: z.string().max(2000).optional(),
 });
@@ -127,10 +132,7 @@ export const createStockAdjustmentSchema = z.object({
   storeId: z.string().uuid(),
   ingredientId: z.string().uuid(),
   /** Positivo = entrada, negativo = saida. Zero rejeitado pelo CHECK do DB. */
-  quantity: decimalString.refine(
-    (v) => parseFloat(v) !== 0,
-    'quantity_cannot_be_zero',
-  ),
+  quantity: decimalString.refine((v) => parseFloat(v) !== 0, 'quantity_cannot_be_zero'),
   reason: z.enum(['adjustment', 'waste', 'transfer_in', 'transfer_out', 'initial']),
   notes: z.string().max(2000).optional(),
 });

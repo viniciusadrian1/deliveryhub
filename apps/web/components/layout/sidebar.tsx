@@ -27,8 +27,8 @@ interface NavItem {
   badge?: string;
   disabled?: boolean;
   /**
-   * Quando true, abre em nova aba (rel=noopener) — ideal pro KDS que
-   * roda em tablet/monitor dedicado na cozinha sem afetar a navegação
+   * Quando true, abre em nova aba (rel=noopener), ideal para o KDS que
+   * roda em tablet ou monitor dedicado na cozinha sem afetar a navegação
    * do operador no Hub.
    */
   externalTab?: boolean;
@@ -37,15 +37,15 @@ interface NavItem {
 const PRIMARY_NAV: NavItem[] = [
   { label: 'Hub de Pedidos', href: '/hub', icon: LayoutGrid },
   { label: 'Cardápio', href: '/menu', icon: UtensilsCrossed },
-  { label: 'Estoque', href: '/inventory', icon: Boxes, badge: 'novo' },
+  { label: 'Estoque', href: '/inventory', icon: Boxes },
   { label: 'Preço & Margem', href: '/pricing', icon: TrendingUp },
-  { label: 'Promoções', href: '/promotions', icon: BadgePercent, badge: 'novo' },
+  { label: 'Promoções', href: '/promotions', icon: BadgePercent },
   { label: 'Pausa', href: '/pause', icon: PauseCircle },
   { label: 'Financeiro', href: '/financial', icon: Wallet },
 ];
 
 const SECONDARY_NAV: NavItem[] = [
-  { label: 'KDS Cozinha', href: '/kds', icon: ChefHat, badge: 'novo', externalTab: true },
+  { label: 'KDS Cozinha', href: '/kds', icon: ChefHat, externalTab: true },
   { label: 'Integrações', href: '/integrations', icon: Plug },
   { label: 'Configurações', href: '/settings', icon: Settings },
 ];
@@ -55,9 +55,14 @@ export function Sidebar() {
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-r border-surface-border-subtle bg-surface-raised md:flex">
-      {/* h fixo + logo grande: o logo cresce sem esticar o cabeçalho */}
-      <div className="flex h-16 shrink-0 items-center px-4">
-        <Logo size={60} />
+      <div className="flex h-16 shrink-0 items-center px-5">
+        <Link
+          href={r('/hub')}
+          className="inline-flex items-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          aria-label="DeliveryHub Início"
+        >
+          <Logo size={32} />
+        </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 pb-4">
@@ -69,8 +74,8 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-surface-border-subtle px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wider text-ink-tertiary">Plano · MVP</p>
-        <p className="mt-0.5 text-xs text-ink-secondary">14 dias de teste grátis</p>
+        <p className="text-[10px] uppercase tracking-wider text-ink-tertiary">Plano Operacional</p>
+        <p className="mt-0.5 text-xs text-ink-secondary">Operação conectada</p>
       </div>
     </aside>
   );
@@ -130,13 +135,13 @@ function NavSection({
                   className={clsx(
                     'h-4 w-4 shrink-0 transition-colors',
                     active && !item.externalTab
-                      ? 'text-brand-400'
+                      ? 'text-[#FF6B00] dark:text-brand-400'
                       : 'text-ink-tertiary group-hover:text-ink-secondary',
                   )}
                 />
                 <span className="flex-1">{item.label}</span>
                 {item.badge && (
-                  <span className="rounded-md bg-brand-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-brand-300">
+                  <span className="rounded-md bg-brand-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#C2410C] dark:bg-brand-500/15 dark:text-brand-300">
                     {item.badge}
                   </span>
                 )}

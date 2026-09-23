@@ -20,9 +20,6 @@
     "test": "vitest run --passWithNoTests",
     "clean": "rimraf dist .turbo"
   },
-  "dependencies": {
-    "zod": "^3.23.8"
-  },
   "devDependencies": {
     "@deliveryhub/config": "workspace:*",
     "@eslint/js": "^9.16.0",

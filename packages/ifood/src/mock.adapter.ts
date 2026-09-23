@@ -33,7 +33,10 @@ export class MockAdapter implements PlatformAdapter {
     };
   }
 
-  async finalizeConnection(pendingHandle: string): Promise<FinalizeConnectionResult> {
+  async finalizeConnection(
+    pendingHandle: string,
+    _authorizationCode?: string,
+  ): Promise<FinalizeConnectionResult> {
     return {
       tokens: {
         accessToken: `mock-access-${pendingHandle}`,

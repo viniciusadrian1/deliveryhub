@@ -11,6 +11,7 @@ import type { PlatformCode } from '@deliveryhub/shared';
 import { ifoodEventStatus, type RemoteOrder, type StoredTokens } from '@deliveryhub/ifood';
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
+import { CryptoService } from '../../common/crypto/crypto.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
 import { AdapterRegistry } from '../integrations/adapter.registry.js';
@@ -48,6 +49,7 @@ export class OrdersService {
     private readonly notifications: NotificationsService,
     private readonly emitter: OrdersEmitter,
     private readonly stockConsumption: StockConsumptionService,
+    private readonly crypto: CryptoService,
   ) {}
 
   /**
@@ -204,6 +206,319 @@ export class OrdersService {
     );
   }
 
+  // ============== Simulação de pedidos para teste/sandbox ==============
+
+  async simulateOrder(
+    auth: AuthContext,
+    platformCodeInput?: string,
+    storeIdInput?: string,
+  ) {
+    const store = storeIdInput
+      ? await this.prisma.store.findFirst({ where: { id: storeIdInput, organizationId: auth.orgId } })
+      : await this.prisma.store.findFirst({ where: { organizationId: auth.orgId } });
+    if (!store) throw new NotFoundException('store_not_found');
+
+    // Determina qual plataforma simular
+    let chosenPlatformCode: PlatformCode;
+    if (platformCodeInput && platformCodeInput !== 'auto') {
+      chosenPlatformCode = platformCodeInput as PlatformCode;
+    } else {
+      // Busca todas as conexões configuradas para a loja
+      const connections = await this.prisma.platformConnection.findMany({
+        where: { organizationId: auth.orgId, storeId: store.id },
+        include: { platform: true },
+      });
+
+      let candidateCodes = connections
+        .filter((c) => c.status === 'active')
+        .map((c) => c.platform.code as PlatformCode);
+
+      if (candidateCodes.length === 0 && connections.length > 0) {
+        candidateCodes = connections.map((c) => c.platform.code as PlatformCode);
+      }
+
+      if (candidateCodes.length === 0) {
+        const allPlatforms = await this.prisma.platform.findMany({ where: { active: true } });
+        candidateCodes = allPlatforms.map((p) => p.code as PlatformCode);
+      }
+
+      // Alterna inteligentemente evitando repetir a mesma plataforma do último pedido simulado
+      const lastSimulated = await this.prisma.order.findFirst({
+        where: { storeId: store.id, externalId: { startsWith: 'sim-' } },
+        orderBy: { placedAt: 'desc' },
+        include: { platform: true },
+      });
+
+      const alternatives = candidateCodes.filter(
+        (code) => candidateCodes.length <= 1 || code !== lastSimulated?.platform?.code,
+      );
+      chosenPlatformCode = alternatives[Math.floor(Math.random() * alternatives.length)] ?? candidateCodes[0]!;
+    }
+
+    const platform = await this.prisma.platform.findUnique({
+      where: { code: chosenPlatformCode },
+    });
+    if (!platform) throw new NotFoundException('platform_not_found');
+
+    let connection = await this.prisma.platformConnection.findFirst({
+      where: { organizationId: auth.orgId, storeId: store.id, platformId: platform.id },
+    });
+
+    if (!connection || connection.status !== 'active' || connection.lastErrorMessage) {
+      connection = await this.prisma.platformConnection.upsert({
+        where: { storeId_platformId: { storeId: store.id, platformId: platform.id } },
+        update: {
+          status: 'active',
+          externalMerchantId: connection?.externalMerchantId ?? `sim-merchant-${chosenPlatformCode}`,
+          lastErrorAt: null,
+          lastErrorMessage: null,
+        },
+        create: {
+          organizationId: auth.orgId,
+          storeId: store.id,
+          platformId: platform.id,
+          status: 'active',
+          externalMerchantId: `sim-merchant-${chosenPlatformCode}`,
+          lastErrorAt: null,
+          lastErrorMessage: null,
+        },
+      });
+    }
+
+    const ctx = {
+      platformId: platform.id,
+      platformCode: chosenPlatformCode,
+      storeId: store.id,
+      organizationId: auth.orgId,
+      externalMerchantId: connection.externalMerchantId ?? `sim-merchant-${chosenPlatformCode}`,
+      connectionId: connection.id,
+    };
+
+    const customerPool = [
+      'Gabriel Souza',
+      'Ana Oliveira',
+      'Carlos Silva',
+      'Lucas Santos',
+      'Mariana Costa',
+      'Camila Rocha',
+      'Felipe Almeida',
+      'Beatriz Lima',
+      'Juliana Mendes',
+      'Rodrigo Nogueira',
+      'Fernanda Ribeiro',
+      'Diego Martins',
+      'Larissa Carvalho',
+      'Thiago Barbosa',
+      'Aline Ferreira',
+      'Matheus Duarte',
+      'Priscila Gomes',
+      'Bruno Castro',
+      'Renata Guimarães',
+      'Vinicius Ramos',
+    ];
+    const customerName = customerPool[Math.floor(Math.random() * customerPool.length)]!;
+
+    // Vários cardápios temáticos realistas para simulação rica e autêntica
+    const simulatedMenus = [
+      // 1. Hamburgueria
+      [
+        { name: 'Smash Burger Duplo c/ Cheddar e Bacon', priceCents: 3690 },
+        { name: 'Batata Rústica c/ Alecrim e Parmesão', priceCents: 1800 },
+        { name: 'Maionese Especial Defumada (50g)', priceCents: 500 },
+        { name: 'Refrigerante Coca-Cola Lata 350ml', priceCents: 790 },
+      ],
+      // 2. Pizzaria
+      [
+        { name: 'Pizza Média Calabresa Especial com Catupiry', priceCents: 5890 },
+        { name: 'Borda Recheada de Queijo Cheddar', priceCents: 1200 },
+        { name: 'Guaraná Antarctica 2L Gelado', priceCents: 1400 },
+      ],
+      // 3. Churros & Sobremesas (especial ChurrosDaSofia!)
+      [
+        { name: 'Churros Gourmet Doce de Leite c/ Morangos Frescos', priceCents: 1750 },
+        { name: 'Churros Tradicional Canela e Açúcar (3 Unidades)', priceCents: 2100 },
+        { name: 'Mini Churros com Nutella (Caixa com 6)', priceCents: 2600 },
+        { name: 'Café Espresso Gourmet 100ml', priceCents: 850 },
+      ],
+      // 4. Comida Japonesa & Poke
+      [
+        { name: 'Poke Salmão Fresh Completo c/ Cream Cheese e Gergelim', priceCents: 5490 },
+        { name: 'Hot Roll de Salmão c/ Tarê e Cebolinha (8 Unidades)', priceCents: 2900 },
+        { name: 'Chá Gelado Natural de Pêssego 450ml', priceCents: 950 },
+      ],
+      // 5. Açaí & Saudável
+      [
+        { name: 'Açaí Puro Artesanal 500ml (Granola, Banana, Leite Ninho)', priceCents: 2890 },
+        { name: 'Creme de Frutas Vermelhas 300ml', priceCents: 1900 },
+        { name: 'Água Mineral sem Gás 500ml', priceCents: 500 },
+      ],
+      // 6. Almoço & Pratos Executivos
+      [
+        { name: 'Prato Executivo Picanha Fatiada c/ Arroz, Feijão e Fritas', priceCents: 4790 },
+        { name: 'Porção Extra de Farofa Crocante', priceCents: 650 },
+        { name: 'Suco Natural de Laranja 500ml', priceCents: 1100 },
+      ],
+    ];
+
+    const menuItems = await this.prisma.menuItem.findMany({
+      where: { storeId: store.id },
+      take: 6,
+    });
+
+    let items: Array<{
+      externalId: string;
+      name: string;
+      qty: number;
+      unitPriceCents: number;
+      totalCents: number;
+    }>;
+
+    if (menuItems.length >= 2) {
+      // Embaralha itens reais da loja e escolhe de 1 a 3 itens
+      const shuffled = [...menuItems].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, Math.floor(Math.random() * 3) + 1);
+      items = selected.map((m, idx) => {
+        const qty = idx === 0 && Math.random() > 0.6 ? 2 : 1;
+        const unitPrice = m.costCents ? Math.round(m.costCents * 2.4) : 2800;
+        return {
+          externalId: `sim-item-${m.id}`,
+          name: m.name,
+          qty,
+          unitPriceCents: unitPrice,
+          totalCents: qty * unitPrice,
+        };
+      });
+    } else {
+      // Sorteia um dos cardápios temáticos (ou usa o tema da loja se o nome indicar)
+      let chosenMenu = simulatedMenus[Math.floor(Math.random() * simulatedMenus.length)]!;
+      if (store.name.toLowerCase().includes('churros')) {
+        chosenMenu = simulatedMenus[2]!;
+      } else if (store.name.toLowerCase().includes('pizza')) {
+        chosenMenu = simulatedMenus[1]!;
+      } else if (store.name.toLowerCase().includes('burger')) {
+        chosenMenu = simulatedMenus[0]!;
+      }
+      const count = Math.min(chosenMenu.length, Math.floor(Math.random() * 2) + 2); // 2 ou 3 itens
+      const selected = [...chosenMenu].sort(() => 0.5 - Math.random()).slice(0, count);
+      items = selected.map((it, idx) => {
+        const qty = idx === 0 && Math.random() > 0.65 ? 2 : 1;
+        return {
+          externalId: `sim-item-${Date.now()}-${idx}`,
+          name: it.name,
+          qty,
+          unitPriceCents: it.priceCents,
+          totalCents: qty * it.priceCents,
+        };
+      });
+    }
+
+    const subtotalCents = items.reduce((acc, it) => acc + it.totalCents, 0);
+
+    const deliveryFees = [0, 590, 790, 890, 1190];
+    const deliveryFeeCents = deliveryFees[Math.floor(Math.random() * deliveryFees.length)]!;
+    const totalCents = subtotalCents + deliveryFeeCents;
+
+    const realisticNotes = [
+      'Favor não colocar cebola nem picles.',
+      'Ponto da carne: ao ponto para bem passada.',
+      'Entregar na portaria com o porteiro Silva.',
+      'Enviar sachês extras de maionese verde e ketchup.',
+      'Campainha quebrada, favor interfonar no ap 402.',
+      'Caprichar no recheio por favor!',
+      'Massa bem assada e crocante, por favor.',
+      null,
+      null,
+      null,
+    ];
+    const notes = realisticNotes[Math.floor(Math.random() * realisticNotes.length)];
+
+    const paymentMethods = ['online', 'online', 'online', 'cash'];
+    const paymentMethod = paymentMethods[Math.floor(Math.random() * paymentMethods.length)]!;
+
+    // Gera número único de ticket realista de 5 dígitos (ex: 41829)
+    const randomTicket = Math.floor(10000 + Math.random() * 90000);
+
+    const feeRates: Record<string, { platform: number; processing: number }> = {
+      ifood: { platform: 0.12, processing: 0.03 },
+      keeta: { platform: 0.10, processing: 0.025 },
+      '99food': { platform: 0.12, processing: 0.03 },
+      rappi: { platform: 0.14, processing: 0.032 },
+      aiqfome: { platform: 0.12, processing: 0.028 },
+    };
+    const rate = feeRates[chosenPlatformCode] ?? { platform: 0.12, processing: 0.03 };
+
+    const remote: RemoteOrder = {
+      externalId: `sim-${chosenPlatformCode}-${randomTicket}`,
+      externalMerchantId: ctx.externalMerchantId,
+      status: 'placed',
+      customer: {
+        name: customerName,
+        phone: '+55119' + Math.floor(10000000 + Math.random() * 90000000),
+        document: String(Math.floor(10000000000 + Math.random() * 90000000000)),
+      },
+      items,
+      subtotalCents,
+      deliveryFeeCents,
+      totalCents,
+      platformFeeCents: Math.round(totalCents * rate.platform),
+      processingFeeCents: Math.round(totalCents * rate.processing),
+      flatFeeCents: 0,
+      notes: notes ?? undefined,
+      placedAt: new Date(),
+      paymentMethod: paymentMethod as 'online' | 'cash',
+      deliveryBy: 'platform',
+      orderTiming: 'immediate',
+      orderType: 'delivery',
+    };
+
+    await this.upsertOrder(ctx, remote, 'order.simulate');
+    return {
+      success: true,
+      externalOrderId: remote.externalId,
+      platformCode: chosenPlatformCode,
+      platformName: platform.name,
+      totalCents,
+      customerName,
+    };
+  }
+
+  /** Simula 1 pedido para cada uma das plataformas integradas da loja em lote. */
+  async simulateAllIntegrated(auth: AuthContext, storeIdInput?: string) {
+    const store = storeIdInput
+      ? await this.prisma.store.findFirst({ where: { id: storeIdInput, organizationId: auth.orgId } })
+      : await this.prisma.store.findFirst({ where: { organizationId: auth.orgId } });
+    if (!store) throw new NotFoundException('store_not_found');
+
+    const connections = await this.prisma.platformConnection.findMany({
+      where: { organizationId: auth.orgId, storeId: store.id },
+      include: { platform: true },
+    });
+
+    let platforms = connections.map((c) => c.platform.code);
+    if (platforms.length === 0) {
+      const all = await this.prisma.platform.findMany({ where: { active: true } });
+      platforms = all.map((p) => p.code);
+    }
+
+    const results = [];
+    for (const code of platforms) {
+      const res = await this.simulateOrder(auth, code, store.id);
+      results.push(res);
+    }
+    return { success: true, count: results.length, orders: results };
+  }
+
+  /** Remove todos os pedidos simulados (de teste) da organização. */
+  async clearSimulatedOrders(auth: AuthContext) {
+    const result = await this.prisma.order.deleteMany({
+      where: {
+        organizationId: auth.orgId,
+        externalId: { startsWith: 'sim-' },
+      },
+    });
+    return { count: result.count };
+  }
+
   // ============== Listagem & detalhe ==============
 
   async list(auth: AuthContext, query: ListOrdersQuery) {
@@ -223,7 +538,7 @@ export class OrdersService {
       include: {
         platform: { select: { code: true, name: true, colorHex: true } },
         customer: { select: { id: true, name: true } },
-        items: query.withItems
+        items: query.withItems !== false
           ? {
               orderBy: { id: 'asc' },
               include: { modifiers: true },
@@ -254,6 +569,16 @@ export class OrdersService {
       },
     });
     if (!order) throw new NotFoundException('order_not_found');
+
+    if (order.customer?.phone && this.crypto.isCiphertext(order.customer.phone)) {
+      try {
+        order.customer.phone = this.crypto.decrypt(order.customer.phone);
+      } catch {
+        // Se a chave não puder decifrar, oculta o cipher para evitar vazamento visual
+        order.customer.phone = null;
+      }
+    }
+
     return order;
   }
 
