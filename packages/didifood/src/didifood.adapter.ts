@@ -534,14 +534,32 @@ export class DidifoodAdapter implements PlatformAdapter {
   // ===================================================================
 
   async getAuthtoken(appShopId: string): Promise<StoredTokens> {
-    const data = await this.get<{
+    let data: {
       auth_token: string;
       token_expiration_time: number;
-    }>('/v1/auth/authtoken/get', {
-      app_id: this.config.clientId,
-      app_secret: this.config.clientSecret,
-      app_shop_id: appShopId,
-    });
+    };
+    try {
+      data = await this.get<{
+        auth_token: string;
+        token_expiration_time: number;
+      }>('/v1/auth/authtoken/get', {
+        app_id: this.config.clientId,
+        app_secret: this.config.clientSecret,
+        app_shop_id: appShopId,
+      });
+    } catch (err) {
+      // 99Food returns 10102 when the store authorization in the merchant
+      // portal is missing or expired. This is actionable by the user and
+      // should not be persisted as an internal integration failure.
+      if (errnoOf(err) === 10102) {
+        throw new AdapterApiError('99food_store_authorization_expired', 409, {
+          hint:
+            'O portal 99Food não encontrou uma autorização válida para esta loja. ' +
+            'Verifique se o estabelecimento aparece no portal, autorize-o para o app e tente novamente.',
+        });
+      }
+      throw err;
+    }
     return {
       accessToken: data.auth_token,
       refreshToken: appShopId,

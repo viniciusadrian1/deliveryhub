@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -212,6 +213,9 @@ export class IntegrationsService {
       }
       if (err instanceof AdapterApiError && err.message.includes('authorization_code_required')) {
         throw new BadRequestException('authorization_code_required');
+      }
+      if (err instanceof AdapterApiError && err.message === '99food_store_authorization_expired') {
+        throw new ConflictException('99food_store_authorization_expired');
       }
       // 400/401 do /oauth/token = código inválido/expirado ou ainda não
       // autorizado. Recuperável: usuário confere o código e tenta de novo.

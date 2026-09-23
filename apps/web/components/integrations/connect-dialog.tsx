@@ -91,6 +91,8 @@ export function ConnectDialog({
           'Cole o código que a plataforma mostrou depois que você autorizou.',
         authorization_invalid_or_expired:
           'Código inválido ou expirado. Reinicie a conexão, autorize de novo e cole o código novo.',
+        '99food_store_authorization_expired':
+          'O portal 99Food não encontrou nenhum estabelecimento autorizado para este app. Verifique se a loja aparece no portal, autorize-a para o app Byte Burguer e tente novamente.',
       };
       setFinalizeError(msgs[raw] ?? raw);
     },
@@ -280,7 +282,8 @@ export function ConnectDialog({
                     </p>
                     {!hasCode && (
                       <p className="mt-1 text-xs text-ink-tertiary">
-                        O DeliveryHub detecta a loja vinculada automaticamente.
+                        A loja precisa aparecer no portal 99Food. Se aparecer “0 estabelecimentos”,
+                        o app ainda não está vinculado à loja ou a autorização expirou.
                       </p>
                     )}
                   </>
