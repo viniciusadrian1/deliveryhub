@@ -271,7 +271,6 @@ const PAUSE_REASON_OTHER = 1006;
  */
 const RAW_NUMERIC_KEYS = [
   'order_id',
-  'app_id',
   'shop_id',
   'apply_id',
   'picker_id',
@@ -336,6 +335,8 @@ interface RawShopList {
 /** Conteúdo do `pendingHandle` do 99Food. */
 interface DidifoodPendingHandle {
   startedAt: number;
+  /** Timestamp issued by 99Food in the authorization URL. */
+  timestamp?: string;
 }
 
 // Shapes parciais de Get Store Menu Details (GET /v3/item/item/list).
@@ -901,12 +902,14 @@ export class DidifoodAdapter implements PlatformAdapter {
     if (!data?.url) {
       throw new AdapterApiError('99food_authorization_url_missing', 502, data);
     }
+    const authorizationUrl = new URL(data.url);
+    const timestamp = authorizationUrl.searchParams.get('time') ?? undefined;
     return {
       userCode: '',
       verificationUrl: data.url,
       verificationUrlComplete: data.url,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      pendingHandle: encodeHandle({ startedAt: Date.now() }),
+      pendingHandle: encodeHandle({ startedAt: Date.now(), timestamp }),
     };
   }
 
@@ -933,11 +936,11 @@ export class DidifoodAdapter implements PlatformAdapter {
     pendingHandle: string,
     selectedAppShopId?: string,
   ): Promise<FinalizeConnectionResult> {
-    decodeHandle(pendingHandle); // valida o handle (corrompido → erro claro)
+    const handle = decodeHandle(pendingHandle); // handle corrompido → erro claro
 
     let shops: string[];
     try {
-      shops = await this.listBoundShops();
+      shops = await this.listBoundShops(handle.timestamp);
     } catch (err) {
       if (errnoOf(err) === 10005) {
         // Rate limit do /shop/list — não é falha, é "tente de novo em ~20s".
@@ -1007,17 +1010,17 @@ export class DidifoodAdapter implements PlatformAdapter {
    * Authorized Stores) — uma loja recém-autorizada por self-service pode
    * aparecer só num dos dois endpoints.
    */
-  private async listBoundShops(): Promise<string[]> {
-    const fromList = await this.tryShopList('/v1/shop/shop/list');
+  private async listBoundShops(timestamp?: string): Promise<string[]> {
+    const fromList = await this.tryShopList('/v1/shop/shop/list', timestamp);
     if (fromList.length > 0) return fromList;
-    const fromAuth = await this.tryShopList('/v3/auth/authorization/getAuthorizedShops');
+    const fromAuth = await this.tryShopList('/v3/auth/authorization/getAuthorizedShops', timestamp);
     return fromAuth.length > 0 ? fromAuth : fromList;
   }
 
   /** `fetchShopList` tolerante a permissão: errno 10006 → []; demais sobem. */
-  private async tryShopList(endpoint: string): Promise<string[]> {
+  private async tryShopList(endpoint: string, timestamp?: string): Promise<string[]> {
     try {
-      return await this.fetchShopList(endpoint);
+      return await this.fetchShopList(endpoint, timestamp);
     } catch (err) {
       if (errnoOf(err) === 10006) return [];
       throw err;
@@ -1029,23 +1032,19 @@ export class DidifoodAdapter implements PlatformAdapter {
    * `{ app_id, timestamp, sign, page_no, page_size }` — `sign` é MD5 dos
    * params ordenados + app_secret.
    *
-   * Uma página só (page_size 50): a API 99Food rejeita valores maiores que
-   * 50 (errno 10001). O endpoint também é limitado a 1 req/20s, então
-   * paginar é inviável — 50 lojas cobrem o fluxo de conexão com folga.
+   * Uma página só (page_size 30): esse é o tamanho aceito de forma
+   * consistente pelo endpoint de produção (valores maiores podem retornar
+   * um erro enganoso de timestamp/parâmetro). O endpoint também é limitado a
+   * 1 req/20s, então paginar é inviável — 30 lojas cobrem o fluxo de conexão.
    * Só lemos campos seguros (app_shop_id, bound_flag);
    * o `shop_id` long 64-bit da resposta é ignorado de propósito.
    */
-  private async fetchShopList(endpoint: string): Promise<string[]> {
-    const signed = {
-      app_id: this.config.clientId,
-      timestamp: Math.floor(Date.now() / 1000),
-      page_no: 1,
-      page_size: 50,
-    };
-    const data = await this.post<RawShopList>(endpoint, {
-      ...signed,
-      sign: signParams(signed, this.config.clientSecret),
-    });
+  private async fetchShopList(endpoint: string, timestamp?: string): Promise<string[]> {
+    const data = await this.request<RawShopList>(
+      'POST',
+      endpoint,
+      buildShopListRequestBody(this.config.clientId, this.config.clientSecret, timestamp),
+    );
     const out: string[] = [];
     for (const s of data?.shops ?? []) {
       // O `app_shop_id` só vem quando a loja está vinculada — sua presença
@@ -1444,6 +1443,28 @@ export function signParams(
   return createHash('md5').update(joined + appSecret, 'utf8').digest('hex');
 }
 
+/**
+ * Builds the signed List Bind Stores payload exactly as 99Food expects it.
+ * `app_id` is a long identifier and `timestamp` is documented/validated as a
+ * textual value by the provider; both must remain strings in the JSON body.
+ */
+export function buildShopListRequestBody(
+  clientId: string,
+  clientSecret: string,
+  timestamp = String(Math.floor(Date.now() / 1000)),
+): string {
+  const signed = {
+    app_id: clientId,
+    timestamp,
+    page_no: 1,
+    page_size: 30,
+  };
+  return buildJsonBody(
+    { ...signed, sign: signParams(signed, clientSecret) },
+    RAW_NUMERIC_KEYS,
+  );
+}
+
 /** Monta o objeto `courier_info` do Self Delivery. */
 function buildCourierInfo(c: DidifoodCourier): Record<string, unknown> {
   const info: Record<string, unknown> = {
@@ -1543,7 +1564,12 @@ function decodeHandle(handle: string): DidifoodPendingHandle {
     const o = JSON.parse(
       Buffer.from(handle, 'base64url').toString('utf8'),
     ) as Partial<DidifoodPendingHandle>;
-    return { startedAt: typeof o.startedAt === 'number' ? o.startedAt : 0 };
+    return {
+      startedAt: typeof o.startedAt === 'number' ? o.startedAt : 0,
+      timestamp: typeof o.timestamp === 'string' && /^\d+$/.test(o.timestamp)
+        ? o.timestamp
+        : undefined,
+    };
   } catch {
     throw new AdapterApiError('99food_invalid_pending_handle', 400);
   }
