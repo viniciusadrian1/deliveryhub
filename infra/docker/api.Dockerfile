@@ -24,7 +24,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages ./packages
 COPY . .
-RUN pnpm --filter @deliveryhub/db generate
+RUN rm -rf packages/db/generated && pnpm --filter @deliveryhub/db generate
 RUN pnpm --filter @deliveryhub/api build
 
 # ---------- runtime ----------
