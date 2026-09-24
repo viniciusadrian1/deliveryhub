@@ -380,6 +380,7 @@ model Order {
   orderTiming            String?   @map("order_timing")
   orderType              String?   @map("order_type")
   scheduledDeliveryAt    DateTime? @map("scheduled_delivery_at")
+  hiddenAt               DateTime? @map("hidden_at")
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
 
@@ -393,6 +394,7 @@ model Order {
 
   @@unique([platformId, externalId])
   @@index([organizationId, storeId, placedAt(sort: Desc)])
+  @@index([storeId, hiddenAt])
   @@index([organizationId, status])
   @@map("order")
 }
