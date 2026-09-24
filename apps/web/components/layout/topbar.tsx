@@ -24,7 +24,7 @@ export function Topbar() {
         </div>
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-ink-primary">
-            {state.organization.name || 'Sua organização'}
+            {state.storeName || state.organization.name || 'Sua organização'}
           </p>
           <p className="text-[11px] text-ink-tertiary">Loja única · Brasil</p>
         </div>

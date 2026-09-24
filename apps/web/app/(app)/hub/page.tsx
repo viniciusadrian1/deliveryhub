@@ -52,7 +52,7 @@ function HubBoard() {
     queryKey: ['orders', storeId],
     queryFn: () =>
       api<OrderListItem[]>(
-        `/orders?storeId=${encodeURIComponent(storeId ?? '')}&limit=100&withItems=true`,
+        `/orders?storeId=${encodeURIComponent(storeId ?? '')}&since=${encodeURIComponent(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())}&limit=100&withItems=true`,
       ),
     enabled: !!storeId,
     refetchInterval: 30_000,

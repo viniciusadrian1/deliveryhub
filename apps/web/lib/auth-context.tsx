@@ -23,6 +23,7 @@ export interface AuthState {
   organization: AuthOrganization;
   role: string;
   storeId?: string | null;
+  storeName?: string | null;
 }
 
 interface AuthResultDto {
@@ -36,6 +37,7 @@ interface AuthResultDto {
 interface MeDto {
   user: AuthUser & { createdAt: string };
   orgId: string;
+  organizationName: string;
   role: string;
   stores: { id: string; name: string }[];
 }
@@ -75,9 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setState({
           user: { ...me.user },
-          organization: { id: me.orgId, name: '' }, // /me não devolve nome ainda
+          organization: { id: me.orgId, name: me.organizationName },
           role: me.role,
           storeId: me.stores[0]?.id ?? null,
+          storeName: me.stores[0]?.name ?? null,
         });
       } catch {
         clearTokens();
@@ -104,10 +107,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       organization: data.organization,
       role: data.role,
       storeId: null,
+      storeName: null,
     });
     try {
       const me = await api<MeDto>('/me');
-      setState((s) => (s ? { ...s, storeId: me.stores[0]?.id ?? null } : s));
+      setState((s) => (s ? {
+        ...s,
+        organization: { ...s.organization, name: me.organizationName },
+        storeId: me.stores[0]?.id ?? null,
+        storeName: me.stores[0]?.name ?? null,
+      } : s));
     } catch {
       // se /me falhar agora, o bootstrap recarrega na próxima visita; não fatal
     }

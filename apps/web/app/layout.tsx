@@ -25,6 +25,7 @@ export const metadata: Metadata = {
   title: 'DeliveryHub: Centralização de Pedidos para Restaurantes',
   description:
     'Painel operacional unificado para receber pedidos do iFood, Rappi, 99Food e canais próprios com organização para seu restaurante.',
+  icons: { icon: '/logo-dark.png', shortcut: '/logo-dark.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

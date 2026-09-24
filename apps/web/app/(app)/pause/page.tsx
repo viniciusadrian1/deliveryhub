@@ -36,6 +36,7 @@ interface Pause {
   category: { id: string; name: string } | null;
   menuItem: { id: string; name: string } | null;
   platformIds: string[];
+  platforms?: Array<{ id: string; code: string; name: string }>;
   startsAt: string;
   endsAt: string | null;
   reason: string;
@@ -542,6 +543,14 @@ function PauseRow({
             {pause.endsAt && ` · Previsão de término: ${fmtDateTime(pause.endsAt)}`}
             {!pause.endsAt && isActive && ' · Sem previsão (manual)'}
           </p>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-ink-tertiary">Canais:</span>
+            {(pause.platforms ?? []).length > 0 ? pause.platforms?.map((platform) => (
+              <span key={platform.id} className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-2 py-0.5 text-[11px] text-ink-secondary">
+                <PlatformLogo platform={platform.code} size="xs" /> {platform.name}
+              </span>
+            )) : <span className="text-[11px] text-ink-secondary">Todos os canais conectados</span>}
+          </div>
 
           {pause.errorMessage && (
             <div className="mt-2 flex items-start gap-1.5 rounded-md border border-danger/30 bg-danger-soft px-2.5 py-1.5 text-xs text-danger-bright">

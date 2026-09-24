@@ -94,6 +94,13 @@ export class SuppliersController {
   async archive(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
     await this.suppliers.archive(auth, id);
   }
+
+  @Post(':id/restore')
+  @Roles('owner', 'manager')
+  @HttpCode(204)
+  async restore(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
+    await this.suppliers.restore(auth, id);
+  }
 }
 
 // =====================================================================
@@ -152,6 +159,20 @@ export class IngredientsController {
   @HttpCode(204)
   async archive(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
     await this.ingredients.archive(auth, id);
+  }
+
+  @Post(':id/restore')
+  @Roles('owner', 'manager')
+  @HttpCode(204)
+  async restore(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
+    await this.ingredients.restore(auth, id);
+  }
+
+  @Delete(':id/permanent')
+  @Roles('owner', 'manager')
+  @HttpCode(204)
+  async removePermanently(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
+    await this.ingredients.removePermanently(auth, id);
   }
 }
 

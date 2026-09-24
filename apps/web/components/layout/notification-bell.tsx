@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, X } from 'lucide-react';
+import { Bell, Check, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { api } from '../../lib/api';
@@ -42,6 +42,10 @@ export function NotificationBell() {
   const unread = useMutation({
     mutationFn: (id: string) =>
       api(`/notifications/${id}/unread`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+  });
+  const clear = useMutation({
+    mutationFn: () => api('/notifications/clear', { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
 
@@ -103,10 +107,19 @@ export function NotificationBell() {
                 Marcar todas como lidas
               </button>
             )}
-            {(list.error || read.error || unread.error) && (
+            {(list.error || read.error || unread.error || clear.error) && (
               <p role="alert" className="px-4 py-2 text-sm text-danger-bright">
-                {(list.error || read.error || unread.error)?.message}
+                {(list.error || read.error || unread.error || clear.error)?.message}
               </p>
+            )}
+            {list.data && list.data.length > 0 && (
+              <button
+                disabled={clear.isPending}
+                onClick={() => clear.mutate()}
+                className="flex items-center gap-1 px-4 py-2 text-xs text-ink-secondary hover:text-danger-bright"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Limpar notificações
+              </button>
             )}
             <div className="max-h-[60vh] overflow-y-auto">
               {list.isLoading && <p className="p-4 text-sm">Carregando notificações…</p>}
@@ -116,11 +129,12 @@ export function NotificationBell() {
                 </p>
               )}
               {list.data?.map((n) => {
+                const normalizedLink = n.linkUrl?.replace(/^\/hub\/orders\/([^/?#]+)$/, '/hub?order=$1');
                 const href =
-                  n.linkUrl?.startsWith('/') &&
-                  !n.linkUrl.startsWith('//') &&
-                  !n.linkUrl.includes('\\')
-                    ? r(n.linkUrl.replace('/settings/team', '/settings#members'))
+                  normalizedLink?.startsWith('/') &&
+                  !normalizedLink.startsWith('//') &&
+                  !normalizedLink.includes('\\')
+                    ? r(normalizedLink.replace('/settings/team', '/settings#members'))
                     : null;
                 return (
                   <article

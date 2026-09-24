@@ -20,7 +20,7 @@ const dateOnly = z
 export const createPromotionSchema = z
   .object({
     storeId: z.string().uuid(),
-    platformCode: z.enum(PLATFORMS),
+    platformCodes: z.array(z.enum(PLATFORMS)).min(1).max(10),
     name: z.string().min(1).max(120),
     // iFood só aceita percentual e rejeita acima de 70%.
     discountPercent: z.number().int().min(1).max(70),

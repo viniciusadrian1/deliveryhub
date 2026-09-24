@@ -306,7 +306,7 @@ function PromotionCard({ promotion, storeId }: { promotion: Promotion; storeId: 
 
 function CreatePromotionDialog({ storeId, onClose }: { storeId: string; onClose: () => void }) {
   const qc = useQueryClient();
-  const [platformCode, setPlatformCode] = useState<string>('ifood');
+  const [platformCodes, setPlatformCodes] = useState<Set<string>>(new Set(['ifood']));
   const [name, setName] = useState('');
   const [discount, setDiscount] = useState('10');
   const [startsAt, setStartsAt] = useState('');
@@ -334,7 +334,7 @@ function CreatePromotionDialog({ storeId, onClose }: { storeId: string; onClose:
         method: 'POST',
         body: {
           storeId,
-          platformCode,
+          platformCodes: [...platformCodes],
           name,
           discountPercent: parseInt(discount, 10),
           startsAt,
@@ -358,6 +358,7 @@ function CreatePromotionDialog({ storeId, onClose }: { storeId: string; onClose:
     });
 
   const valid =
+    platformCodes.size > 0 &&
     name.trim().length > 0 &&
     selected.size > 0 &&
     startsAt !== '' &&
@@ -396,12 +397,17 @@ function CreatePromotionDialog({ storeId, onClose }: { storeId: string; onClose:
               </p>
             ) : (
               activeConnections.map((c) => {
-                const active = platformCode === c.platformCode;
+                const active = platformCodes.has(c.platformCode);
                 return (
                   <button
                     key={c.platformCode}
                     type="button"
-                    onClick={() => setPlatformCode(c.platformCode)}
+                    onClick={() => setPlatformCodes((current) => {
+                      const next = new Set(current);
+                      if (next.has(c.platformCode)) next.delete(c.platformCode);
+                      else next.add(c.platformCode);
+                      return next;
+                    })}
                     className={clsx(
                       'flex items-center gap-2.5 rounded-lg border p-2.5 text-left transition-all',
                       active
@@ -419,6 +425,8 @@ function CreatePromotionDialog({ storeId, onClose }: { storeId: string; onClose:
             )}
           </div>
         </div>
+
+        <p className="text-xs text-ink-tertiary">Selecione uma ou mais plataformas para publicar a mesma campanha em todos os canais escolhidos.</p>
 
         {/* Nome da Campanha */}
         <Input

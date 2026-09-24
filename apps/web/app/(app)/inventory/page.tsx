@@ -17,6 +17,7 @@ import {
   RotateCcw,
   ShoppingCart,
   Sliders,
+  Trash2,
   TrendingDown,
   Truck,
   type LucideIcon,
@@ -443,10 +444,11 @@ function IngredientsTab({ storeId }: { storeId: string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Ingredient | null>(null);
   const [subRecipeOpen, setSubRecipeOpen] = useState<Ingredient | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const { data: ingredients = [], isLoading } = useQuery({
     queryKey: ['inventory', 'ingredients', storeId],
-    queryFn: () => api<Ingredient[]>(`/inventory/ingredients?storeId=${storeId}`),
+    queryFn: () => api<Ingredient[]>(`/inventory/ingredients?storeId=${storeId}&includeArchived=true`),
   });
 
   const archive = useMutation({
@@ -454,12 +456,31 @@ function IngredientsTab({ storeId }: { storeId: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory'] }),
   });
 
-  const raw = ingredients.filter((i) => i.kind === 'raw');
-  const subRecipes = ingredients.filter((i) => i.kind === 'sub_recipe');
+  const restore = useMutation({
+    mutationFn: (id: string) => api(`/inventory/ingredients/${id}/restore`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory', 'ingredients', storeId] }),
+  });
+
+  const removePermanently = useMutation({
+    mutationFn: (id: string) => api(`/inventory/ingredients/${id}/permanent`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory', 'ingredients', storeId] }),
+  });
+
+  const visibleIngredients = ingredients.filter((i) => (showArchived ? !!i.archivedAt : !i.archivedAt));
+  const raw = visibleIngredients.filter((i) => i.kind === 'raw');
+  const subRecipes = visibleIngredients.filter((i) => i.kind === 'sub_recipe');
 
   return (
     <>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex gap-2" role="group" aria-label="Filtrar insumos">
+          <Button size="sm" variant={showArchived ? 'ghost' : 'secondary'} onClick={() => setShowArchived(false)}>
+            Ativos ({ingredients.filter((i) => !i.archivedAt).length})
+          </Button>
+          <Button size="sm" variant={showArchived ? 'secondary' : 'ghost'} onClick={() => setShowArchived(true)}>
+            Arquivados ({ingredients.filter((i) => !!i.archivedAt).length})
+          </Button>
+        </div>
         <Button
           size="sm"
           onClick={() => {
@@ -521,16 +542,44 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Deseja arquivar ${i.name}?`)) archive.mutate(i.id);
-                          }}
-                          className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
-                          aria-label="Arquivar"
-                          title="Arquivar"
-                        >
-                          <Archive className="h-3.5 w-3.5" />
-                        </button>
+                        {!showArchived && (
+                          <button
+                            onClick={() => {
+                              if (confirm(`Deseja arquivar ${i.name}?`)) archive.mutate(i.id);
+                            }}
+                            className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
+                            aria-label="Arquivar"
+                            title="Arquivar"
+                          >
+                            <Archive className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {showArchived && (
+                          <>
+                            <button
+                              onClick={() => restore.mutate(i.id)}
+                              disabled={restore.isPending}
+                              className="rounded-md p-1.5 text-brand-500 hover:bg-brand-500/10"
+                              aria-label="Restaurar"
+                              title="Restaurar"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Excluir permanentemente ${i.name}? Essa ação não pode ser desfeita.`)) {
+                                  removePermanently.mutate(i.id);
+                                }
+                              }}
+                              disabled={removePermanently.isPending}
+                              className="rounded-md p-1.5 text-danger-bright hover:bg-danger-soft"
+                              aria-label="Excluir permanentemente"
+                              title="Excluir permanentemente"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -588,6 +637,43 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
+                      {!showArchived ? (
+                        <button
+                          onClick={() => {
+                            if (confirm(`Deseja arquivar ${i.name}?`)) archive.mutate(i.id);
+                          }}
+                          className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
+                          aria-label="Arquivar"
+                          title="Arquivar"
+                        >
+                          <Archive className="h-3.5 w-3.5" />
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => restore.mutate(i.id)}
+                            disabled={restore.isPending}
+                            className="rounded-md p-1.5 text-brand-500 hover:bg-brand-500/10"
+                            aria-label="Restaurar"
+                            title="Restaurar"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Excluir permanentemente ${i.name}? Essa ação não pode ser desfeita.`)) {
+                                removePermanently.mutate(i.id);
+                              }
+                            }}
+                            disabled={removePermanently.isPending}
+                            className="rounded-md p-1.5 text-danger-bright hover:bg-danger-soft"
+                            aria-label="Excluir permanentemente"
+                            title="Excluir permanentemente"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

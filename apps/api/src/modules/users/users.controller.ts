@@ -21,6 +21,10 @@ export class UsersController {
       where: { id: auth.userId },
       select: { id: true, email: true, name: true, createdAt: true },
     });
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: auth.orgId },
+      select: { name: true },
+    });
 
     // Demonstra TenantPrismaService: o filtro por organizationId é injetado automaticamente.
     let stores = await this.tenantPrisma.tx.store.findMany({
@@ -56,6 +60,7 @@ export class UsersController {
     return {
       user,
       orgId: auth.orgId,
+      organizationName: organization?.name ?? '',
       role: auth.role,
       stores,
     };

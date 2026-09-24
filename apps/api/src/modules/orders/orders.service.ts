@@ -530,6 +530,7 @@ export class OrdersService {
           ? { in: query.statusIn }
           : (query.status ?? undefined),
         placedAt: query.since ? { gte: query.since } : undefined,
+        hiddenAt: null,
       },
       orderBy: { placedAt: 'desc' },
       take: query.limit,
@@ -552,6 +553,15 @@ export class OrdersService {
         },
       },
     });
+  }
+
+  async hide(auth: AuthContext, id: string) {
+    const order = await this.prisma.order.findFirst({
+      where: { id, organizationId: auth.orgId },
+      select: { id: true },
+    });
+    if (!order) throw new NotFoundException('order_not_found');
+    return this.prisma.order.update({ where: { id }, data: { hiddenAt: new Date() } });
   }
 
   async findOne(auth: AuthContext, id: string) {
@@ -1080,7 +1090,7 @@ export class OrdersService {
         kind: 'new_order',
         title: `Novo pedido — ${ctx.platformCode}`,
         body: `R$ ${(created.totalCents / 100).toFixed(2)} • ${remote.customer.name}`,
-        linkUrl: `/hub/orders/${created.id}`,
+        linkUrl: `/hub?order=${created.id}`,
       });
     }
   }

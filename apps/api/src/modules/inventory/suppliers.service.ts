@@ -95,6 +95,22 @@ export class SuppliersService {
       diff: { archived: true },
     });
   }
+
+  async restore(auth: AuthContext, id: string) {
+    await this.findOne(auth, id);
+    await this.tenantPrisma.tx.supplier.update({
+      where: { id },
+      data: { archivedAt: null },
+    });
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'supplier',
+      entityId: id,
+      action: 'update',
+      diff: { archived: false },
+    });
+  }
 }
 
 function diffFields<T extends Record<string, unknown>>(

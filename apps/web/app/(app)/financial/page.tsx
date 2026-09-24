@@ -258,6 +258,7 @@ export default function FinancialPage() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['fin'] });
+      void qc.refetchQueries({ queryKey: ['fin'] });
       setImportOpen(false);
       setCsvText('');
     },

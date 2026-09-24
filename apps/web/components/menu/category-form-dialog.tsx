@@ -29,7 +29,7 @@ export function CategoryFormDialog({ open, onClose, storeId, editing }: Props) {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const body = { name, description: description || undefined };
+      const body = { name, description: description.trim() || (editing ? null : undefined) };
       if (editing) {
         return api(`/menu/categories/${editing.id}`, { method: 'PATCH', body });
       }

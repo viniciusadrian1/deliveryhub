@@ -34,6 +34,17 @@ export class NotificationsController {
     await this.notifications.markRead(auth, id);
   }
 
+  @Post(':id/unread')
+  @HttpCode(204)
+  async markUnread(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
+    await this.notifications.markUnread(auth, id);
+  }
+
+  @Post('clear')
+  clear(@CurrentUser() auth: AuthContext) {
+    return this.notifications.clear(auth);
+  }
+
   @Post('read-all')
   markAllRead(@CurrentUser() auth: AuthContext) {
     return this.notifications.markAllRead(auth);

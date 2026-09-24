@@ -171,4 +171,43 @@ export class IngredientsService {
       diff: { archived: true, name: existing.name },
     });
   }
+
+  async restore(auth: AuthContext, id: string) {
+    await this.findOne(auth, id);
+    await this.tenantPrisma.tx.ingredient.update({
+      where: { id },
+      data: { archivedAt: null },
+    });
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'ingredient',
+      entityId: id,
+      action: 'update',
+      diff: { archived: false },
+    });
+  }
+
+  async removePermanently(auth: AuthContext, id: string) {
+    const existing = await this.findOne(auth, id);
+    const [purchases, movements, components] = await Promise.all([
+      this.tenantPrisma.tx.ingredientPurchase.count({ where: { ingredientId: id } }),
+      this.tenantPrisma.tx.stockMovement.count({ where: { ingredientId: id } }),
+      this.tenantPrisma.tx.recipeComponent.count({
+        where: { OR: [{ ingredientId: id }, { parentIngredientId: id }] },
+      }),
+    ]);
+    if (purchases || movements || components) {
+      throw new BadRequestException('ingredient_has_history_use_archive_instead');
+    }
+    await this.tenantPrisma.tx.ingredient.delete({ where: { id } });
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'ingredient',
+      entityId: id,
+      action: 'delete',
+      diff: { permanent: true, name: existing.name },
+    });
+  }
 }

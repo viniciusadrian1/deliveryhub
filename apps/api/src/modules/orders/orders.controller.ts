@@ -37,6 +37,13 @@ export class OrdersController {
     return this.orders.getTracking(auth, id);
   }
 
+  @Post(':id/hide')
+  @Roles('owner', 'manager', 'staff')
+  @HttpCode(200)
+  hide(@CurrentUser() auth: AuthContext, @Param('id') id: string) {
+    return this.orders.hide(auth, id);
+  }
+
   @Post(':id/accept')
   @Roles('owner', 'manager', 'staff')
   @HttpCode(200)
@@ -125,4 +132,3 @@ export class OrdersController {
     return this.orders.clearSimulatedOrders(auth);
   }
 }
-

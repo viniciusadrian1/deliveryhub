@@ -52,6 +52,17 @@ export class PromotionsService {
    * Todos os itens precisam já estar publicados na plataforma (externalId).
    */
   async create(auth: AuthContext, input: CreatePromotionInput) {
+    const results = [];
+    for (const platformCode of input.platformCodes) {
+      results.push(await this.createSingle(auth, { ...input, platformCode }));
+    }
+    return results;
+  }
+
+  private async createSingle(
+    auth: AuthContext,
+    input: Omit<CreatePromotionInput, 'platformCodes'> & { platformCode: PlatformCode },
+  ) {
     const platform = await this.prisma.platform.findUnique({
       where: { code: input.platformCode },
     });

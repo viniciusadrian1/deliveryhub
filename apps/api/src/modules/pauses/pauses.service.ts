@@ -47,7 +47,7 @@ export class PausesService {
 
   async listActive(auth: AuthContext, storeId: string) {
     const now = new Date();
-    return this.prisma.pause.findMany({
+    const pauses = await this.prisma.pause.findMany({
       where: {
         organizationId: auth.orgId,
         storeId,
@@ -62,13 +62,14 @@ export class PausesService {
         menuItem: { select: { id: true, name: true } },
       },
     });
+    return this.withPlatformDetails(pauses);
   }
 
   async list(auth: AuthContext, query: ListPausesQuery) {
     if (query.status === 'active') {
       return this.listActive(auth, query.storeId);
     }
-    return this.prisma.pause.findMany({
+    const pauses = await this.prisma.pause.findMany({
       where: { organizationId: auth.orgId, storeId: query.storeId },
       orderBy: { startsAt: 'desc' },
       take: query.limit,
@@ -79,6 +80,7 @@ export class PausesService {
         menuItem: { select: { id: true, name: true } },
       },
     });
+    return this.withPlatformDetails(pauses);
   }
 
   /**
@@ -222,7 +224,8 @@ export class PausesService {
       userAgent: session.userAgent,
     });
 
-    await this.propagate(id, connections, /* paused */ false);
+    const resumable = await this.onlyUncoveredConnections(existing, connections);
+    await this.propagate(id, resumable, /* paused */ false);
 
     return updated;
   }
@@ -253,7 +256,8 @@ export class PausesService {
           p.storeId,
           p.platformIds,
         );
-        await this.propagate(p.id, connections, false);
+        const resumable = await this.onlyUncoveredConnections(p, connections);
+        await this.propagate(p.id, resumable, false);
         await this.prisma.pause.update({
           where: { id: p.id },
           data: { reopenedAt: now },
@@ -286,7 +290,48 @@ export class PausesService {
       },
     });
     if (!p) throw new NotFoundException('pause_not_found');
-    return p;
+    const [decorated] = await this.withPlatformDetails([p]);
+    return decorated!;
+  }
+
+  private async withPlatformDetails<T extends { platformIds: string[] }>(pauses: T[]) {
+    const ids = [...new Set(pauses.flatMap((pause) => pause.platformIds))];
+    if (ids.length === 0) return pauses.map((pause) => ({ ...pause, platforms: [] }));
+    const platforms = await this.prisma.platform.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, code: true, name: true },
+    });
+    const byId = new Map(platforms.map((platform) => [platform.id, platform]));
+    return pauses.map((pause) => ({
+      ...pause,
+      platforms: pause.platformIds.map((id) => byId.get(id)).filter(Boolean),
+    }));
+  }
+
+  /** Não reabre uma plataforma enquanto outra pausa ativa ainda a cobre. */
+  private async onlyUncoveredConnections(
+    pause: { id: string; organizationId: string; storeId: string; platformIds: string[] },
+    connections: ResolvedConnection[],
+  ) {
+    const now = new Date();
+    const otherPauses = await this.prisma.pause.findMany({
+      where: {
+        id: { not: pause.id },
+        organizationId: pause.organizationId,
+        storeId: pause.storeId,
+        startsAt: { lte: now },
+        cancelledAt: null,
+        reopenedAt: null,
+        OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+      },
+      select: { platformIds: true },
+    });
+    return connections.filter(
+      (connection) =>
+        !otherPauses.some(
+          (other) => other.platformIds.length === 0 || other.platformIds.includes(connection.platformId),
+        ),
+    );
   }
 
   private async assertStore(orgId: string, storeId: string): Promise<void> {

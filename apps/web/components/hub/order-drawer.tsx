@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
+  Archive,
   ArrowRight,
   Banknote,
   CheckCircle2,
@@ -126,6 +127,14 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
       void qc.invalidateQueries({ queryKey: ['orders'] });
       void qc.invalidateQueries({ queryKey: ['order', orderId] });
       void qc.invalidateQueries({ queryKey: ['fin'] });
+    },
+  });
+
+  const hide = useMutation({
+    mutationFn: () => api(`/orders/${orderId}/hide`, { method: 'POST' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['orders'] });
+      onClose();
     },
   });
 
@@ -447,8 +456,17 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
           )}
         </div>
 
-        {data && (canReject || nextAction) && !showRejectForm && (
+        {data && !showRejectForm && (
           <footer className="flex items-center gap-2 border-t border-surface-border-subtle bg-surface-base/40 px-5 py-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => hide.mutate()}
+              loading={hide.isPending}
+              leftIcon={<Archive className="h-3.5 w-3.5" />}
+            >
+              Ocultar do Hub
+            </Button>
             {canReject && data.status === 'placed' && (
               <Button
                 variant="secondary"

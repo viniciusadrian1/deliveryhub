@@ -121,6 +121,20 @@ export class NotificationsService {
     return { updated: r.count };
   }
 
+  async markUnread(auth: AuthContext, id: string): Promise<void> {
+    const n = await this.prisma.notification.findFirst({
+      where: { id, userId: auth.userId },
+      select: { id: true },
+    });
+    if (!n) throw new NotFoundException('notification_not_found');
+    await this.prisma.notification.update({ where: { id }, data: { readAt: null } });
+  }
+
+  async clear(auth: AuthContext): Promise<{ deleted: number }> {
+    const result = await this.prisma.notification.deleteMany({ where: { userId: auth.userId } });
+    return { deleted: result.count };
+  }
+
   // -------------- preferences --------------
 
   async listPreferences(auth: AuthContext) {
