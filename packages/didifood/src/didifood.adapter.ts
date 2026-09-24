@@ -270,6 +270,7 @@ const PAUSE_REASON_OTHER = 1006;
  * (sem aspas, sem passar por Number) — senão perdem precisão.
  */
 const RAW_NUMERIC_KEYS = [
+  'app_id',
   'order_id',
   'shop_id',
   'apply_id',
@@ -1445,8 +1446,8 @@ export function signParams(
 
 /**
  * Builds the signed List Bind Stores payload exactly as 99Food expects it.
- * `app_id` is a long identifier and `timestamp` is documented/validated as a
- * textual value by the provider; both must remain strings in the JSON body.
+ * `app_id` is a long identifier and must be emitted as a numeric JSON token
+ * for authorization endpoints; the timestamp remains textual for signing.
  */
 export function buildShopListRequestBody(
   clientId: string,
