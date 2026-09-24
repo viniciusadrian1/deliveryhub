@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import type { Ingredient, IngredientKind, IngredientUnit } from '../../lib/inventory-types';
 import { INGREDIENT_UNIT_FULL_LABELS, INGREDIENT_UNIT_LABELS } from '../../lib/inventory-types';
+import { normalizeDecimalInput } from '../../lib/money';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -71,7 +72,7 @@ export function IngredientFormDialog({
   // Manipulador quando altera o custo por Quilo ou Litro (bulk)
   const handleBulkChange = (value: string) => {
     setCostBulk(value);
-    const cleaned = value.replace(/\./g, '').replace(',', '.');
+    const cleaned = normalizeDecimalInput(value);
     const num = parseFloat(cleaned);
     if (!isNaN(num) && num >= 0) {
       if (unit === 'gram' || unit === 'milliliter') {
@@ -87,7 +88,7 @@ export function IngredientFormDialog({
   // Manipulador quando altera o custo por unidade base direta
   const handleDirectCostChange = (value: string) => {
     setCostPerUnit(value);
-    const cleaned = value.replace(/\./g, '').replace(',', '.');
+    const cleaned = normalizeDecimalInput(value);
     const num = parseFloat(cleaned);
     if (!isNaN(num) && num >= 0) {
       if (unit === 'gram' || unit === 'milliliter') {
@@ -102,7 +103,7 @@ export function IngredientFormDialog({
 
   const handleUnitChange = (newUnit: IngredientUnit) => {
     setUnit(newUnit);
-    const cleaned = costPerUnit.replace(/\./g, '').replace(',', '.');
+    const cleaned = normalizeDecimalInput(costPerUnit);
     const num = parseFloat(cleaned);
     if (!isNaN(num) && num >= 0) {
       if (newUnit === 'gram' || newUnit === 'milliliter') {
@@ -117,8 +118,8 @@ export function IngredientFormDialog({
     mutationFn: async () => {
       const minLevelValue = minLevel.trim() ? minLevel.replace(',', '.') : null;
       const targetDaysValue = targetDays.trim() ? parseInt(targetDays, 10) : null;
-      const cleanCost = costPerUnit.trim().replace(',', '.');
-      const cleanBatchYield = batchYield.trim().replace(',', '.');
+      const cleanCost = normalizeDecimalInput(costPerUnit);
+      const cleanBatchYield = normalizeDecimalInput(batchYield);
 
       if (editing) {
         return api(`/inventory/ingredients/${editing.id}`, {

@@ -15,6 +15,12 @@ export function moneyInput(cents: number): string {
   return (cents / 100).toFixed(2).replace('.', ',');
 }
 
+/** Normaliza um decimal digitado em formato brasileiro ou internacional. */
+export function normalizeDecimalInput(value: string): string {
+  const text = value.trim();
+  return text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+}
+
 export function parseMoneyInputToCents(value: string | number | null | undefined): number {
   if (value == null) return 0;
   if (typeof value === 'number') return Math.round(value);

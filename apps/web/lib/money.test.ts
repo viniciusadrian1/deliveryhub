@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moneyInput, parseMoneyCents } from './money';
+import { moneyInput, normalizeDecimalInput, parseMoneyCents } from './money';
 
 describe('BRL expense input', () => {
   it.each([
@@ -17,4 +17,11 @@ describe('BRL expense input', () => {
     expect(parseMoneyCents(moneyInput(350000))).toBe(350000));
   it('preserves ten salaries when editing the unit value', () =>
     expect(parseMoneyCents(moneyInput(2500000 / 10))! * 10).toBe(2500000));
+  it.each([
+    ['0,045', '0.045'],
+    ['0.045', '0.045'],
+    ['1.234,56', '1234.56'],
+  ])('normalizes decimal %s', (input, normalized) =>
+    expect(normalizeDecimalInput(input)).toBe(normalized),
+  );
 });
