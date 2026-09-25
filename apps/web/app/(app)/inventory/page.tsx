@@ -75,16 +75,46 @@ export default function InventoryPage() {
     queryFn: () => api<StockAlertSummary[]>(`/inventory/stock/alerts?storeId=${storeId}`),
     enabled: !!storeId,
   });
+  const { data: exportIngredients = [] } = useQuery({
+    queryKey: ['inventory', 'ingredients', storeId, 'export'],
+    queryFn: () => api<Ingredient[]>(`/inventory/ingredients?storeId=${storeId}&includeArchived=true`),
+    enabled: !!storeId && tab === 'ingredients',
+  });
+  const { data: exportBalance = [] } = useQuery({
+    queryKey: ['inventory', 'balance', storeId, 'export'],
+    queryFn: () => api<StockBalance[]>(`/inventory/stock/balance?storeId=${storeId}`),
+    enabled: !!storeId && tab === 'balance',
+  });
+  const { data: exportPurchases = [] } = useQuery({
+    queryKey: ['inventory', 'purchases', storeId, 'export'],
+    queryFn: () => api<IngredientPurchase[]>(`/inventory/purchases?storeId=${storeId}&limit=500`),
+    enabled: !!storeId && tab === 'purchases',
+  });
+  const { data: exportMovements = [] } = useQuery({
+    queryKey: ['inventory', 'movements', storeId, 'export'],
+    queryFn: () => api<StockMovement[]>(`/inventory/stock/movements?storeId=${storeId}&limit=500`),
+    enabled: !!storeId && tab === 'movements',
+  });
+  const { data: exportSuppliers = [] } = useQuery({
+    queryKey: ['inventory', 'suppliers', storeId, 'export'],
+    queryFn: () => api<Supplier[]>('/inventory/suppliers?includeArchived=true'),
+    enabled: !!storeId && tab === 'suppliers',
+  });
 
   const belowCount = alertsSummary.filter((s) => s.belowMinimum).length;
   const exportStock = () => {
-    const header = ['Insumo', 'Saldo', 'Mínimo', 'Cobertura (dias)', 'Sugestão de compra', 'Status'];
-    const rows = alertsSummary.map((s) => [s.ingredientName, s.balance, s.minLevel ?? '', s.daysOfCover ?? '', s.suggestedPurchase, s.belowMinimum ? 'Abaixo do mínimo' : s.needsRestock ? 'Repor em breve' : 'Normal']);
+    const values = tab === 'alerts' ? alertsSummary : tab === 'ingredients' ? exportIngredients : tab === 'balance' ? exportBalance : tab === 'purchases' ? exportPurchases : tab === 'movements' ? exportMovements : exportSuppliers;
+    const records = values as unknown as Array<Record<string, unknown>>;
+    const header = Array.from(new Set(records.flatMap((row) => Object.keys(row))));
+    const rows = records.map((row) => header.map((key) => {
+      const value = row[key] ?? '';
+      return typeof value === 'object' && value !== null ? JSON.stringify(value) : value;
+    }));
     const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';')).join('\n');
     const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `estoque-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `estoque-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -372,7 +402,7 @@ function AlertsTab({ storeId }: { storeId: string }) {
                     </td>
 
                     <td className="px-5 py-3 text-right">
-                      {(suggested > 0 || isLow) && (
+                      {(suggested > 0 || isLow || isWarning) && (
                         <Button
                           size="sm"
                           variant="secondary"
@@ -479,7 +509,6 @@ function IngredientsTab({ storeId }: { storeId: string }) {
     mutationFn: (id: string) => api(`/inventory/ingredients/${id}/restore`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory', 'ingredients', storeId] }),
   });
-
   const removePermanently = useMutation({
     mutationFn: (id: string) => api(`/inventory/ingredients/${id}/permanent`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory', 'ingredients', storeId] }),
@@ -992,6 +1021,10 @@ function SuppliersTab() {
     mutationFn: (id: string) => api(`/inventory/suppliers/${id}/restore`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
   });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/inventory/suppliers/${id}/permanent`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
+  });
 
   const suppliers = allSuppliers.filter((s) => (showArchived ? !!s.archivedAt : !s.archivedAt));
 
@@ -1027,9 +1060,9 @@ function SuppliersTab() {
         </Button>
       </div>
 
-      {(error || archive.error || restore.error) && (
+      {(error || archive.error || restore.error || remove.error) && (
         <p role="alert" className="mb-3 text-sm text-danger-bright">
-          {(error || archive.error || restore.error)?.message}
+          {(error || archive.error || restore.error || remove.error)?.message}
         </p>
       )}
 
@@ -1078,15 +1111,28 @@ function SuppliersTab() {
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                       {s.archivedAt ? (
-                        <button
-                          disabled={restore.isPending}
-                          aria-label={`Restaurar ${s.name}`}
-                          title="Restaurar"
-                          onClick={() => restore.mutate(s.id)}
-                          className="rounded-md p-1.5 text-brand-500 hover:bg-brand-500/10"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
+                        <>
+                          <button
+                            disabled={restore.isPending}
+                            aria-label={`Restaurar ${s.name}`}
+                            title="Restaurar"
+                            onClick={() => restore.mutate(s.id)}
+                            className="rounded-md p-1.5 text-brand-500 hover:bg-brand-500/10"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                          <button
+                            disabled={remove.isPending}
+                            aria-label={`Excluir permanentemente ${s.name}`}
+                            title="Excluir permanentemente"
+                            onClick={async () => {
+                              if (await confirm({ title: 'Excluir fornecedor', description: `Excluir permanentemente ${s.name}? Essa ação não pode ser desfeita.`, confirmLabel: 'Excluir', danger: true })) remove.mutate(s.id);
+                            }}
+                            className="rounded-md p-1.5 text-danger-bright hover:bg-danger-soft"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
                       ) : (
                         <button
                           disabled={archive.isPending}

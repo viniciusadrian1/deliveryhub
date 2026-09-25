@@ -82,7 +82,7 @@ export function SupplierFormDialog({ open, onClose, editing }: SupplierFormDialo
           </p>
         )}
         <Input
-          label="Nome"
+          label="Nome *"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -90,23 +90,24 @@ export function SupplierFormDialog({ open, onClose, editing }: SupplierFormDialo
         />
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="CNPJ ou CPF"
+            label="CNPJ ou CPF *"
             hint="Validação do número, sem consulta à Receita."
             error={isValidSupplierDocument(document) ? undefined : 'CNPJ ou CPF inválido.'}
             value={document}
             onChange={(e) => setDocument(e.target.value)}
             required
           />
-          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+          <Input label="Telefone *" value={phone} onChange={(e) => setPhone(e.target.value)} required />
         </div>
         <Input
-          label="E-mail"
+          label="E-mail *"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
         />
         <Input label="Observações" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <p className="text-[11px] text-ink-tertiary">* Indica obrigatoriedade</p>
       </div>
     </Dialog>
   );

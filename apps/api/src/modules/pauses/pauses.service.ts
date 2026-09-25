@@ -298,13 +298,13 @@ export class PausesService {
     const ids = [...new Set(pauses.flatMap((pause) => pause.platformIds))];
     if (ids.length === 0) return pauses.map((pause) => ({ ...pause, platforms: [] }));
     const platforms = await this.prisma.platform.findMany({
-      where: { id: { in: ids } },
+      where: { OR: [{ id: { in: ids } }, { code: { in: ids as any } }] },
       select: { id: true, code: true, name: true },
     });
-    const byId = new Map(platforms.map((platform) => [platform.id, platform]));
+    const byKey = new Map(platforms.flatMap((platform) => [[platform.id, platform], [platform.code, platform]]));
     return pauses.map((pause) => ({
       ...pause,
-      platforms: pause.platformIds.map((id) => byId.get(id)).filter(Boolean),
+      platforms: pause.platformIds.map((id) => byKey.get(id)).filter(Boolean),
     }));
   }
 

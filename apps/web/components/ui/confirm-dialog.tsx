@@ -69,7 +69,7 @@ export function ConfirmDialog({
       size="sm"
       footer={<><Button variant="ghost" onClick={onClose}>Cancelar</Button><Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
-      <p className="text-sm text-ink-secondary">{description}</p>
+      <span className="sr-only">{description}</span>
     </Dialog>
   );
 }

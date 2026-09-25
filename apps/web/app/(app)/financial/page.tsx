@@ -444,14 +444,14 @@ export default function FinancialPage() {
           }
         />
         <KpiCard
-          label="Líquido pra você"
-          value={formatCents(overviewDre?.netRevenueCents ?? summary?.revenueNetCents ?? 0)}
+          label="Resultado líquido"
+          value={formatCents(overviewDre?.operatingResultCents ?? overviewDre?.netRevenueCents ?? summary?.revenueNetCents ?? 0)}
           icon={PiggyBank}
           tone="success"
           hint={
             summary?.pendingNetCents && summary.pendingNetCents > 0
               ? `${formatCents(summary.pendingNetCents)} previsto em andamento`
-              : 'Entradas líquidas confirmadas'
+              : 'Após taxas, CMV e despesas operacionais'
           }
         />
         <KpiCard

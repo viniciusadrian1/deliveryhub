@@ -561,6 +561,10 @@ function PauseRow({
               <span key={platform.id} className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-2 py-0.5 text-[11px] text-ink-secondary">
                 <PlatformLogo platform={platform.code} size="xs" /> {platform.name}
               </span>
+            )) : pause.platformIds.length > 0 ? pause.platformIds.map((code) => (
+              <span key={code} className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-2 py-0.5 text-[11px] text-ink-secondary">
+                <PlatformLogo platform={code} size="xs" /> {PLATFORM_META[code]?.name ?? code}
+              </span>
             )) : <span className="text-[11px] text-ink-secondary">Todos os canais conectados</span>}
           </div>
 

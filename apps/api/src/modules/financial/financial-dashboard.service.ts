@@ -97,7 +97,30 @@ export class FinancialDashboardService {
       ORDER BY day ASC
     `;
 
-    const byDay = new Map(rows.map((r) => [String(r.day).slice(0, 10), r]));
+    let byDay = new Map(rows.map((r) => [String(r.day).slice(0, 10), r]));
+    // Quando o período não tem pedidos concluídos, o resumo financeiro pode
+    // usar créditos importados do extrato. O gráfico precisa representar a
+    // mesma fonte para não ficar visualmente vazio.
+    if (rows.length === 0) {
+      const bankRows = await this.prisma.$queryRaw<
+        { day: Date; orders: bigint; gross_cents: bigint; net_cents: bigint }[]
+      >`
+        SELECT
+          date_trunc('day', date AT TIME ZONE 'America/Sao_Paulo')::date AS day,
+          0::bigint AS orders,
+          SUM(amount_cents)::bigint AS gross_cents,
+          SUM(amount_cents)::bigint AS net_cents
+        FROM bank_transaction
+        WHERE organization_id = ${auth.orgId}
+          AND store_id = ${storeId}
+          AND amount_cents > 0
+          AND date >= ${from}
+          AND date <= ${to}
+        GROUP BY day
+        ORDER BY day ASC
+      `;
+      byDay = new Map(bankRows.map((r) => [String(r.day).slice(0, 10), r]));
+    }
     const points: Array<{ day: string; orderCount: number; revenueGrossCents: number; revenueNetCents: number }> = [];
     for (const cursor = new Date(from); cursor <= to; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
       const day = cursor.toISOString().slice(0, 10);

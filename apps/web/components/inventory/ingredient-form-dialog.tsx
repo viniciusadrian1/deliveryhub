@@ -219,7 +219,7 @@ export function IngredientFormDialog({
         )}
 
         <Input
-          label="Nome do item"
+          label="Nome do item *"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Ex: Doce de Leite, Farinha de Trigo..."
@@ -248,7 +248,7 @@ export function IngredientFormDialog({
           {kind === 'raw' ? (
             unit === 'gram' || unit === 'milliliter' ? (
               <Input
-                label={`Preço por ${unit === 'gram' ? 'Quilo (R$/kg)' : 'Litro (R$/L)'}`}
+                label={`Preço por ${unit === 'gram' ? 'Quilo (R$/kg)' : 'Litro (R$/L)'} *`}
                 value={costBulk}
                 onChange={(e) => handleBulkChange(e.target.value)}
                 placeholder={unit === 'gram' ? '45,00' : '15,00'}
@@ -257,7 +257,7 @@ export function IngredientFormDialog({
               />
             ) : (
               <Input
-                label={`Custo por ${INGREDIENT_UNIT_LABELS[unit]} (R$)`}
+                label={`Custo por ${INGREDIENT_UNIT_LABELS[unit]} (R$) *`}
                 value={costPerUnit}
                 onChange={(e) => handleDirectCostChange(e.target.value)}
                 placeholder="0,00"
@@ -303,7 +303,7 @@ export function IngredientFormDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label={`Estoque mínimo (${INGREDIENT_UNIT_LABELS[unit]})`}
+          label={`Estoque mínimo (${INGREDIENT_UNIT_LABELS[unit]}) *`}
               value={minLevel}
               onChange={(e) => setMinLevel(e.target.value)}
               placeholder="Ex: 500"
@@ -312,7 +312,7 @@ export function IngredientFormDialog({
               hint="Obrigatório para calcular os alertas de reposição."
             />
             <Input
-              label="Dias de cobertura"
+          label="Dias de cobertura *"
               value={targetDays}
               onChange={(e) => setTargetDays(e.target.value)}
               placeholder="7"
@@ -331,6 +331,7 @@ export function IngredientFormDialog({
           onChange={(e) => setNotes(e.target.value)}
           placeholder="Ex: Marca preferida, fornecedor habitual..."
         />
+        <p className="text-[11px] text-ink-tertiary">* Indica obrigatoriedade</p>
 
         {kind === 'sub_recipe' && !editing && (
           <p className="rounded-lg border border-info/30 bg-info-soft px-3 py-2 text-xs text-ink-secondary">

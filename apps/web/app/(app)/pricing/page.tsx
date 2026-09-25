@@ -310,10 +310,10 @@ export default function PricingPage() {
                 <tr className="border-b border-surface-border-subtle bg-surface-base/30 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
                   <th className="w-10 px-5 py-2.5"></th>
                   <th className="px-5 py-2.5">Item</th>
-                  <th className="px-5 py-2.5 text-right">Custo (CMV)</th>
-                  <th className="px-5 py-2.5">Canal</th>
-                  <th className="px-5 py-2.5 text-right">Preço de Venda</th>
-                  <th className="px-5 py-2.5 text-right">Margem Líquida</th>
+                  <th className="px-5 py-2.5 text-right" title="Custo dos ingredientes e insumos do produto">Custo do produto (CMV)</th>
+                  <th className="px-5 py-2.5" title="Marketplace ou canal onde o produto está publicado">Canal de venda</th>
+                  <th className="px-5 py-2.5 text-right" title="Preço cobrado do cliente neste canal">Preço ao cliente</th>
+                  <th className="px-5 py-2.5 text-right" title="Percentual que sobra depois das taxas do canal">Margem líquida após taxas</th>
                 </tr>
               </thead>
               <tbody>

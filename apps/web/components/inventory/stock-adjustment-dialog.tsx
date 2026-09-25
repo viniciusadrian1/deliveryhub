@@ -115,12 +115,6 @@ export function StockAdjustmentDialog({
           <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
             Insumo
           </label>
-          <Input
-            value={ingredientSearch}
-            onChange={(e) => setIngredientSearch(e.target.value)}
-            placeholder="Pesquisar insumo..."
-            aria-label="Pesquisar insumo"
-          />
           <input
             list="stock-adjustment-ingredients"
             value={ingredientSearch}
