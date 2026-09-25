@@ -117,7 +117,7 @@ export function PurchaseFormDialog({
         )}
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
-            Insumo
+            Insumo <span className="text-danger-bright">*</span>
           </label>
           <input
             list="purchase-ingredients"
@@ -159,14 +159,14 @@ export function PurchaseFormDialog({
 
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label={`Quantidade${ingredient ? ` (${INGREDIENT_UNIT_LABELS[ingredient.unit]})` : ''}`}
+            label={`Quantidade${ingredient ? ` (${INGREDIENT_UNIT_LABELS[ingredient.unit]})` : ''} *`}
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             inputMode="decimal"
             placeholder="1000"
           />
           <Input
-            label={`Custo por ${ingredient ? INGREDIENT_UNIT_LABELS[ingredient.unit] : 'unidade'} (R$)`}
+            label={`Custo por ${ingredient ? INGREDIENT_UNIT_LABELS[ingredient.unit] : 'unidade'} (R$) *`}
             value={unitCost}
             onChange={(e) => setUnitCost(e.target.value)}
             inputMode="decimal"
@@ -199,6 +199,7 @@ export function PurchaseFormDialog({
         </div>
 
         <Input label="Observações" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <p className="text-[11px] text-ink-tertiary"><span className="text-danger-bright">*</span> Indica obrigatoriedade</p>
       </div>
     </Dialog>
   );

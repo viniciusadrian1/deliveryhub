@@ -95,6 +95,7 @@ export class DreService {
         items: {
           select: {
             qty: true,
+            nameSnapshot: true,
             costCentsSnapshot: true,
             menuItem: { select: { costCents: true } },
           },
@@ -105,13 +106,33 @@ export class DreService {
     let grossRevenueCents = 0;
     let platformFeesCents = 0;
     let cogsCents = 0;
+    const missingCostNames = Array.from(
+      new Set(
+        orders.flatMap((order) =>
+          order.items
+            .filter((item) => item.costCentsSnapshot == null && item.menuItem?.costCents == null)
+            .map((item) => item.nameSnapshot),
+        ),
+      ),
+    );
+    const menuCosts = missingCostNames.length
+      ? await this.prisma.menuItem.findMany({
+          where: {
+            organizationId: auth.orgId,
+            storeId: query.storeId,
+            name: { in: missingCostNames },
+          },
+          select: { name: true, costCents: true },
+        })
+      : [];
+    const costByName = new Map(menuCosts.map((item) => [item.name, item.costCents]));
     for (const o of orders) {
       grossRevenueCents += o.totalCents;
       platformFeesCents +=
         o.platformFeeCents + o.processingFeeCents + o.flatFeeCents;
       for (const item of o.items) {
         // qty é Int no schema; menuItem opcional (pedidos que não bateram com cardápio têm null)
-        const unitCost = item.costCentsSnapshot ?? item.menuItem?.costCents ?? 0;
+        const unitCost = item.costCentsSnapshot ?? item.menuItem?.costCents ?? costByName.get(item.nameSnapshot) ?? 0;
         cogsCents += unitCost * item.qty;
       }
     }

@@ -483,13 +483,22 @@ export default function FinancialPage() {
                 return (
                   <div
                     key={d.day}
-                    className="group relative flex flex-1 flex-col items-center gap-1.5"
+                    className="group relative flex h-full flex-1 flex-col items-center gap-1.5"
                   >
                     <div
-                      className="w-full rounded-t-md bg-gradient-to-t from-brand-600 to-brand-400 transition-all hover:from-brand-500 hover:to-brand-300"
-                      style={{ height: `${Math.max(pct, 3)}%` }}
+                      className="relative min-h-0 w-full flex-1 rounded-t-md bg-surface-raised/70"
                       title={`${d.day}: ${formatCents(d.revenueGrossCents)} · ${d.orderCount} pedidos`}
-                    />
+                    >
+                      <div
+                        className={clsx(
+                          'w-full rounded-t-md transition-all',
+                          d.revenueGrossCents > 0
+                            ? 'bg-gradient-to-t from-brand-600 to-brand-400 group-hover:from-brand-500 group-hover:to-brand-300'
+                            : 'bg-surface-border',
+                        )}
+                        style={{ height: `${d.revenueGrossCents > 0 ? Math.max(pct, 8) : 2}%` }}
+                      />
+                    </div>
                     <span className="text-[10px] text-ink-tertiary">
                       {new Date(d.day).getDate()}
                     </span>

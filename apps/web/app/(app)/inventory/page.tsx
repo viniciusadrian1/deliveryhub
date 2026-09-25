@@ -78,39 +78,48 @@ export default function InventoryPage() {
   const { data: exportIngredients = [] } = useQuery({
     queryKey: ['inventory', 'ingredients', storeId, 'export'],
     queryFn: () => api<Ingredient[]>(`/inventory/ingredients?storeId=${storeId}&includeArchived=true`),
-    enabled: !!storeId && tab === 'ingredients',
+    enabled: !!storeId,
   });
   const { data: exportBalance = [] } = useQuery({
     queryKey: ['inventory', 'balance', storeId, 'export'],
     queryFn: () => api<StockBalance[]>(`/inventory/stock/balance?storeId=${storeId}`),
-    enabled: !!storeId && tab === 'balance',
+    enabled: !!storeId,
   });
   const { data: exportPurchases = [] } = useQuery({
     queryKey: ['inventory', 'purchases', storeId, 'export'],
-    queryFn: () => api<IngredientPurchase[]>(`/inventory/purchases?storeId=${storeId}&limit=500`),
-    enabled: !!storeId && tab === 'purchases',
+    queryFn: () => api<IngredientPurchase[]>(`/inventory/purchases?storeId=${storeId}&limit=1000`),
+    enabled: !!storeId,
   });
   const { data: exportMovements = [] } = useQuery({
     queryKey: ['inventory', 'movements', storeId, 'export'],
-    queryFn: () => api<StockMovement[]>(`/inventory/stock/movements?storeId=${storeId}&limit=500`),
-    enabled: !!storeId && tab === 'movements',
+    queryFn: () => api<StockMovement[]>(`/inventory/stock/movements?storeId=${storeId}&limit=1000`),
+    enabled: !!storeId,
   });
   const { data: exportSuppliers = [] } = useQuery({
     queryKey: ['inventory', 'suppliers', storeId, 'export'],
     queryFn: () => api<Supplier[]>('/inventory/suppliers?includeArchived=true'),
-    enabled: !!storeId && tab === 'suppliers',
+    enabled: !!storeId,
   });
 
   const belowCount = alertsSummary.filter((s) => s.belowMinimum).length;
   const exportStock = () => {
     const values = tab === 'alerts' ? alertsSummary : tab === 'ingredients' ? exportIngredients : tab === 'balance' ? exportBalance : tab === 'purchases' ? exportPurchases : tab === 'movements' ? exportMovements : exportSuppliers;
     const records = values as unknown as Array<Record<string, unknown>>;
+    const fallbackHeaders: Record<Tab, string[]> = {
+      ingredients: ['id', 'name', 'unit', 'kind', 'costPerUnit', 'minimumStock', 'coverageDays'],
+      balance: ['ingredientId', 'name', 'unit', 'kind', 'balance', 'valueCents'],
+      purchases: ['id', 'ingredient', 'supplier', 'quantity', 'unitCost', 'totalCost', 'purchasedAt', 'invoiceNumber', 'notes'],
+      movements: ['id', 'ingredient', 'quantity', 'reason', 'createdAt', 'notes'],
+      suppliers: ['id', 'name', 'document', 'contactName', 'phone', 'email', 'notes', 'archivedAt'],
+      alerts: ['ingredientId', 'name', 'unit', 'balance', 'minimumStock', 'needsRestock', 'suggestedPurchase'],
+    };
     const header = Array.from(new Set(records.flatMap((row) => Object.keys(row))));
-    const rows = records.map((row) => header.map((key) => {
+    const columns = header.length > 0 ? header : fallbackHeaders[tab];
+    const rows = records.map((row) => columns.map((key) => {
       const value = row[key] ?? '';
       return typeof value === 'object' && value !== null ? JSON.stringify(value) : value;
     }));
-    const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';')).join('\n');
+    const csv = [columns, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';')).join('\n');
     const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;

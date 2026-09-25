@@ -319,11 +319,16 @@ export default function PricingPage() {
               <tbody>
                 {filteredRows.map((row) =>
                   row.platforms.length === 0 ? (
-                    <tr key={row.menuItemId} className="border-t border-surface-border-subtle/60">
+                    <tr key={row.menuItemId} className="border-t border-surface-border-subtle/60 bg-surface-base/20">
                       <td className="px-5 py-3"><input type="checkbox" checked={selectedIds.has(row.menuItemId)} onChange={(e) => { const next = new Set(selectedIds); if (e.target.checked) next.add(row.menuItemId); else next.delete(row.menuItemId); setSelectedIds(next); }} /></td>
                       <td className="px-5 py-3 font-semibold text-ink-primary">{row.menuItemName}</td>
                       <td className="px-5 py-3 text-right text-ink-tertiary">{row.costCents > 0 ? formatCents(row.costCents) : 'Não informado'}</td>
-                      <td colSpan={3} className="px-5 py-3 text-xs text-ink-tertiary">Nenhum canal publicado. Publique este produto no Cardápio para cadastrar o preço por canal.</td>
+                      <td colSpan={3} className="px-5 py-3">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-ink-tertiary">
+                          <Badge variant="neutral">Sem canal configurado</Badge>
+                          <span>Produto já está no Cardápio, mas ainda não há preço específico cadastrado para um canal.</span>
+                        </div>
+                      </td>
                     </tr>
                   ) : row.platforms.map((p, idx) => (
                     <tr
