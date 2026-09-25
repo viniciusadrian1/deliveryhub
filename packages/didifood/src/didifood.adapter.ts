@@ -326,6 +326,7 @@ interface RawOrderDetail {
 // só os campos seguros (o `shop_id` long 64-bit da resposta é ignorado).
 interface RawShopListItem {
   app_shop_id?: string | number;
+  shop_id?: string | number;
   bound_flag?: number;
 }
 interface RawShopList {
@@ -339,9 +340,24 @@ interface RawShopList {
 export function extractBoundShopIds(data: RawShopList | undefined): string[] {
   const shops = data?.shops ?? data?.shop_list ?? [];
   return shops
-    .map((shop) => shop.app_shop_id)
+    .map((shop) => shop.app_shop_id ?? shop.shop_id)
     .filter((shopId): shopId is string | number => Boolean(shopId))
     .map(String);
+}
+
+/**
+ * Preserves 64-bit shop IDs from the raw 99Food response. JSON.parse would
+ * round numeric `shop_id` values before the adapter can use them as strings.
+ */
+export function extractBoundShopIdsFromRaw(raw: string): string[] {
+  const list = raw.match(/"(?:shop_list|shops)"\s*:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
+  const ids = new Set<string>();
+  const field = /"(?:app_shop_id|shop_id)"\s*:\s*(?:"([^"]+)"|(\d+))/g;
+  for (const match of list.matchAll(field)) {
+    const id = match[1] ?? match[2];
+    if (id) ids.add(id);
+  }
+  return [...ids];
 }
 
 /** Conteúdo do `pendingHandle` do 99Food. */
@@ -1052,7 +1068,7 @@ export class DidifoodAdapter implements PlatformAdapter {
    * o `shop_id` long 64-bit da resposta é ignorado de propósito.
    */
   private async fetchShopList(endpoint: string, timestamp?: string): Promise<string[]> {
-    const data = await this.request<RawShopList>(
+    const raw = await this.requestRaw(
       'POST',
       endpoint,
       buildShopListRequestBody(this.config.clientId, this.config.clientSecret, timestamp),
@@ -1063,7 +1079,7 @@ export class DidifoodAdapter implements PlatformAdapter {
     // O `app_shop_id` só vem quando a loja está vinculada — sua presença
     // já basta. NÃO exigimos `bound_flag === 1`: ele pode demorar a
     // refletir o bind self-service e excluía a loja recém-conectada.
-    return extractBoundShopIds(data);
+    return extractBoundShopIdsFromRaw(raw);
   }
 
   // ===================================================================

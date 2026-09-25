@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildShopListRequestBody,
   extractBoundShopIds,
+  extractBoundShopIdsFromRaw,
   signParams,
 } from './didifood.adapter.js';
 
@@ -38,5 +39,18 @@ describe('99Food signed store-list payload', () => {
     expect(extractBoundShopIds({ shops: [{ app_shop_id: 'shop-fallback' }] })).toEqual([
       'shop-fallback',
     ]);
+  });
+
+  it('preserves long shop_id values from the raw authorized-shops response', () => {
+    expect(
+      extractBoundShopIdsFromRaw(
+        '{"data":{"shops":[{"shop_id":1234567890123456789,"bound_flag":1}]}}',
+      ),
+    ).toEqual(['1234567890123456789']);
+    expect(
+      extractBoundShopIdsFromRaw(
+        '{"data":{"shop_list":[{"app_shop_id":"shop-primary"}]}}',
+      ),
+    ).toEqual(['shop-primary']);
   });
 });
