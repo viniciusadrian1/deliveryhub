@@ -2,10 +2,22 @@ import { z } from 'zod';
 
 import { PLATFORMS } from '@deliveryhub/shared';
 
+/** Interpreta datas vindas dos filtros como dias civis de São Paulo. */
+const localDay = (endOfDay = false) =>
+  z.preprocess(
+    (value) => {
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}-03:00`;
+      }
+      return value;
+    },
+    z.coerce.date(),
+  );
+
 const periodSchema = z.object({
   storeId: z.string().uuid(),
-  from: z.coerce.date(),
-  to: z.coerce.date(),
+  from: localDay(),
+  to: localDay(true),
 });
 
 export const dashboardQuerySchema = periodSchema;

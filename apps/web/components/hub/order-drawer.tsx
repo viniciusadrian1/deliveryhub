@@ -461,7 +461,15 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => hide.mutate()}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    'Ocultar este pedido do Hub? Ele continuará salvo no histórico financeiro, mas não poderá ser restaurado para o Hub.',
+                  )
+                ) {
+                  hide.mutate();
+                }
+              }}
               loading={hide.isPending}
               leftIcon={<Archive className="h-3.5 w-3.5" />}
             >

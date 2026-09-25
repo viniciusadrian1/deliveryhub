@@ -35,6 +35,7 @@ export function StockAdjustmentDialog({
 }: StockAdjustmentDialogProps) {
   const qc = useQueryClient();
   const [ingredientId, setIngredientId] = useState('');
+  const [ingredientSearch, setIngredientSearch] = useState('');
   const [reason, setReason] = useState<AdjustmentReason>('adjustment');
   const [signedQuantity, setSignedQuantity] = useState('');
   const [notes, setNotes] = useState('');
@@ -48,12 +49,16 @@ export function StockAdjustmentDialog({
   useEffect(() => {
     if (!open) return;
     setIngredientId(defaultIngredientId ?? '');
+    setIngredientSearch('');
     setReason('adjustment');
     setSignedQuantity('');
     setNotes('');
   }, [open, defaultIngredientId]);
 
   const ingredient = ingredients.find((i) => i.id === ingredientId);
+  const filteredIngredients = ingredients.filter((i) =>
+    i.name.toLocaleLowerCase().includes(ingredientSearch.trim().toLocaleLowerCase()),
+  );
 
   // Para reasons negativos, normalizamos: se usuário digitou positivo, vira negativo.
   const reasonMeta = REASONS.find((r) => r.value === reason)!;
@@ -110,13 +115,19 @@ export function StockAdjustmentDialog({
           <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
             Insumo
           </label>
+          <Input
+            value={ingredientSearch}
+            onChange={(e) => setIngredientSearch(e.target.value)}
+            placeholder="Pesquisar insumo..."
+            aria-label="Pesquisar insumo"
+          />
           <select
             value={ingredientId}
             onChange={(e) => setIngredientId(e.target.value)}
             className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-500"
           >
             <option value="">— selecione —</option>
-            {ingredients.map((i) => (
+            {filteredIngredients.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name} ({INGREDIENT_UNIT_LABELS[i.unit]})
               </option>

@@ -18,7 +18,7 @@ export class FinancialDashboardService {
       where: {
         organizationId: auth.orgId,
         storeId,
-        status: { not: 'cancelled' },
+        status: 'delivered',
         placedAt: { gte: from, lte: to },
       },
       _sum: {
@@ -90,7 +90,7 @@ export class FinancialDashboardService {
       FROM "order"
       WHERE organization_id = ${auth.orgId}
         AND store_id = ${storeId}
-        AND status <> 'cancelled'
+        AND status = 'delivered'
         AND placed_at >= ${from}
         AND placed_at <= ${to}
       GROUP BY day
@@ -137,7 +137,7 @@ export class FinancialDashboardService {
       LEFT JOIN menu_item mi ON mi.id = oi.menu_item_id
       WHERE o.organization_id = ${auth.orgId}
         AND o.store_id = ${storeId}
-        AND o.status <> 'cancelled'
+        AND o.status = 'delivered'
         AND o.placed_at >= ${from}
         AND o.placed_at <= ${to}
       GROUP BY oi.menu_item_id
@@ -177,7 +177,7 @@ export class FinancialDashboardService {
       INNER JOIN platform p ON p.id = o.platform_id
       WHERE o.organization_id = ${auth.orgId}
         AND o.store_id = ${storeId}
-        AND o.status <> 'cancelled'
+        AND o.status = 'delivered'
         AND o.placed_at >= ${from}
         AND o.placed_at <= ${to}
       GROUP BY p.code, p.name, p.color_hex

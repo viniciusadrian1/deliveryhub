@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 
 import { Prisma } from '@deliveryhub/db';
 
@@ -45,7 +45,7 @@ export interface StockSummary {
  *  - `summarize(storeId)`: gera StockSummary[] para todos os ingredientes
  *    ativos de uma loja. Usado pela UI (/inventory aba Alertas).
  *
- *  - `runDailyCheck()`: cron diário (08:00). Pra cada org com pelo
+ *  - `runDailyCheck()`: cron diário (05:00). Pra cada org com pelo
  *    menos uma loja, computa summary e dispara notificação `stock_low`
  *    pros owners/managers de cada ingrediente em estado `belowMinimum`.
  *    Anti-spam via dedup por (userId, ingredientId) nas últimas 24h.
@@ -128,13 +128,23 @@ export class StockAlertsService {
         ? balance.lessThan(ing.minLevel)
         : false;
 
+      // Alerta preventivo: começa quando o saldo chega a 120% do mínimo,
+      // antes de cruzar o limite crítico. A cobertura continua sendo uma
+      // segunda regra para itens com consumo histórico.
+      const preventiveThreshold = ing.minLevel?.mul(1.2);
+      const nearMinimum = preventiveThreshold
+        ? balance.lessThanOrEqualTo(preventiveThreshold)
+        : false;
       const needsRestock =
-        (ing.minLevel && belowMinimum) ||
+        (ing.minLevel && (belowMinimum || nearMinimum)) ||
         (daysOfCover !== null && daysOfCover < targetDays);
 
       // Sugestão = (consumoDiário × targetDays) − saldo atual.
       // Mínimo zero (não sugerimos negativo se já tem demais).
-      const targetAmount = avgDailyConsumption.mul(targetDays);
+      const targetAmount = Prisma.Decimal.max(
+        avgDailyConsumption.mul(targetDays),
+        ing.minLevel ?? new Prisma.Decimal(0),
+      );
       const suggestedPurchase = targetAmount.greaterThan(balance)
         ? targetAmount.sub(balance)
         : new Prisma.Decimal(0);
@@ -160,7 +170,7 @@ export class StockAlertsService {
    * Cron diário 08:00 — varre organizações, dispara notificação pros
    * usuários owner/manager de cada org sobre ingredientes abaixo do mínimo.
    */
-  @Cron('0 0 8 * * *')
+  @Cron('0 0 5 * * *')
   async runDailyCheck(): Promise<void> {
     this.logger.log('stock_alerts_daily_check_started');
 
@@ -241,4 +251,4 @@ export class StockAlertsService {
 }
 
 // Re-uso com CronExpression conhecido por completude — mas usamos string explícito acima.
-export const STOCK_ALERTS_CRON = CronExpression.EVERY_DAY_AT_8AM;
+export const STOCK_ALERTS_CRON = '0 0 5 * * *';

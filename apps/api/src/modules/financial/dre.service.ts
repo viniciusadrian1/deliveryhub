@@ -84,7 +84,7 @@ export class DreService {
       where: {
         organizationId: auth.orgId,
         storeId: query.storeId,
-        status: { not: 'cancelled' },
+        status: 'delivered',
         placedAt: { gte: from, lte: to },
       },
       select: {

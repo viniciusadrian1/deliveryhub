@@ -160,6 +160,13 @@ export default function PausePage() {
   });
 
   const activeConnections = connections.filter((c) => c.status === 'active');
+  const activePlatformNames = Array.from(
+    new Set(
+      active.flatMap((pause) =>
+        (pause.platforms ?? []).map((platform) => platform.name),
+      ),
+    ),
+  );
   const togglePlatform = (code: string) => {
     setSelectedPlatforms((prev) =>
       prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
@@ -238,6 +245,11 @@ export default function PausePage() {
                   ? `${activeConnections.length} ${activeConnections.length === 1 ? 'plataforma conectada' : 'plataformas conectadas'} recebendo pedidos normalmente`
                   : 'O recebimento de pedidos está suspenso temporariamente nos canais selecionados'}
               </p>
+              {!isOpen && activePlatformNames.length > 0 && (
+                <p className="mt-1 text-xs font-medium text-warning-bright">
+                  Plataformas pausadas: {activePlatformNames.join(', ')}
+                </p>
+              )}
             </div>
           </div>
 

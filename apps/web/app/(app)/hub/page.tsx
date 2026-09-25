@@ -36,7 +36,14 @@ function HubBoard() {
   const orderParam = searchParams.get('order');
   const [selectedId, setSelectedId] = useState<string | null>(orderParam);
   const [soundOn, setSoundOn] = useState(true);
+  const [, setClock] = useState(() => Date.now());
   const storeId = state?.storeId ?? null;
+
+  // Mantém o texto "há X minutos" atualizado sem recarregar a página.
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Deep-link: notificações de cancelamento/reembolso abrem o pedido direto.
   useEffect(() => {
@@ -88,7 +95,9 @@ function HubBoard() {
     const map: Record<string, OrderListItem[]> = {};
     for (const col of COLUMNS) {
       const statuses = Array.isArray(col.status) ? col.status : [col.status];
-      map[col.title] = (data ?? []).filter((o) => statuses.includes(o.status));
+      map[col.title] = (data ?? [])
+        .filter((o) => statuses.includes(o.status))
+        .sort((a, b) => new Date(a.placedAt).getTime() - new Date(b.placedAt).getTime());
     }
     return map;
   }, [data]);
