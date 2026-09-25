@@ -17,12 +17,14 @@ import { PlatformConfigDialog } from '../../../components/menu/platform-config-d
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { EmptyState } from '../../../components/ui/empty-state';
+import { useConfirm } from '../../../components/ui/confirm-dialog';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import { formatCents } from '../../../lib/format';
 import type { Category, MenuItemSummary } from '../../../lib/menu-types';
 
 export default function MenuPage() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const { state } = useAuth();
   const storeId = state?.storeId ?? null;
@@ -234,8 +236,8 @@ export default function MenuPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => {
-                                if (confirm(`Remover "${item.name}"?`))
+                              onClick={async () => {
+                                if (await confirm({ title: 'Remover item', description: `Remover "${item.name}"?`, confirmLabel: 'Remover', danger: true }))
                                   deleteItem.mutate(item.id);
                               }}
                               leftIcon={<Trash2 className="h-3 w-3" />}

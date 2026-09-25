@@ -29,6 +29,7 @@ import {
   MODIFIER_GROUP_KIND_LABELS,
 } from '../../lib/menu-types';
 import { Button } from '../ui/button';
+import { useConfirm } from '../ui/confirm-dialog';
 import { Input } from '../ui/input';
 
 interface ModifierGroupsBuilderProps {
@@ -63,6 +64,7 @@ export function ModifierGroupsBuilder({
   menuItemId,
   storeId,
 }: ModifierGroupsBuilderProps) {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -166,8 +168,8 @@ export function ModifierGroupsBuilder({
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        if (confirm(`Apagar grupo "${g.name}"?`)) {
+                      onClick={async () => {
+                        if (await confirm({ title: 'Excluir grupo', description: `Apagar grupo "${g.name}"?`, confirmLabel: 'Excluir', danger: true })) {
                           removeGroup.mutate(g.id);
                           setExpanded(null);
                         }
@@ -388,6 +390,7 @@ function ModifierListEditor({
   availableItems: MenuItemSummary[];
   onChange: () => void;
 }) {
+  const confirm = useConfirm();
   const [adding, setAdding] = useState(false);
 
   const removeModifier = useMutation({
@@ -436,8 +439,8 @@ function ModifierListEditor({
             )}
             <button
               type="button"
-              onClick={() => {
-                if (confirm(`Remover "${m.name}"?`)) removeModifier.mutate(m.id);
+              onClick={async () => {
+                if (await confirm({ title: 'Remover complemento', description: `Remover "${m.name}"?`, confirmLabel: 'Remover', danger: true })) removeModifier.mutate(m.id);
               }}
               className="rounded-md p-1 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
               aria-label="Remover complemento"

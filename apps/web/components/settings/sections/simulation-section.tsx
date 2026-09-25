@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 import { Button } from '../../ui/button';
+import { useConfirm } from '../../ui/confirm-dialog';
 import { PlatformLogo } from '../../ui/platform-logo';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
@@ -40,6 +41,7 @@ const SUPPORTED_PLATFORMS: PlatformOption[] = [
 ];
 
 export function SimulationSection() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const { state } = useAuth();
   const storeId = state?.storeId ?? null;
@@ -282,8 +284,8 @@ export function SimulationSection() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => {
-                if (confirm('Deseja excluir todos os pedidos simulados (de teste) do sistema?')) {
+              onClick={async () => {
+                if (await confirm({ title: 'Limpar pedidos de teste', description: 'Deseja excluir todos os pedidos simulados (de teste) do sistema?', confirmLabel: 'Limpar', danger: true })) {
                   clearSimulatedMutation.mutate();
                 }
               }}
