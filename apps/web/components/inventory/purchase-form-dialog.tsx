@@ -102,7 +102,14 @@ export function PurchaseFormDialog({
           <Button
             onClick={() => mutation.mutate()}
             loading={mutation.isPending}
-            disabled={!ingredientId || qtyNum <= 0 || !unitCost || costNum < 0}
+            disabled={
+              !ingredientId ||
+              qtyNum <= 0 ||
+              !unitCost ||
+              costNum < 0 ||
+              !purchasedAt ||
+              !invoiceNumber.trim()
+            }
           >
             Registrar compra
           </Button>
@@ -183,16 +190,18 @@ export function PurchaseFormDialog({
 
         <div className="grid grid-cols-2 gap-3">
           <Input
-            label="Data da compra"
+            label="Data da compra *"
             type="date"
+            required
             value={purchasedAt}
             onChange={(e) => setPurchasedAt(e.target.value)}
           />
           <Input
-            label="Nº da nota"
+            label="Nº da nota *"
             inputMode="numeric"
             pattern="[0-9]*"
             maxLength={80}
+            required
             value={invoiceNumber}
             onChange={(e) => setInvoiceNumber(e.target.value.replace(/\D/g, ''))}
           />

@@ -78,7 +78,7 @@ export class FinancialDashboardService {
     await this.assertStore(auth.orgId, storeId);
     // GROUP BY data — usamos raw SQL pois Prisma não tem aggregate por dia nativo.
     const rows = await this.prisma.$queryRaw<
-      { day: Date; orders: bigint; gross_cents: bigint; net_cents: bigint }[]
+      { day: Date; orders: bigint; gross_cents: bigint; net_cents: bigint; fees_cents: bigint }[]
     >`
       SELECT
         -- placed_at é timestamp sem tz guardando UTC; converte pro dia local (BRT)
@@ -86,7 +86,8 @@ export class FinancialDashboardService {
         date_trunc('day', placed_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date AS day,
         COUNT(*)::bigint              AS orders,
         SUM(total_cents)::bigint      AS gross_cents,
-        SUM(net_cents)::bigint        AS net_cents
+        SUM(net_cents)::bigint        AS net_cents,
+        SUM(platform_fee_cents + processing_fee_cents + flat_fee_cents)::bigint AS fees_cents
       FROM "order"
       WHERE organization_id = ${auth.orgId}
         AND store_id = ${storeId}
@@ -103,13 +104,14 @@ export class FinancialDashboardService {
     // mesma fonte para não ficar visualmente vazio.
     if (rows.length === 0) {
       const bankRows = await this.prisma.$queryRaw<
-        { day: Date; orders: bigint; gross_cents: bigint; net_cents: bigint }[]
+        { day: Date; orders: bigint; gross_cents: bigint; net_cents: bigint; fees_cents: bigint }[]
       >`
         SELECT
           date_trunc('day', date AT TIME ZONE 'America/Sao_Paulo')::date AS day,
           0::bigint AS orders,
           SUM(amount_cents)::bigint AS gross_cents,
-          SUM(amount_cents)::bigint AS net_cents
+          SUM(amount_cents)::bigint AS net_cents,
+          0::bigint AS fees_cents
         FROM bank_transaction
         WHERE organization_id = ${auth.orgId}
           AND store_id = ${storeId}
@@ -121,15 +123,46 @@ export class FinancialDashboardService {
       `;
       byDay = new Map(bankRows.map((r) => [String(r.day).slice(0, 10), r]));
     }
-    const points: Array<{ day: string; orderCount: number; revenueGrossCents: number; revenueNetCents: number }> = [];
+    const expenses = await this.prisma.expense.findMany({
+      where: {
+        organizationId: auth.orgId,
+        storeId,
+        OR: [
+          { recurrence: 'one_time', occurredAt: { gte: from, lte: to } },
+          {
+            recurrence: { in: ['monthly', 'weekly', 'daily'] },
+            occurredAt: { lte: to },
+            OR: [{ endedAt: null }, { endedAt: { gte: from } }],
+          },
+        ],
+      },
+      select: { amountCents: true, recurrence: true, occurredAt: true, endedAt: true },
+    });
+    const points: Array<{
+      day: string;
+      orderCount: number;
+      revenueGrossCents: number;
+      revenueNetCents: number;
+      platformFeesCents: number;
+      expensesCents: number;
+      operatingResultCents: number;
+    }> = [];
     for (const cursor = new Date(from); cursor <= to; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
       const day = cursor.toISOString().slice(0, 10);
       const row = byDay.get(day);
+      const expensesCents = expenses.reduce(
+        (sum, expense) => sum + (expenseAppliesOnDay(expense, day) ? expense.amountCents : 0),
+        0,
+      );
+      const revenueNetCents = row ? Number(row.net_cents) : 0;
       points.push({
         day,
         orderCount: row ? Number(row.orders) : 0,
         revenueGrossCents: row ? Number(row.gross_cents) : 0,
-        revenueNetCents: row ? Number(row.net_cents) : 0,
+        revenueNetCents,
+        platformFeesCents: row ? Number(row.fees_cents) : 0,
+        expensesCents,
+        operatingResultCents: revenueNetCents - expensesCents,
       });
     }
     return points;
@@ -237,4 +270,19 @@ export class FinancialDashboardService {
     });
     if (!store) throw new NotFoundException('store_not_found');
   }
+}
+
+function expenseAppliesOnDay(
+  expense: { amountCents: number; recurrence: string; occurredAt: Date; endedAt: Date | null },
+  day: string,
+): boolean {
+  const occurredDay = expense.occurredAt.toISOString().slice(0, 10);
+  const endedDay = expense.endedAt?.toISOString().slice(0, 10) ?? null;
+  if (day < occurredDay || (endedDay && day > endedDay)) return false;
+  if (expense.recurrence === 'one_time') return day === occurredDay;
+  if (expense.recurrence === 'daily') return true;
+  const current = new Date(`${day}T12:00:00Z`);
+  const start = new Date(`${occurredDay}T12:00:00Z`);
+  if (expense.recurrence === 'weekly') return current.getUTCDay() === start.getUTCDay();
+  return current.getUTCDate() === start.getUTCDate();
 }

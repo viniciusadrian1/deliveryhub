@@ -117,8 +117,8 @@ export const createPurchaseSchema = z.object({
   supplierId: z.string().uuid().nullable().optional(),
   quantity: positiveDecimal,
   unitCost: nonNegativeDecimal,
-  invoiceNumber: z.string().max(80).trim().optional(),
-  purchasedAt: z.coerce.date().optional(),
+  invoiceNumber: z.string().min(1).max(80).trim(),
+  purchasedAt: z.coerce.date(),
   notes: z.string().max(2000).optional(),
 });
 export type CreatePurchaseInput = z.infer<typeof createPurchaseSchema>;

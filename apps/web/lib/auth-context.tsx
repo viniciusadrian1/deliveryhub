@@ -24,6 +24,7 @@ export interface AuthState {
   role: string;
   storeId?: string | null;
   storeName?: string | null;
+  stores: { id: string; name: string }[];
 }
 
 interface AuthResultDto {
@@ -42,6 +43,8 @@ interface MeDto {
   stores: { id: string; name: string }[];
 }
 
+const SELECTED_STORE_KEY = 'deliveryhub:selected-store-id';
+
 interface AuthContextValue {
   state: AuthState | null;
   loading: boolean;
@@ -54,6 +57,7 @@ interface AuthContextValue {
   }) => Promise<void>;
   acceptInvitation: (input: { token: string; name?: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
+  selectStore: (storeId: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -74,13 +78,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       try {
         const me = await api<MeDto>('/me');
+        const selectedId = window.localStorage.getItem(SELECTED_STORE_KEY);
+        const selected = me.stores.find((store) => store.id === selectedId) ?? me.stores[0];
         if (cancelled) return;
         setState({
           user: { ...me.user },
           organization: { id: me.orgId, name: me.organizationName },
           role: me.role,
-          storeId: me.stores[0]?.id ?? null,
-          storeName: me.stores[0]?.name ?? null,
+          storeId: selected?.id ?? null,
+          storeName: selected?.name ?? null,
+          stores: me.stores,
         });
       } catch {
         clearTokens();
@@ -108,14 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: data.role,
       storeId: null,
       storeName: null,
+      stores: [],
     });
     try {
       const me = await api<MeDto>('/me');
+      const selectedId = window.localStorage.getItem(SELECTED_STORE_KEY);
+      const selected = me.stores.find((store) => store.id === selectedId) ?? me.stores[0];
       setState((s) => (s ? {
         ...s,
         organization: { ...s.organization, name: me.organizationName },
-        storeId: me.stores[0]?.id ?? null,
-        storeName: me.stores[0]?.name ?? null,
+        storeId: selected?.id ?? null,
+        storeName: selected?.name ?? null,
+        stores: me.stores,
       } : s));
     } catch {
       // se /me falhar agora, o bootstrap recarrega na próxima visita; não fatal
@@ -129,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       skipAuth: true,
     });
     await establishSession(data);
-    router.push(r('/hub'));
+    router.push(r('/select-store'));
   };
 
   const signup = async (input: Parameters<AuthContextValue['signup']>[0]) => {
@@ -139,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       skipAuth: true,
     });
     await establishSession(data);
-    router.push(r('/hub'));
+    router.push(r('/select-store'));
   };
 
   const acceptInvitation = async (input: { token: string; name?: string; password: string }) => {
@@ -149,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       skipAuth: true,
     });
     await establishSession(data);
-    router.push(r('/hub'));
+    router.push(r('/select-store'));
   };
 
   const logout = async () => {
@@ -166,12 +177,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
     clearTokens();
+    window.localStorage.removeItem(SELECTED_STORE_KEY);
     setState(null);
     router.push(r('/login'));
   };
 
+  const selectStore = (storeId: string) => {
+    setState((current) => {
+      if (!current) return current;
+      const store = current.stores.find((item) => item.id === storeId);
+      if (!store) return current;
+      window.localStorage.setItem(SELECTED_STORE_KEY, store.id);
+      return { ...current, storeId: store.id, storeName: store.name };
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ state, loading, login, signup, logout, acceptInvitation }}>
+    <AuthContext.Provider value={{ state, loading, login, signup, logout, acceptInvitation, selectStore }}>
       {children}
     </AuthContext.Provider>
   );

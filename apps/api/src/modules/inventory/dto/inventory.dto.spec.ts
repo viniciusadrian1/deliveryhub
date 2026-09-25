@@ -22,6 +22,8 @@ describe('inventory decimal inputs', () => {
       ingredientId: '00000000-0000-4000-8000-000000000002',
       quantity: '1,5',
       unitCost: '12.34',
+      invoiceNumber: '12345',
+      purchasedAt: '2026-09-25',
     });
 
     expect(result.quantity).toBe('1.5');

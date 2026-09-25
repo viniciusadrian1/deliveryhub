@@ -1,10 +1,16 @@
-import { Controller, Get, Logger } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Logger, Post } from '@nestjs/common';
+import { z } from 'zod';
 
 import { CurrentUser } from '../../common/auth/current-user.decorator.js';
 import { Roles } from '../../common/auth/roles.decorator.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
 import { TenantPrismaService } from '../../common/tenant/tenant-prisma.service.js';
 import type { AuthContext } from '../../common/auth/auth-context.js';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
+
+const createStoreSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+});
 
 @Controller()
 export class UsersController {
@@ -64,6 +70,23 @@ export class UsersController {
       role: auth.role,
       stores,
     };
+  }
+
+  @Post('stores')
+  @Roles('owner')
+  @HttpCode(201)
+  createStore(
+    @CurrentUser() auth: AuthContext,
+    @Body(new ZodValidationPipe(createStoreSchema)) body: z.infer<typeof createStoreSchema>,
+  ) {
+    return this.prisma.store.create({
+      data: {
+        organizationId: auth.orgId,
+        name: body.name,
+        timezone: 'America/Sao_Paulo',
+      },
+      select: { id: true, name: true },
+    });
   }
 
   @Get('owner-only')

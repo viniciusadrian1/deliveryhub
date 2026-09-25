@@ -1,7 +1,7 @@
 'use client';
 
 import { Loader2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 import { Sidebar } from '../../components/layout/sidebar';
@@ -11,7 +11,9 @@ import { r } from '../../lib/routes';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { state, loading } = useAuth();
+  const isStoreOnboarding = pathname === r('/select-store') || pathname === r('/stores/new');
 
   useEffect(() => {
     if (!loading && !state) {
@@ -28,7 +30,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className={isStoreOnboarding ? 'min-h-screen' : 'flex min-h-screen flex-col'}>
+      {isStoreOnboarding ? children : (
       <div className="flex flex-1 min-h-0">
         <Sidebar />
         <div className="flex flex-1 flex-col min-w-0">
@@ -38,6 +41,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
+      )}
     </div>
   );
 }

@@ -82,6 +82,9 @@ interface DailyPoint {
   orderCount: number;
   revenueGrossCents: number;
   revenueNetCents: number;
+  platformFeesCents: number;
+  expensesCents: number;
+  operatingResultCents: number;
 }
 
 interface TopItem {
@@ -160,6 +163,7 @@ export default function FinancialPage() {
   const [tab, setTab] = useState<FinTab>('overview');
   const [orderFilter, setOrderFilter] = useState<'all' | 'delivered' | 'in_progress'>('all');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [dailyMetric, setDailyMetric] = useState<'gross' | 'expenses' | 'net' | 'fees' | 'orders'>('gross');
 
   useEffect(() => {
     const socket = getSocket();
@@ -292,7 +296,23 @@ export default function FinancialPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['fin', 'payouts'] }),
   });
 
-  const maxDaily = Math.max(1, ...daily.map((d) => d.revenueGrossCents));
+  const dailyMetricMeta = {
+    gross: { label: 'Faturamento bruto', color: '#ff7800', value: (d: DailyPoint) => d.revenueGrossCents },
+    expenses: { label: 'Despesas', color: '#f87171', value: (d: DailyPoint) => d.expensesCents },
+    net: { label: 'Faturamento líquido', color: '#4ade80', value: (d: DailyPoint) => d.operatingResultCents },
+    fees: { label: 'Taxas de plataforma', color: '#a78bfa', value: (d: DailyPoint) => d.platformFeesCents },
+    orders: { label: 'Pedidos concluídos', color: '#38bdf8', value: (d: DailyPoint) => d.orderCount },
+  } as const;
+  const selectedDailyMetric = dailyMetricMeta[dailyMetric];
+  const chartValues = daily.map(selectedDailyMetric.value);
+  const chartMin = Math.min(0, ...chartValues);
+  const chartMax = Math.max(1, ...chartValues);
+  const chartRange = chartMax - chartMin || 1;
+  const chartPoints = daily.map((point, index) => {
+    const x = daily.length === 1 ? 380 : (index / (daily.length - 1)) * 760;
+    const y = 206 - ((selectedDailyMetric.value(point) - chartMin) / chartRange) * 176;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
 
   if (!storeId) {
     return <EmptyState icon={Wallet} title="Nenhuma loja configurada" />;
@@ -464,12 +484,24 @@ export default function FinancialPage() {
 
       {/* Daily chart */}
       <section className="surface-card overflow-hidden">
-        <header className="flex items-center justify-between border-b border-surface-border-subtle px-5 py-3">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-surface-border-subtle px-5 py-3">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-brand-400" />
             <h2 className="text-sm font-semibold text-ink-primary">Faturamento por dia</h2>
           </div>
-          <Badge variant="neutral">{daily.length} dias</Badge>
+          <div className="flex items-center gap-2">
+            <select
+              value={dailyMetric}
+              onChange={(event) => setDailyMetric(event.target.value as typeof dailyMetric)}
+              className="rounded-md border border-surface-border bg-surface-raised px-2.5 py-1.5 text-xs text-ink-primary outline-none focus:border-brand-500"
+              aria-label="Métrica do gráfico"
+            >
+              {Object.entries(dailyMetricMeta).map(([key, meta]) => (
+                <option key={key} value={key}>{meta.label}</option>
+              ))}
+            </select>
+            <Badge variant="neutral">{daily.length} dias</Badge>
+          </div>
         </header>
         <div className="p-5">
           {daily.length === 0 ? (
@@ -477,35 +509,32 @@ export default function FinancialPage() {
               Sem pedidos no período selecionado.
             </p>
           ) : (
-            <div className="flex items-end gap-1.5" style={{ height: 180 }}>
-              {daily.map((d) => {
-                const pct = (d.revenueGrossCents / maxDaily) * 100;
-                return (
-                  <div
-                    key={d.day}
-                    className="group relative flex h-full flex-1 flex-col items-center gap-1.5"
-                  >
-                    <div
-                      className="relative min-h-0 w-full flex-1 rounded-t-md bg-surface-raised/70"
-                      title={`${d.day}: ${formatCents(d.revenueGrossCents)} · ${d.orderCount} pedidos`}
-                    >
-                      <div
-                        className={clsx(
-                          'w-full rounded-t-md transition-all',
-                          d.revenueGrossCents > 0
-                            ? 'bg-gradient-to-t from-brand-600 to-brand-400 group-hover:from-brand-500 group-hover:to-brand-300'
-                            : 'bg-surface-border',
-                        )}
-                        style={{ height: `${d.revenueGrossCents > 0 ? Math.max(pct, 8) : 2}%` }}
-                      />
-                    </div>
-                    <span className="text-[10px] text-ink-tertiary">
-                      {new Date(d.day).getDate()}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            <>
+              <div className="mb-2 flex items-center justify-between text-xs text-ink-secondary">
+              <span>{selectedDailyMetric.label}</span>
+              <span className="font-medium text-ink-primary">
+                {daily.length ? (dailyMetric === 'orders' ? `${Math.round(chartValues.reduce((a, b) => a + b, 0))} pedidos` : formatCents(Math.round(chartValues.reduce((a, b) => a + b, 0)))) : '—'}
+              </span>
+              </div>
+              <div className="overflow-x-auto">
+              <svg viewBox="0 0 760 240" className="h-56 min-w-[720px] w-full" role="img" aria-label={`Gráfico de linha: ${selectedDailyMetric.label}`}>
+                {[30, 74, 118, 162, 206].map((y) => <line key={y} x1="0" x2="760" y1={y} y2={y} stroke="currentColor" className="text-surface-border-subtle" strokeWidth="1" />)}
+                {daily.length > 0 && <>
+                  <polyline points={chartPoints} fill="none" stroke={selectedDailyMetric.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  {daily.map((point, index) => {
+                    const x = daily.length === 1 ? 380 : (index / (daily.length - 1)) * 760;
+                    const y = 206 - ((selectedDailyMetric.value(point) - chartMin) / chartRange) * 176;
+                    return <circle key={point.day} cx={x} cy={y} r="3.5" fill={selectedDailyMetric.color}><title>{`${point.day}: ${dailyMetric === 'orders' ? `${selectedDailyMetric.value(point)} pedidos` : formatCents(selectedDailyMetric.value(point))}`}</title></circle>;
+                  })}
+                </>}
+                {daily.filter((_, index) => index === 0 || index === daily.length - 1 || index % Math.max(1, Math.floor(daily.length / 6)) === 0).map((point, index, labels) => {
+                  const originalIndex = daily.findIndex((d) => d.day === point.day);
+                  const x = daily.length === 1 ? 380 : (originalIndex / (daily.length - 1)) * 760;
+                  return <text key={`${point.day}-${index}`} x={x} y="232" textAnchor={index === 0 ? 'start' : index === labels.length - 1 ? 'end' : 'middle'} className="fill-current text-[10px] text-ink-tertiary">{new Date(point.day).getDate()}</text>;
+                })}
+              </svg>
+              </div>
+            </>
           )}
         </div>
       </section>

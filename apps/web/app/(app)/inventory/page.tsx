@@ -10,7 +10,7 @@ import {
   Check,
   CheckCircle2,
   ChefHat,
-  Download,
+  ArrowUpToLine,
   ChevronRight,
   Edit2,
   Package,
@@ -147,7 +147,7 @@ export default function InventoryPage() {
             Gerencie insumos, saldo em estoque, compras e fornecedores de forma integrada.
           </p>
         </div>
-        <Button size="sm" variant="secondary" onClick={exportStock} leftIcon={<Download className="h-3.5 w-3.5" />}>
+        <Button size="sm" variant="secondary" onClick={exportStock} leftIcon={<ArrowUpToLine className="h-3.5 w-3.5" />}>
           Exportar estoque
         </Button>
       </header>
