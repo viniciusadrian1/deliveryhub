@@ -110,6 +110,7 @@ async function tryRefresh(): Promise<boolean> {
 const ERROR_MESSAGES: Record<string, string> = {
   already_a_member: 'Este e-mail já pertence a um membro desta organização.',
   pending_invitation_exists: 'Já existe um convite pendente para este e-mail. Reenvie o convite.',
+  invitation_resend_cooldown: 'Aguarde 10 minutos antes de reenviar este convite.',
   cannot_invite_higher_role: 'Você não pode convidar alguém com uma função superior à sua.',
   invalid_invitation_token: 'Este convite expirou ou já foi utilizado. Peça um novo convite.',
   invitation_email_failed: 'Não foi possível enviar o e-mail. Tente reenviar o convite.',

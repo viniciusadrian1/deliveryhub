@@ -25,6 +25,7 @@ import { useMemo, useState } from 'react';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { EmptyState } from '../../../components/ui/empty-state';
+import { useConfirm } from '../../../components/ui/confirm-dialog';
 import { Input } from '../../../components/ui/input';
 import { PlatformLogo } from '../../../components/ui/platform-logo';
 import { api } from '../../../lib/api';
@@ -101,6 +102,7 @@ const STRATEGY_META: Record<Strategy, { label: string; description: string; icon
 };
 
 export default function PricingPage() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const { state } = useAuth();
   const storeId = state?.storeId ?? null;
@@ -316,7 +318,14 @@ export default function PricingPage() {
               </thead>
               <tbody>
                 {filteredRows.map((row) =>
-                  row.platforms.map((p, idx) => (
+                  row.platforms.length === 0 ? (
+                    <tr key={row.menuItemId} className="border-t border-surface-border-subtle/60">
+                      <td className="px-5 py-3"><input type="checkbox" checked={selectedIds.has(row.menuItemId)} onChange={(e) => { const next = new Set(selectedIds); if (e.target.checked) next.add(row.menuItemId); else next.delete(row.menuItemId); setSelectedIds(next); }} /></td>
+                      <td className="px-5 py-3 font-semibold text-ink-primary">{row.menuItemName}</td>
+                      <td className="px-5 py-3 text-right text-ink-tertiary">{row.costCents > 0 ? formatCents(row.costCents) : 'Não informado'}</td>
+                      <td colSpan={3} className="px-5 py-3 text-xs text-ink-tertiary">Nenhum canal publicado. Publique este produto no Cardápio para cadastrar o preço por canal.</td>
+                    </tr>
+                  ) : row.platforms.map((p, idx) => (
                     <tr
                       key={`${row.menuItemId}-${p.platformCode}`}
                       className="border-t border-surface-border-subtle/60 transition-colors hover:bg-surface-overlay/40"
@@ -494,16 +503,16 @@ export default function PricingPage() {
 
             {preview && (
               <Button
-                onClick={() => {
+                onClick={async () => {
                   const belowMinWarning =
                     preview.itemsBelowMinimum > 0
                       ? ` (${preview.itemsBelowMinimum} abaixo da margem mínima serão preservados)`
                       : '';
-                  if (
-                    confirm(
-                      `Confirmar a atualização de preços em ${preview.itemsAffected} produtos nas plataformas?${belowMinWarning}`,
-                    )
-                  ) {
+                  if (await confirm({
+                    title: 'Aplicar novos preços',
+                    description: `Atualizar ${preview.itemsAffected} produtos nas plataformas?${belowMinWarning}`,
+                    confirmLabel: 'Aplicar preços',
+                  })) {
                     apply.mutate();
                   }
                 }}

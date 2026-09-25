@@ -1,13 +1,14 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, RotateCcw, ChevronLeft, Edit2, Plus, Truck } from 'lucide-react';
+import { Archive, RotateCcw, ChevronLeft, Edit2, Plus, Trash2, Truck } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 
 import { SupplierFormDialog } from '../../../../components/inventory/supplier-form-dialog';
 import { EmptyState } from '../../../../components/ui/empty-state';
 import { Button } from '../../../../components/ui/button';
+import { ConfirmDialog } from '../../../../components/ui/confirm-dialog';
 import { api } from '../../../../lib/api';
 import type { Supplier } from '../../../../lib/inventory-types';
 import { r } from '../../../../lib/routes';
@@ -17,6 +18,7 @@ export default function SuppliersPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
+  const [confirmation, setConfirmation] = useState<{ id: string; action: 'archive' | 'delete'; name: string } | null>(null);
 
   const {
     data: allSuppliers = [],
@@ -35,6 +37,10 @@ export default function SuppliersPage() {
   const suppliers = allSuppliers.filter((s) => (showArchived ? !!s.archivedAt : !s.archivedAt));
   const restore = useMutation({
     mutationFn: (id: string) => api(`/inventory/suppliers/${id}/restore`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/inventory/suppliers/${id}/permanent`, { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['suppliers'] }),
   });
 
@@ -81,9 +87,9 @@ export default function SuppliersPage() {
           Arquivados
         </Button>
       </div>
-      {(error || archive.error || restore.error) && (
+      {(error || archive.error || restore.error || remove.error) && (
         <p role="alert" className="mb-3 text-sm text-danger-bright">
-          {(error || archive.error || restore.error)?.message}
+          {(error || archive.error || restore.error || remove.error)?.message}
         </p>
       )}
       <section className="surface-card overflow-hidden">
@@ -139,17 +145,19 @@ export default function SuppliersPage() {
                           <RotateCcw className="h-4 w-4" />
                         </button>
                       ) : (
-                        <button
-                          disabled={archive.isPending}
-                          onClick={() => {
-                            if (confirm(`Arquivar ${s.name}?`)) archive.mutate(s.id);
-                          }}
-                          className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
-                          aria-label="Arquivar"
-                        >
+                        <button disabled={archive.isPending} onClick={() => setConfirmation({ id: s.id, action: 'archive', name: s.name })} className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright" aria-label="Arquivar">
                           <Archive className="h-3.5 w-3.5" />
                         </button>
                       )}
+                      <button
+                        disabled={remove.isPending}
+                        onClick={() => setConfirmation({ id: s.id, action: 'delete', name: s.name })}
+                        className="rounded-md p-1.5 text-danger-bright hover:bg-danger-soft"
+                        aria-label={`Excluir permanentemente ${s.name}`}
+                        title="Excluir permanentemente"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -160,6 +168,21 @@ export default function SuppliersPage() {
       </section>
 
       <SupplierFormDialog open={open} onClose={() => setOpen(false)} editing={editing} />
+      <ConfirmDialog
+        open={!!confirmation}
+        onClose={() => setConfirmation(null)}
+        title={confirmation?.action === 'delete' ? 'Excluir fornecedor' : 'Arquivar fornecedor'}
+        description={confirmation ? `${confirmation.action === 'delete' ? 'Excluir permanentemente' : 'Arquivar'} ${confirmation.name}?` : ''}
+        confirmLabel={confirmation?.action === 'delete' ? 'Excluir' : 'Arquivar'}
+        danger
+        onConfirm={() => {
+          if (!confirmation) return;
+          const { id, action } = confirmation;
+          setConfirmation(null);
+          if (action === 'delete') remove.mutate(id);
+          else archive.mutate(id);
+        }}
+      />
     </div>
   );
 }

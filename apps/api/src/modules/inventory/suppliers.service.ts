@@ -111,6 +111,19 @@ export class SuppliersService {
       diff: { archived: false },
     });
   }
+
+  async remove(auth: AuthContext, id: string) {
+    const existing = await this.findOne(auth, id);
+    await this.tenantPrisma.tx.supplier.delete({ where: { id } });
+    await this.audit.record({
+      organizationId: auth.orgId,
+      userId: auth.userId,
+      entity: 'supplier',
+      entityId: id,
+      action: 'delete',
+      diff: { name: existing.name, permanent: true },
+    });
+  }
 }
 
 function diffFields<T extends Record<string, unknown>>(

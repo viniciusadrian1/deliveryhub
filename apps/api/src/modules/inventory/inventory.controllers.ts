@@ -101,6 +101,13 @@ export class SuppliersController {
   async restore(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
     await this.suppliers.restore(auth, id);
   }
+
+  @Delete(':id/permanent')
+  @Roles('owner', 'manager')
+  @HttpCode(204)
+  async remove(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
+    await this.suppliers.remove(auth, id);
+  }
 }
 
 // =====================================================================

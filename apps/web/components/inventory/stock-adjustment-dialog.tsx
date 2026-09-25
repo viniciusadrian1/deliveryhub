@@ -121,18 +121,22 @@ export function StockAdjustmentDialog({
             placeholder="Pesquisar insumo..."
             aria-label="Pesquisar insumo"
           />
-          <select
-            value={ingredientId}
-            onChange={(e) => setIngredientId(e.target.value)}
-            className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-500"
-          >
-            <option value="">— selecione —</option>
+          <input
+            list="stock-adjustment-ingredients"
+            value={ingredientSearch}
+            onChange={(e) => {
+              const value = e.target.value;
+              setIngredientSearch(value);
+              setIngredientId(ingredients.find((i) => i.name === value)?.id ?? '');
+            }}
+            placeholder="Selecione ou pesquise um insumo"
+            className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none focus:border-brand-500"
+          />
+          <datalist id="stock-adjustment-ingredients">
             {filteredIngredients.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name} ({INGREDIENT_UNIT_LABELS[i.unit]})
-              </option>
+              <option key={i.id} value={i.name}>{INGREDIENT_UNIT_LABELS[i.unit]}</option>
             ))}
-          </select>
+          </datalist>
         </div>
 
         <div className="flex flex-col gap-1.5">

@@ -5,6 +5,7 @@ import { type ReactNode, useState } from 'react';
 
 import { AuthProvider } from '../lib/auth-context';
 import { ThemeProvider } from '../lib/theme-context';
+import { ConfirmProvider } from '../components/ui/confirm-dialog';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -23,7 +24,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider>
       <QueryClientProvider client={client}>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider><ConfirmProvider>{children}</ConfirmProvider></AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

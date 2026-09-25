@@ -61,7 +61,7 @@ export function Sidebar() {
           className="inline-flex items-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           aria-label="DeliveryHub Início"
         >
-          <Logo size={32} />
+          <Logo size={40} />
         </Link>
       </div>
 

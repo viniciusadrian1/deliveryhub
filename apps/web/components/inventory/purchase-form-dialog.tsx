@@ -26,6 +26,8 @@ export function PurchaseFormDialog({
 }: PurchaseFormDialogProps) {
   const qc = useQueryClient();
   const [ingredientId, setIngredientId] = useState('');
+  const [ingredientSearch, setIngredientSearch] = useState('');
+  const [supplierSearch, setSupplierSearch] = useState('');
   const [supplierId, setSupplierId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [unitCost, setUnitCost] = useState('');
@@ -48,6 +50,8 @@ export function PurchaseFormDialog({
   useEffect(() => {
     if (!open) return;
     setIngredientId(defaultIngredientId ?? '');
+    setIngredientSearch(ingredients.find((i) => i.id === defaultIngredientId)?.name ?? '');
+    setSupplierSearch('');
     setSupplierId('');
     setQuantity('');
     setUnitCost('');
@@ -57,6 +61,7 @@ export function PurchaseFormDialog({
   }, [open, defaultIngredientId]);
 
   const ingredient = ingredients.find((i) => i.id === ingredientId);
+  const filteredIngredients = ingredients.filter((i) => i.name.toLocaleLowerCase().includes(ingredientSearch.trim().toLocaleLowerCase()));
   const qtyNum = parseFloat(quantity.replace(',', '.')) || 0;
   const costNum = parseFloat(unitCost.replace(',', '.')) || 0;
   const total = qtyNum * costNum;
@@ -114,36 +119,42 @@ export function PurchaseFormDialog({
           <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
             Insumo
           </label>
-          <select
-            value={ingredientId}
-            onChange={(e) => setIngredientId(e.target.value)}
-            className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-500"
-          >
-            <option value="">— selecione —</option>
-            {ingredients.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name} ({INGREDIENT_UNIT_LABELS[i.unit]})
-              </option>
+          <input
+            list="purchase-ingredients"
+            value={ingredientSearch}
+            onChange={(e) => {
+              const value = e.target.value;
+              setIngredientSearch(value);
+              setIngredientId(ingredients.find((i) => i.name === value)?.id ?? '');
+            }}
+            placeholder="Selecione ou pesquise um insumo"
+            className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none focus:border-brand-500"
+          />
+          <datalist id="purchase-ingredients">
+            {filteredIngredients.map((i) => (
+              <option key={i.id} value={i.name}>{INGREDIENT_UNIT_LABELS[i.unit]}</option>
             ))}
-          </select>
+          </datalist>
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium uppercase tracking-wider text-ink-secondary">
             Fornecedor (opcional)
           </label>
-          <select
-            value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
-            className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm outline-none focus:border-brand-500"
-          >
-            <option value="">— sem fornecedor —</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+          <input
+            list="purchase-suppliers"
+            value={supplierSearch}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSupplierSearch(value);
+              setSupplierId(suppliers.find((s) => s.name === value)?.id ?? '');
+            }}
+            placeholder="Opcional: selecione ou pesquise"
+            className="h-11 rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none focus:border-brand-500"
+          />
+          <datalist id="purchase-suppliers">
+            {suppliers.map((s) => <option key={s.id} value={s.name} />)}
+          </datalist>
         </div>
 
         <div className="grid grid-cols-2 gap-3">

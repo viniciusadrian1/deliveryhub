@@ -18,6 +18,7 @@ import type { PlatformConnection, PlatformMeta } from '../../lib/integrations-ty
 import { PLATFORM_META } from '../../lib/integrations-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { useConfirm } from '../ui/confirm-dialog';
 
 interface PlatformCardProps {
   code: string;
@@ -35,6 +36,7 @@ const FALLBACK_META: PlatformMeta = {
 
 export function PlatformCard({ code, connection, onConnect }: PlatformCardProps) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const meta = PLATFORM_META[code] ?? { ...FALLBACK_META, name: code };
   const [simulateSuccess, setSimulateSuccess] = useState(false);
   const [isCooldown, setIsCooldown] = useState(false);
@@ -242,8 +244,8 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => {
-                if (confirm(`Desconectar ${meta.name}?`)) disconnect.mutate(connection.id);
+              onClick={async () => {
+                if (await confirm({ title: 'Desconectar plataforma', description: `Desconectar ${meta.name}?`, confirmLabel: 'Desconectar', danger: true })) disconnect.mutate(connection.id);
               }}
               loading={disconnect.isPending}
               leftIcon={<XCircle className="h-3.5 w-3.5" />}

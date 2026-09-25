@@ -97,12 +97,19 @@ export class FinancialDashboardService {
       ORDER BY day ASC
     `;
 
-    return rows.map((r) => ({
-      day: r.day,
-      orderCount: Number(r.orders),
-      revenueGrossCents: Number(r.gross_cents),
-      revenueNetCents: Number(r.net_cents),
-    }));
+    const byDay = new Map(rows.map((r) => [String(r.day).slice(0, 10), r]));
+    const points: Array<{ day: string; orderCount: number; revenueGrossCents: number; revenueNetCents: number }> = [];
+    for (const cursor = new Date(from); cursor <= to; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+      const day = cursor.toISOString().slice(0, 10);
+      const row = byDay.get(day);
+      points.push({
+        day,
+        orderCount: row ? Number(row.orders) : 0,
+        revenueGrossCents: row ? Number(row.gross_cents) : 0,
+        revenueNetCents: row ? Number(row.net_cents) : 0,
+      });
+    }
+    return points;
   }
 
   async topItemsByMargin(

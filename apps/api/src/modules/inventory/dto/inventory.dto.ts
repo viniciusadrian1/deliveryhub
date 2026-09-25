@@ -45,9 +45,9 @@ const STOCK_MOVEMENT_REASONS = [
 
 export const createSupplierSchema = z.object({
   name: z.string().min(1).max(200).trim(),
-  document: z.string().max(40).trim().optional(),
-  email: z.string().email().max(200).optional().or(z.literal('')),
-  phone: z.string().max(40).trim().optional(),
+  document: z.string().min(1).max(40).trim(),
+  email: z.string().email().max(200),
+  phone: z.string().min(1).max(40).trim(),
   address: z.record(z.string(), z.unknown()).optional(),
   notes: z.string().max(2000).optional(),
 });
@@ -60,7 +60,7 @@ export type UpdateSupplierInput = z.infer<typeof updateSupplierSchema>;
 // Ingredient
 // =====================================================================
 
-export const createIngredientSchema = z.object({
+const createIngredientBaseSchema = z.object({
   storeId: z.string().uuid(),
   kind: z.enum(INGREDIENT_KINDS).default('raw'),
   name: z.string().min(1).max(200).trim(),
@@ -86,9 +86,22 @@ export const createIngredientSchema = z.object({
   targetDays: z.number().int().min(1).max(90).nullable().optional(),
   notes: z.string().max(2000).optional(),
 });
+
+export const createIngredientSchema = createIngredientBaseSchema.superRefine((value, ctx) => {
+  if (value.kind !== 'raw') return;
+  if (!value.costPerUnit || parseFloat(value.costPerUnit) <= 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['costPerUnit'], message: 'price_required' });
+  }
+  if (value.minLevel === undefined || value.minLevel === null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['minLevel'], message: 'minimum_stock_required' });
+  }
+  if (value.targetDays === undefined || value.targetDays === null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['targetDays'], message: 'coverage_days_required' });
+  }
+});
 export type CreateIngredientInput = z.infer<typeof createIngredientSchema>;
 
-export const updateIngredientSchema = createIngredientSchema.partial().omit({
+export const updateIngredientSchema = createIngredientBaseSchema.partial().omit({
   storeId: true,
   kind: true,
 });

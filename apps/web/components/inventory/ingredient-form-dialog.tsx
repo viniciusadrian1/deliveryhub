@@ -156,6 +156,14 @@ export function IngredientFormDialog({
     },
   });
 
+  const rawFieldsValid =
+    kind !== 'raw' ||
+    (parseFloat(normalizeDecimalInput(costPerUnit)) > 0 &&
+      minLevel.trim() !== '' &&
+      Number.isInteger(Number(targetDays)) &&
+      Number(targetDays) >= 1 &&
+      Number(targetDays) <= 90);
+
   return (
     <Dialog
       open={open}
@@ -175,7 +183,7 @@ export function IngredientFormDialog({
           <Button
             onClick={() => mutation.mutate()}
             loading={mutation.isPending}
-            disabled={!name.trim() || (kind === 'sub_recipe' && !batchYield.trim())}
+            disabled={!name.trim() || !rawFieldsValid || (kind === 'sub_recipe' && !batchYield.trim())}
           >
             {editing ? 'Salvar alterações' : 'Cadastrar'}
           </Button>
@@ -286,8 +294,8 @@ export function IngredientFormDialog({
 
         <div className="rounded-xl border border-surface-border-subtle bg-surface-base/40 p-3.5 space-y-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-ink-primary">
-              Controle de Reposição e Alertas (Opcional)
+              <p className="text-xs font-semibold uppercase tracking-wider text-ink-primary">
+              Controle de Reposição e Alertas
             </p>
             <p className="text-[11px] text-ink-tertiary">
               Configure quando você quer ser alertado para repor o estoque.
@@ -300,7 +308,8 @@ export function IngredientFormDialog({
               onChange={(e) => setMinLevel(e.target.value)}
               placeholder="Ex: 500"
               inputMode="decimal"
-              hint="Avisa quando o saldo for menor."
+              required
+              hint="Obrigatório para calcular os alertas de reposição."
             />
             <Input
               label="Dias de cobertura"
@@ -310,7 +319,8 @@ export function IngredientFormDialog({
               type="number"
               min={1}
               max={90}
-              hint="Sugere compra para durar X dias."
+              required
+              hint="Obrigatório para sugerir compra para durar X dias."
             />
           </div>
         </div>

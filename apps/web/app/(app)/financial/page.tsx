@@ -27,6 +27,7 @@ import { OrderDrawer } from '../../../components/hub/order-drawer';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Dialog } from '../../../components/ui/dialog';
+import { useConfirm } from '../../../components/ui/confirm-dialog';
 import { EmptyState } from '../../../components/ui/empty-state';
 import { KpiCard } from '../../../components/ui/kpi-card';
 import { PlatformLogo } from '../../../components/ui/platform-logo';
@@ -181,6 +182,14 @@ export default function FinancialPage() {
   const { data: summary } = useQuery({
     queryKey: ['fin', 'summary', storeId, from, to],
     queryFn: () => api<Summary>(`/financial/summary?${params}`),
+    enabled: !!storeId,
+  });
+
+  // A visão geral usa a mesma fonte do DRE para não divergir quando há
+  // custos, taxas ou valores importados do extrato bancário.
+  const { data: overviewDre } = useQuery({
+    queryKey: ['fin', 'dre', 'overview', storeId, from, to],
+    queryFn: () => api<DreReport>(`/financial/expenses/dre?${params}`),
     enabled: !!storeId,
   });
 
@@ -415,28 +424,28 @@ export default function FinancialPage() {
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           label="Faturamento bruto (Entradas)"
-          value={formatCents(summary?.revenueGrossCents ?? 0)}
+          value={formatCents(overviewDre?.grossRevenueCents ?? summary?.revenueGrossCents ?? 0)}
           icon={TrendingUp}
           hint={
             summary?.pendingGrossCents && summary.pendingGrossCents > 0
               ? `${summary.orderCount} concluído${summary.orderCount === 1 ? '' : 's'} · ${formatCents(summary.pendingGrossCents)} a confirmar`
-              : `${summary?.orderCount ?? 0} pedido${summary?.orderCount === 1 ? '' : 's'} concluídos`
+              : `${overviewDre?.ordersCount ?? summary?.orderCount ?? 0} pedido${(overviewDre?.ordersCount ?? summary?.orderCount ?? 0) === 1 ? '' : 's'} concluídos`
           }
         />
         <KpiCard
           label="Taxas de plataforma"
-          value={formatCents(summary?.totalFeesCents ?? 0)}
+          value={formatCents(overviewDre?.platformFeesCents ?? summary?.totalFeesCents ?? 0)}
           icon={Receipt}
           tone="muted"
           hint={
-            summary?.revenueGrossCents
-              ? `${((summary.totalFeesCents / summary.revenueGrossCents) * 100).toFixed(1)}% do faturamento`
+            (overviewDre?.grossRevenueCents ?? summary?.revenueGrossCents)
+              ? `${(((overviewDre?.platformFeesCents ?? summary?.totalFeesCents ?? 0) / (overviewDre?.grossRevenueCents ?? summary?.revenueGrossCents ?? 1)) * 100).toFixed(1)}% do faturamento`
               : 'Taxas de pedidos concluídos'
           }
         />
         <KpiCard
           label="Líquido pra você"
-          value={formatCents(summary?.revenueNetCents ?? 0)}
+          value={formatCents(overviewDre?.netRevenueCents ?? summary?.revenueNetCents ?? 0)}
           icon={PiggyBank}
           tone="success"
           hint={
@@ -447,7 +456,7 @@ export default function FinancialPage() {
         />
         <KpiCard
           label="Ticket médio"
-          value={formatCents(summary?.avgTicketCents ?? 0)}
+          value={formatCents(overviewDre?.averageTicketCents ?? summary?.avgTicketCents ?? 0)}
           icon={BarChart3}
           hint="Média de pedidos concluídos"
         />
@@ -952,6 +961,7 @@ export default function FinancialPage() {
 // =====================================================================
 
 function ExpensesTab({ storeId }: { storeId: string }) {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -1061,8 +1071,8 @@ function ExpensesTab({ storeId }: { storeId: string }) {
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Apagar "${e.name}"?`)) remove.mutate(e.id);
+                        onClick={async () => {
+                          if (await confirm({ title: 'Excluir despesa', description: `Apagar "${e.name}"?`, confirmLabel: 'Excluir', danger: true })) remove.mutate(e.id);
                         }}
                         className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
                         aria-label="Apagar"

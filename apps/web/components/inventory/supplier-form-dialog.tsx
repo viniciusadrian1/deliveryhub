@@ -95,14 +95,16 @@ export function SupplierFormDialog({ open, onClose, editing }: SupplierFormDialo
             error={isValidSupplierDocument(document) ? undefined : 'CNPJ ou CPF inválido.'}
             value={document}
             onChange={(e) => setDocument(e.target.value)}
+            required
           />
-          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
         </div>
         <Input
           label="E-mail"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          required
         />
         <Input label="Observações" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>

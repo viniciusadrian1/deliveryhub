@@ -34,6 +34,7 @@ import { TokensService } from '../auth/tokens.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 const INVITATION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 dias
+const INVITATION_RESEND_COOLDOWN_MS = 10 * 60 * 1000;
 
 interface SessionContext {
   userAgent?: string;
@@ -82,7 +83,13 @@ export class InvitationsService {
       where: { organizationId, email, acceptedAt: null, revokedAt: null },
     });
     if (pending && pending.expiresAt > new Date()) {
-      throw new ConflictException('pending_invitation_exists');
+      if (Date.now() - pending.createdAt.getTime() < INVITATION_RESEND_COOLDOWN_MS) {
+        throw new ConflictException('invitation_resend_cooldown');
+      }
+      await this.prisma.invitation.update({
+        where: { id: pending.id },
+        data: { revokedAt: new Date() },
+      });
     }
 
     const plainToken = randomBytes(32).toString('base64url');

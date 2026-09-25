@@ -29,6 +29,7 @@ import {
 import type { OrderDetail, OrderStatus, PaymentMethod } from '../../lib/hub-types';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import { useConfirm } from '../ui/confirm-dialog';
 import { PlatformLogo } from '../ui/platform-logo';
 import { CourierDispatchDialog } from './courier-dispatch-dialog';
 import { OrderActionRequests } from './order-action-requests';
@@ -85,6 +86,7 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
 
 export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [showCourier, setShowCourier] = useState(false);
@@ -460,21 +462,23 @@ export function OrderDrawer({ orderId, onClose }: OrderDrawerProps) {
           <footer className="flex items-center gap-2 border-t border-surface-border-subtle bg-surface-base/40 px-5 py-3">
             <Button
               variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    'Ocultar este pedido do Hub? Ele continuará salvo no histórico financeiro, mas não poderá ser restaurado para o Hub.',
-                  )
-                ) {
+              size="xs"
+              className="w-8 px-0"
+              aria-label="Arquivar pedido"
+              title="Arquivar pedido"
+              onClick={async () => {
+                if (await confirm({
+                  title: 'Arquivar pedido',
+                  description: 'O pedido continuará salvo no histórico financeiro, mas não poderá ser restaurado para o Hub.',
+                  confirmLabel: 'Arquivar',
+                  danger: true,
+                })) {
                   hide.mutate();
                 }
               }}
               loading={hide.isPending}
               leftIcon={<Archive className="h-3.5 w-3.5" />}
-            >
-              Ocultar do Hub
-            </Button>
+            />
             {canReject && data.status === 'placed' && (
               <Button
                 variant="secondary"

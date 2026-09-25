@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle2,
   ChefHat,
+  Download,
   ChevronRight,
   Edit2,
   Package,
@@ -32,6 +33,7 @@ import { SubRecipeFormDialog } from '../../../components/inventory/sub-recipe-fo
 import { SupplierFormDialog } from '../../../components/inventory/supplier-form-dialog';
 import { EmptyState } from '../../../components/ui/empty-state';
 import { Button } from '../../../components/ui/button';
+import { useConfirm } from '../../../components/ui/confirm-dialog';
 import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import { formatCents } from '../../../lib/format';
@@ -75,6 +77,17 @@ export default function InventoryPage() {
   });
 
   const belowCount = alertsSummary.filter((s) => s.belowMinimum).length;
+  const exportStock = () => {
+    const header = ['Insumo', 'Saldo', 'Mínimo', 'Cobertura (dias)', 'Sugestão de compra', 'Status'];
+    const rows = alertsSummary.map((s) => [s.ingredientName, s.balance, s.minLevel ?? '', s.daysOfCover ?? '', s.suggestedPurchase, s.belowMinimum ? 'Abaixo do mínimo' : s.needsRestock ? 'Repor em breve' : 'Normal']);
+    const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';')).join('\n');
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `estoque-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (!storeId) {
     return (
@@ -88,11 +101,16 @@ export default function InventoryPage() {
 
   return (
     <div className="flex flex-col">
-      <header className="mb-6">
-        <h1>Estoque</h1>
-        <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
-          Gerencie insumos, saldo em estoque, compras e fornecedores de forma integrada.
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1>Estoque</h1>
+          <p className="mt-1 max-w-2xl text-sm text-ink-secondary">
+            Gerencie insumos, saldo em estoque, compras e fornecedores de forma integrada.
+          </p>
+        </div>
+        <Button size="sm" variant="secondary" onClick={exportStock} leftIcon={<Download className="h-3.5 w-3.5" />}>
+          Exportar estoque
+        </Button>
       </header>
 
       <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-surface-border-subtle">
@@ -440,6 +458,7 @@ function SummaryCard({
 // -------------------------------------------------------------------
 
 function IngredientsTab({ storeId }: { storeId: string }) {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Ingredient | null>(null);
@@ -544,8 +563,8 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                         </button>
                         {!showArchived && (
                           <button
-                            onClick={() => {
-                              if (confirm(`Deseja arquivar ${i.name}?`)) archive.mutate(i.id);
+                            onClick={async () => {
+                              if (await confirm({ title: 'Arquivar insumo', description: `Deseja arquivar ${i.name}?`, confirmLabel: 'Arquivar', danger: true })) archive.mutate(i.id);
                             }}
                             className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
                             aria-label="Arquivar"
@@ -566,8 +585,8 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                               <RotateCcw className="h-3.5 w-3.5" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm(`Excluir permanentemente ${i.name}? Essa ação não pode ser desfeita.`)) {
+                              onClick={async () => {
+                                if (await confirm({ title: 'Excluir insumo', description: `Excluir permanentemente ${i.name}? Essa ação não pode ser desfeita.`, confirmLabel: 'Excluir', danger: true })) {
                                   removePermanently.mutate(i.id);
                                 }
                               }}
@@ -639,8 +658,8 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                       </button>
                       {!showArchived ? (
                         <button
-                          onClick={() => {
-                            if (confirm(`Deseja arquivar ${i.name}?`)) archive.mutate(i.id);
+                          onClick={async () => {
+                            if (await confirm({ title: 'Arquivar preparo', description: `Deseja arquivar ${i.name}?`, confirmLabel: 'Arquivar', danger: true })) archive.mutate(i.id);
                           }}
                           className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
                           aria-label="Arquivar"
@@ -660,8 +679,8 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                             <RotateCcw className="h-3.5 w-3.5" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`Excluir permanentemente ${i.name}? Essa ação não pode ser desfeita.`)) {
+                            onClick={async () => {
+                              if (await confirm({ title: 'Excluir preparo', description: `Excluir permanentemente ${i.name}? Essa ação não pode ser desfeita.`, confirmLabel: 'Excluir', danger: true })) {
                                 removePermanently.mutate(i.id);
                               }
                             }}
@@ -949,6 +968,7 @@ function PurchasesTab({ storeId }: { storeId: string }) {
 // -------------------------------------------------------------------
 
 function SuppliersTab() {
+  const confirm = useConfirm();
   const qc = useQueryClient();
   const [showArchived, setShowArchived] = useState(false);
   const [open, setOpen] = useState(false);
@@ -1070,8 +1090,8 @@ function SuppliersTab() {
                       ) : (
                         <button
                           disabled={archive.isPending}
-                          onClick={() => {
-                            if (confirm(`Deseja arquivar ${s.name}?`)) archive.mutate(s.id);
+                          onClick={async () => {
+                            if (await confirm({ title: 'Arquivar fornecedor', description: `Deseja arquivar ${s.name}?`, confirmLabel: 'Arquivar', danger: true })) archive.mutate(s.id);
                           }}
                           className="rounded-md p-1.5 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
                           aria-label="Arquivar"

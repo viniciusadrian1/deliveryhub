@@ -8,7 +8,7 @@ interface LogoProps {
 }
 
 /** Scalable wordmark with no raster background or empty image margins. */
-export function Logo({ size = 32, className, showText = true, textColor }: LogoProps) {
+export function Logo({ size = 40, className, showText = true, textColor }: LogoProps) {
   return (
     <span
       role="img"

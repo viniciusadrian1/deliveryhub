@@ -9,6 +9,8 @@ describe('inventory decimal inputs', () => {
       name: 'Farinha',
       unit: 'gram',
       costPerUnit: '0,045',
+      minLevel: '100',
+      targetDays: 7,
     });
 
     expect(result.costPerUnit).toBe('0.045');
