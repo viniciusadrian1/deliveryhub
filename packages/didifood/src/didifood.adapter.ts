@@ -322,8 +322,9 @@ interface RawOrderDetail {
   order_info?: RawOrderInfo;
 }
 
-// Shapes parciais de List Bind Stores / List Authorized Stores —
-// só os campos seguros (o `shop_id` long 64-bit da resposta é ignorado).
+// Shapes parciais de List Bind Stores / List Authorized Stores.
+// `shop_id` identifica a loja no portal, mas não substitui `app_shop_id`:
+// somente o segundo pode ser usado em /v1/auth/authtoken/get.
 interface RawShopListItem {
   app_shop_id?: string | number;
   shop_id?: string | number;
@@ -340,7 +341,7 @@ interface RawShopList {
 export function extractBoundShopIds(data: RawShopList | undefined): string[] {
   const shops = data?.shops ?? data?.shop_list ?? [];
   return shops
-    .map((shop) => shop.app_shop_id ?? shop.shop_id)
+    .map((shop) => shop.app_shop_id)
     .filter((shopId): shopId is string | number => Boolean(shopId))
     .map(String);
 }
@@ -352,7 +353,9 @@ export function extractBoundShopIds(data: RawShopList | undefined): string[] {
 export function extractBoundShopIdsFromRaw(raw: string): string[] {
   const list = raw.match(/"(?:shop_list|shops)"\s*:\s*\[([\s\S]*?)\]/)?.[1] ?? '';
   const ids = new Set<string>();
-  const field = /"(?:app_shop_id|shop_id)"\s*:\s*(?:"([^"]+)"|(\d+))/g;
+  // Never fall back to shop_id: it is not the app_shop_id required by the
+  // authtoken endpoint and doing so produces errno 10101 after authorization.
+  const field = /"app_shop_id"\s*:\s*(?:"([^"]+)"|(\d+))/g;
   for (const match of list.matchAll(field)) {
     const id = match[1] ?? match[2];
     if (id) ids.add(id);

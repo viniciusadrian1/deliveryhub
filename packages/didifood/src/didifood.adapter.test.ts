@@ -46,7 +46,7 @@ describe('99Food signed store-list payload', () => {
       extractBoundShopIdsFromRaw(
         '{"data":{"shops":[{"shop_id":1234567890123456789,"bound_flag":1}]}}',
       ),
-    ).toEqual(['1234567890123456789']);
+    ).toEqual([]);
     expect(
       extractBoundShopIdsFromRaw(
         '{"data":{"shop_list":[{"app_shop_id":"shop-primary"}]}}',
