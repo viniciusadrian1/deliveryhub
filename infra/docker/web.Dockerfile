@@ -21,6 +21,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages ./packages
 COPY . .
+RUN pnpm --filter @deliveryhub/config build
+RUN pnpm --filter @deliveryhub/shared build
 RUN pnpm --filter @deliveryhub/web build
 
 # ---------- runtime ----------
