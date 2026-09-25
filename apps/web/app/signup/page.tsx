@@ -61,7 +61,7 @@ export default function SignupPage() {
       } else if (err instanceof ApiError && err.status === 400) {
         setError('Verifique os campos informados. A senha precisa ter ao menos 8 caracteres.');
       } else if (err instanceof ApiError && err.status === 0) {
-        setError('Não foi possível conectar ao servidor. Verifique se o backend está iniciado na porta 3333.');
+        setError('Não foi possível conectar ao servidor. Tente novamente em instantes.');
       } else if (err instanceof ApiError && err.message) {
         setError(err.message);
       } else {

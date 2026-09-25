@@ -56,7 +56,7 @@ export default function LoginPage() {
         } else if (err.status === 429) {
           setError('Muitas tentativas em pouco tempo. Aguarde alguns instantes e tente novamente.');
         } else if (err.status === 0) {
-          setError('Não foi possível conectar ao servidor. Verifique se o backend está iniciado na porta 3333.');
+          setError('Não foi possível conectar ao servidor. Tente novamente em instantes.');
         } else if (err.message) {
           setError(err.message);
         } else {

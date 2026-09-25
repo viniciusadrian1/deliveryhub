@@ -4,6 +4,7 @@
   "globalEnv": ["NODE_ENV"],
   "tasks": {
     "build": {
+      "env": ["NEXT_PUBLIC_API_URL"],
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**", "generated/**"]
     },

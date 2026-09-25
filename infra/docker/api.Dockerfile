@@ -14,6 +14,11 @@ COPY packages/db/package.json packages/db/
 COPY packages/shared/package.json packages/shared/
 COPY packages/ifood/package.json packages/ifood/
 COPY packages/config/package.json packages/config/
+COPY packages/aiqfome/package.json packages/aiqfome/
+COPY packages/didifood/package.json packages/didifood/
+COPY packages/keeta/package.json packages/keeta/
+COPY packages/rappi/package.json packages/rappi/
+COPY packages/ubereats/package.json packages/ubereats/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
@@ -24,8 +29,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /app/packages ./packages
 COPY . .
-RUN rm -rf packages/db/generated && pnpm --filter @deliveryhub/db generate
-RUN pnpm --filter @deliveryhub/api build
+RUN pnpm --filter @deliveryhub/db generate
+# Build adapters and shared packages from source; never reuse host dist files.
+RUN pnpm --filter @deliveryhub/api... build
 
 # ---------- runtime ----------
 FROM node:22-alpine AS runner
