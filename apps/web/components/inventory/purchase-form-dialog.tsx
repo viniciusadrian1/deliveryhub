@@ -177,7 +177,7 @@ export function PurchaseFormDialog({
         {total > 0 && (
           <div className="rounded-md border border-brand-500/30 bg-brand-500/5 px-3 py-2 text-sm text-ink-primary">
             Total da nota:{' '}
-            <span className="font-bold tabular text-brand-500">R$ {total.toFixed(2)}</span>
+            <span className="font-bold tabular text-brand-500">R$ {total.toFixed(2).replace('.', ',')}</span>
           </div>
         )}
 

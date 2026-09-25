@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+/** Converte filtros de data civil de São Paulo para uma janela inclusiva. */
+const localDay = (endOfDay = false) =>
+  z.preprocess(
+    (value) => {
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}-03:00`;
+      }
+      return value;
+    },
+    z.coerce.date(),
+  );
+
 const EXPENSE_CATEGORIES = [
   'rent',
   'utilities',
@@ -74,9 +86,9 @@ export type ListExpensesQuery = z.infer<typeof listExpensesQuerySchema>;
 export const dreQuerySchema = z.object({
   storeId: z.string().uuid(),
   /** Início do período (inclusivo). Default = primeiro dia do mês corrente. */
-  from: z.coerce.date().optional(),
+  from: localDay().optional(),
   /** Fim do período (inclusivo). Default = agora. */
-  to: z.coerce.date().optional(),
+  to: localDay(true).optional(),
 });
 
 export type DreQuery = z.infer<typeof dreQuerySchema>;

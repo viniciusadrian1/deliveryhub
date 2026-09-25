@@ -578,7 +578,7 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                     <td className="px-5 py-2.5 font-medium text-ink-primary">{i.name}</td>
                     <td className="px-5 py-2.5 text-right tabular text-ink-secondary">
                       <div className="font-semibold text-ink-primary">
-                        R$ {cost.toFixed(4)} / {INGREDIENT_UNIT_LABELS[i.unit]}
+                        R$ {cost.toFixed(2).replace('.', ',')} / {INGREDIENT_UNIT_LABELS[i.unit]}
                       </div>
                       {(i.unit === 'gram' || i.unit === 'milliliter') && (
                         <div className="text-[11px] text-ink-tertiary">
@@ -674,7 +674,7 @@ function IngredientsTab({ storeId }: { storeId: string }) {
                 <tr key={i.id} className="hover:bg-surface-overlay/50">
                   <td className="px-5 py-2.5 font-medium text-ink-primary">{i.name}</td>
                   <td className="px-5 py-2.5 text-right tabular text-brand-500 font-semibold">
-                    R$ {parseFloat(i.costPerUnit).toFixed(4)} / {INGREDIENT_UNIT_LABELS[i.unit]}
+                    R$ {parseFloat(i.costPerUnit).toFixed(2).replace('.', ',')} / {INGREDIENT_UNIT_LABELS[i.unit]}
                   </td>
                   <td className="px-5 py-2.5 text-right text-ink-secondary">
                     {i.batchYield} {INGREDIENT_UNIT_LABELS[i.unit]}
@@ -984,10 +984,10 @@ function PurchasesTab({ storeId }: { storeId: string }) {
                     {p.ingredient ? INGREDIENT_UNIT_LABELS[p.ingredient.unit] : ''}
                   </td>
                   <td className="px-5 py-2 text-right tabular text-ink-secondary">
-                    R$ {parseFloat(p.unitCost).toFixed(4)}
+                    R$ {parseFloat(p.unitCost).toFixed(2).replace('.', ',')}
                   </td>
                   <td className="px-5 py-2 text-right tabular font-semibold text-brand-500">
-                    R$ {parseFloat(p.totalCost).toFixed(2)}
+                    R$ {parseFloat(p.totalCost).toFixed(2).replace('.', ',')}
                   </td>
                 </tr>
               ))}

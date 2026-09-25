@@ -112,7 +112,6 @@ export default function PricingPage() {
   const [deltaReais, setDeltaReais] = useState('2,00');
   const [targetMarginPct, setTargetMarginPct] = useState('35');
   const [minMarginPct, setMinMarginPct] = useState('25');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [marginFilter, setMarginFilter] = useState<'all' | 'healthy' | 'moderate' | 'low'>('all');
   const [preview, setPreview] = useState<SimulationResult | null>(null);
@@ -144,21 +143,11 @@ export default function PricingPage() {
     });
   }, [rows, search, marginFilter]);
 
-  const selectAll = () => {
-    const all = new Set(filteredRows.map((r) => r.menuItemId));
-    setSelectedIds(all);
-  };
-
-  const clearSelection = () => {
-    setSelectedIds(new Set());
-  };
-
   const buildPayload = () => {
     const base: Record<string, unknown> = {
       storeId,
       minMarginPct: parseFloat(minMarginPct) || undefined,
     };
-    if (selectedIds.size > 0) base.menuItemIds = Array.from(selectedIds);
     if (strategy === 'same_gross_pct') return { ...base, strategy, deltaPct: parseFloat(deltaPct) || 0 };
     if (strategy === 'fixed_delta_cents') {
       const clean = deltaReais.replace(',', '.').replace(/[^0-9.-]/g, '');
@@ -191,8 +180,6 @@ export default function PricingPage() {
       void qc.invalidateQueries({ queryKey: ['menu', storeId] });
     },
   });
-
-  const totalSelected = selectedIds.size || rows.length;
 
   const marginTone = (pct: number): 'success' | 'warning' | 'danger' => {
     if (pct >= 35) return 'success';
@@ -279,17 +266,6 @@ export default function PricingPage() {
               </button>
             </div>
 
-            {/* Botões de seleção em lote */}
-            <div className="flex items-center gap-1">
-              <Button size="xs" variant="secondary" onClick={selectAll}>
-                Selecionar todos
-              </Button>
-              {selectedIds.size > 0 && (
-                <Button size="xs" variant="ghost" onClick={clearSelection}>
-                  Limpar ({selectedIds.size})
-                </Button>
-              )}
-            </div>
           </div>
         </header>
 
@@ -308,7 +284,6 @@ export default function PricingPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-border-subtle bg-surface-base/30 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
-                  <th className="w-10 px-5 py-2.5"></th>
                   <th className="px-5 py-2.5">Item</th>
                   <th className="px-5 py-2.5 text-right" title="Custo dos ingredientes e insumos do produto">Custo do produto (CMV)</th>
                   <th className="px-5 py-2.5" title="Marketplace ou canal onde o produto está publicado">Canal de venda</th>
@@ -320,7 +295,6 @@ export default function PricingPage() {
                 {filteredRows.map((row) =>
                   row.platforms.length === 0 ? (
                     <tr key={row.menuItemId} className="border-t border-surface-border-subtle/60 bg-surface-base/20">
-                      <td className="px-5 py-3"><input type="checkbox" checked={selectedIds.has(row.menuItemId)} onChange={(e) => { const next = new Set(selectedIds); if (e.target.checked) next.add(row.menuItemId); else next.delete(row.menuItemId); setSelectedIds(next); }} /></td>
                       <td className="px-5 py-3 font-semibold text-ink-primary">{row.menuItemName}</td>
                       <td className="px-5 py-3 text-right text-ink-tertiary">{row.costCents > 0 ? formatCents(row.costCents) : 'Não informado'}</td>
                       <td colSpan={3} className="px-5 py-3">
@@ -335,21 +309,6 @@ export default function PricingPage() {
                       key={`${row.menuItemId}-${p.platformCode}`}
                       className="border-t border-surface-border-subtle/60 transition-colors hover:bg-surface-overlay/40"
                     >
-                      {idx === 0 ? (
-                        <td className="px-5 py-3 align-top" rowSpan={row.platforms.length}>
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(row.menuItemId)}
-                            onChange={(e) => {
-                              const s = new Set(selectedIds);
-                              if (e.target.checked) s.add(row.menuItemId);
-                              else s.delete(row.menuItemId);
-                              setSelectedIds(s);
-                            }}
-                            className="mt-1 h-4 w-4 rounded border-surface-border bg-surface-base text-brand-500"
-                          />
-                        </td>
-                      ) : null}
                       {idx === 0 ? (
                         <td className="px-5 py-3 align-top" rowSpan={row.platforms.length}>
                           <div className="font-semibold text-ink-primary">{row.menuItemName}</div>
@@ -407,8 +366,7 @@ export default function PricingPage() {
             </h2>
           </div>
           <p className="mt-1 text-xs text-ink-secondary">
-            Aplicação em {totalSelected} {totalSelected === 1 ? 'produto' : 'produtos'}{' '}
-            {selectedIds.size === 0 && '(todos os cadastrados)'}
+            Aplicação em todos os {rows.length === 1 ? 'produtos cadastrado' : 'produtos cadastrados'}
           </p>
         </header>
 
@@ -528,6 +486,11 @@ export default function PricingPage() {
               </Button>
             )}
           </div>
+          {simulate.error && (
+            <p role="alert" className="text-sm text-danger-bright">
+              Não foi possível executar a simulação: {simulate.error.message}
+            </p>
+          )}
         </div>
       </section>
 
@@ -558,8 +521,13 @@ export default function PricingPage() {
             </div>
           </header>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          {preview.rows.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-ink-tertiary">
+              Nenhum produto possui preço configurado por canal para simular. Cadastre o preço do produto em um canal no Cardápio e tente novamente.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-border-subtle bg-surface-base/30 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary">
                   <th className="px-5 py-2.5">Item</th>
@@ -614,8 +582,9 @@ export default function PricingPage() {
                   )),
                 )}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          )}
         </section>
       )}
     </div>

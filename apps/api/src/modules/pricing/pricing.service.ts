@@ -146,11 +146,16 @@ export class PricingService {
       if (platforms.some((p) => p.belowMinimum)) itemsBelowMinimum++;
       if (platforms.some((p) => p.impossible)) itemsImpossible++;
 
-      simRows.push({
-        menuItemId: r.menuItemId,
-        menuItemName: r.menuItemName,
-        platforms,
-      });
+      // Um produto sem preço por canal não tem o que simular. Mantê-lo na
+      // resposta fazia a tela informar produtos afetados, mas renderizar uma
+      // tabela vazia, porque não havia nenhuma linha de plataforma.
+      if (platforms.length > 0) {
+        simRows.push({
+          menuItemId: r.menuItemId,
+          menuItemName: r.menuItemName,
+          platforms,
+        });
+      }
     }
 
     return {

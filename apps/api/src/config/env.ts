@@ -25,7 +25,7 @@ const envSchema = z.object({
   VAULT_MASTER_KEY: z.string().min(32),
 
   RESEND_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().default('DeliveryHub <no-reply@deliveryhub.local>'),
+  EMAIL_FROM: z.string().default('DeliveryHub <contato.deliveryhub@gmail.com>'),
   WEB_BASE_URL: z.string().url().default('http://localhost:3001'),
 
   IFOOD_CLIENT_ID: z.string().optional(),
