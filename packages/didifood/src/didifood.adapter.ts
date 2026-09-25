@@ -325,12 +325,23 @@ interface RawOrderDetail {
 // Shapes parciais de List Bind Stores / List Authorized Stores —
 // só os campos seguros (o `shop_id` long 64-bit da resposta é ignorado).
 interface RawShopListItem {
-  app_shop_id?: string;
+  app_shop_id?: string | number;
   bound_flag?: number;
 }
 interface RawShopList {
   total_page?: number;
   shops?: RawShopListItem[];
+  /** `/v1/shop/shop/list` returns this name inside the `data` envelope. */
+  shop_list?: RawShopListItem[];
+}
+
+/** Normalizes the two store-list response shapes used by 99Food. */
+export function extractBoundShopIds(data: RawShopList | undefined): string[] {
+  const shops = data?.shops ?? data?.shop_list ?? [];
+  return shops
+    .map((shop) => shop.app_shop_id)
+    .filter((shopId): shopId is string | number => Boolean(shopId))
+    .map(String);
 }
 
 /** Conteúdo do `pendingHandle` do 99Food. */
@@ -1046,14 +1057,13 @@ export class DidifoodAdapter implements PlatformAdapter {
       endpoint,
       buildShopListRequestBody(this.config.clientId, this.config.clientSecret, timestamp),
     );
-    const out: string[] = [];
-    for (const s of data?.shops ?? []) {
-      // O `app_shop_id` só vem quando a loja está vinculada — sua presença
-      // já basta. NÃO exigimos `bound_flag === 1`: ele pode demorar a
-      // refletir o bind self-service e excluía a loja recém-conectada.
-      if (s.app_shop_id) out.push(s.app_shop_id);
-    }
-    return out;
+    // 99Food uses two response shapes for the two equivalent endpoints:
+    // `/shop/list` returns `data.shop_list`, while
+    // `/getAuthorizedShops` returns `data.shops`.
+    // O `app_shop_id` só vem quando a loja está vinculada — sua presença
+    // já basta. NÃO exigimos `bound_flag === 1`: ele pode demorar a
+    // refletir o bind self-service e excluía a loja recém-conectada.
+    return extractBoundShopIds(data);
   }
 
   // ===================================================================
