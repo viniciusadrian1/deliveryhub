@@ -1607,8 +1607,10 @@ function decodeHandle(handle: string): DidifoodPendingHandle {
 
 /** Extrai o `errno` de um AdapterApiError do 99Food (vem no `body`). */
 function errnoOf(err: unknown): number | undefined {
-  if (err instanceof AdapterApiError && err.body && typeof err.body === 'object') {
-    const errno = (err.body as { errno?: unknown }).errno;
+  if (!(err instanceof AdapterApiError) || !err.body) return undefined;
+  const body = typeof err.body === 'string' ? safeJson(err.body) : err.body;
+  if (body && typeof body === 'object') {
+    const errno = (body as { errno?: unknown }).errno;
     if (typeof errno === 'number') return errno;
   }
   return undefined;
