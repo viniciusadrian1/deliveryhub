@@ -49,7 +49,7 @@ export class IntegrationsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async listConnections(auth: AuthContext): Promise<
+  async listConnections(auth: AuthContext, storeId: string): Promise<
     {
       id: string;
       platformCode: PlatformCode;
@@ -63,7 +63,7 @@ export class IntegrationsService {
     }[]
   > {
     const conns = await this.tenantPrisma.tx.platformConnection.findMany({
-      where: { organizationId: auth.orgId },
+      where: { organizationId: auth.orgId, storeId },
       include: { platform: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -235,6 +235,7 @@ export class IntegrationsService {
       });
       this.logger.error({ err, connectionId: conn.id }, 'finalize_failed');
       await this.notifyOrgManagers(auth.orgId, {
+        storeId: conn.storeId,
         kind: 'integration_error',
         title: `Falha ao conectar ${conn.platform.name}`,
         body: message.slice(0, 240),
@@ -249,6 +250,7 @@ export class IntegrationsService {
   private async notifyOrgManagers(
     organizationId: string,
     payload: {
+      storeId?: string;
       kind: 'integration_error' | 'platform_disconnected';
       title: string;
       body: string;
@@ -263,6 +265,7 @@ export class IntegrationsService {
       await this.notifications.create({
         userId: t.userId,
         organizationId,
+        storeId: payload.storeId,
         kind: payload.kind,
         title: payload.title,
         body: payload.body,
@@ -305,6 +308,7 @@ export class IntegrationsService {
     });
 
     await this.notifyOrgManagers(auth.orgId, {
+      storeId: conn.storeId,
       kind: 'platform_disconnected',
       title: 'Plataforma desconectada',
       body: `A integração foi revogada. Você não receberá pedidos por este canal até reconectar.`,

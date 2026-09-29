@@ -24,7 +24,7 @@ export interface AuthState {
   role: string;
   storeId?: string | null;
   storeName?: string | null;
-  stores: { id: string; name: string }[];
+  stores: StoreSummary[];
 }
 
 interface AuthResultDto {
@@ -35,12 +35,20 @@ interface AuthResultDto {
   role: string;
 }
 
+export interface StoreSummary {
+  id: string;
+  name: string;
+  address: Record<string, unknown> | null;
+  timezone: string;
+  logoUrl: string | null;
+}
+
 interface MeDto {
   user: AuthUser & { createdAt: string };
   orgId: string;
   organizationName: string;
   role: string;
-  stores: { id: string; name: string }[];
+  stores: StoreSummary[];
 }
 
 const SELECTED_STORE_KEY = 'deliveryhub:selected-store-id';
@@ -107,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * problema: criava a conta + loja mas não lia o /me, então a UI pedia
    * "crie uma loja" até o usuário recarregar a página).
    */
-  const establishSession = async (data: AuthResultDto) => {
+  const establishSession = async (data: AuthResultDto): Promise<number> => {
     writeTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
     setState({
       user: data.user,
@@ -128,8 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         storeName: selected?.name ?? null,
         stores: me.stores,
       } : s));
+      return me.stores.length;
     } catch {
       // se /me falhar agora, o bootstrap recarrega na próxima visita; não fatal
+      return 0;
     }
   };
 
@@ -139,8 +149,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: { email, password },
       skipAuth: true,
     });
-    await establishSession(data);
-    router.push(r('/select-store'));
+    const storeCount = await establishSession(data);
+    router.push(r(storeCount > 1 ? '/select-store' : '/hub'));
   };
 
   const signup = async (input: Parameters<AuthContextValue['signup']>[0]) => {
@@ -149,8 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: input,
       skipAuth: true,
     });
-    await establishSession(data);
-    router.push(r('/select-store'));
+    const storeCount = await establishSession(data);
+    router.push(r(storeCount > 1 ? '/select-store' : '/hub'));
   };
 
   const acceptInvitation = async (input: { token: string; name?: string; password: string }) => {
@@ -159,8 +169,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: input,
       skipAuth: true,
     });
-    await establishSession(data);
-    router.push(r('/select-store'));
+    const storeCount = await establishSession(data);
+    router.push(r(storeCount > 1 ? '/select-store' : '/hub'));
   };
 
   const logout = async () => {

@@ -205,6 +205,7 @@ export class StockAlertsService {
             await this.notifications.create({
               userId: target.userId,
               organizationId: org.id,
+              storeId: store.id,
               kind: 'stock_low',
               title: `Estoque baixo: ${lowItems.length} ${
                 lowItems.length === 1 ? 'insumo' : 'insumos'

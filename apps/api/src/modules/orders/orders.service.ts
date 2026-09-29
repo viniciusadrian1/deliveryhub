@@ -1087,6 +1087,7 @@ export class OrdersService {
       await this.notifications.create({
         userId: t.userId,
         organizationId: ctx.organizationId,
+        storeId: ctx.storeId,
         kind: 'new_order',
         title: `Novo pedido — ${ctx.platformCode}`,
         body: `R$ ${(created.totalCents / 100).toFixed(2)} • ${remote.customer.name}`,

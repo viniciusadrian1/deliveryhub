@@ -265,6 +265,7 @@ enum NotificationKind {
 model Notification {
   id             String           @id @default(uuid(7))
   organizationId String?          @map("organization_id")
+  storeId        String?          @map("store_id")
   userId         String           @map("user_id")
   kind           NotificationKind
   title          String
@@ -275,10 +276,12 @@ model Notification {
   createdAt      DateTime         @default(now()) @map("created_at")
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  store        Store?        @relation(fields: [storeId], references: [id], onDelete: SetNull)
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, readAt])
+  @@index([userId, storeId, createdAt(sort: Desc)])
   @@map("notification")
 }
 
@@ -830,6 +833,7 @@ model Store {
   organizationId String   @map("organization_id")
   name           String
   address        Json?
+  logoUrl        String?  @map("logo_url")
   timezone       String   @default("America/Sao_Paulo")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
@@ -849,6 +853,7 @@ model Store {
   expenses            Expense[]
   actionRequests      PlatformActionRequest[]
   promotions          Promotion[]
+  notifications       Notification[]
 
   @@index([organizationId])
   @@map("store")

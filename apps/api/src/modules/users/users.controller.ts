@@ -1,5 +1,6 @@
-import { Body, Controller, Get, HttpCode, Logger, Post } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, Get, HttpCode, Logger, NotFoundException, Param, Patch, Post } from '@nestjs/common';
 import { z } from 'zod';
+import { Prisma } from '@deliveryhub/db';
 
 import { CurrentUser } from '../../common/auth/current-user.decorator.js';
 import { Roles } from '../../common/auth/roles.decorator.js';
@@ -10,6 +11,13 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 
 const createStoreSchema = z.object({
   name: z.string().trim().min(2).max(160),
+});
+
+const updateStoreSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  address: z.record(z.string(), z.unknown()).nullable().optional(),
+  timezone: z.string().trim().min(3).max(80),
+  logoUrl: z.string().max(2_000_000).nullable().optional(),
 });
 
 @Controller()
@@ -34,7 +42,7 @@ export class UsersController {
 
     // Demonstra TenantPrismaService: o filtro por organizationId é injetado automaticamente.
     let stores = await this.tenantPrisma.tx.store.findMany({
-      select: { id: true, name: true },
+      select: { id: true, name: true, address: true, timezone: true, logoUrl: true },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -54,7 +62,7 @@ export class UsersController {
             name: org.name,
             timezone: 'America/Sao_Paulo',
           },
-          select: { id: true, name: true },
+          select: { id: true, name: true, address: true, timezone: true, logoUrl: true },
         });
         stores = [created];
         this.logger.log(
@@ -87,6 +95,40 @@ export class UsersController {
       },
       select: { id: true, name: true },
     });
+  }
+
+  @Patch('stores/:id')
+  @Roles('owner')
+  updateStore(
+    @CurrentUser() auth: AuthContext,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateStoreSchema)) body: z.infer<typeof updateStoreSchema>,
+  ) {
+    return this.prisma.store.updateMany({
+      where: { id, organizationId: auth.orgId },
+      data: {
+        name: body.name,
+        address: body.address === null ? Prisma.JsonNull : body.address as Prisma.InputJsonValue,
+        timezone: body.timezone,
+        logoUrl: body.logoUrl ?? null,
+      },
+    }).then(async (result) => {
+      if (result.count === 0) throw new NotFoundException('store_not_found');
+      return this.prisma.store.findUniqueOrThrow({
+        where: { id },
+        select: { id: true, name: true, address: true, timezone: true, logoUrl: true },
+      });
+    });
+  }
+
+  @Delete('stores/:id')
+  @Roles('owner')
+  @HttpCode(204)
+  async deleteStore(@CurrentUser() auth: AuthContext, @Param('id') id: string): Promise<void> {
+    const count = await this.prisma.store.count({ where: { organizationId: auth.orgId } });
+    if (count <= 1) throw new ConflictException('last_store_cannot_be_deleted');
+    const result = await this.prisma.store.deleteMany({ where: { id, organizationId: auth.orgId } });
+    if (result.count === 0) throw new NotFoundException('store_not_found');
   }
 
   @Get('owner-only')

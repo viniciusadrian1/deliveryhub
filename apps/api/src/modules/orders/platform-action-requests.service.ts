@@ -123,6 +123,7 @@ export class PlatformActionRequestsService {
       await this.notifications.create({
         userId: t.userId,
         organizationId: connection.organizationId,
+        storeId: connection.storeId,
         kind: 'order_action_request',
         title: `Pedido de ${label} — ${platformCode}`,
         body: action.customerReason

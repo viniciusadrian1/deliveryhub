@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 export interface NotificationPayload {
   id: string;
   organizationId: string | null;
+  storeId: string | null;
   userId: string;
   kind: string;
   title: string;

@@ -19,7 +19,7 @@ export default function IntegrationsPage() {
 
   const { data: connections = [] } = useQuery({
     queryKey: ['integrations'],
-    queryFn: () => api<PlatformConnection[]>('/integrations/connections'),
+    queryFn: () => api<PlatformConnection[]>(`/integrations/connections?storeId=${encodeURIComponent(storeId ?? '')}`),
     enabled: !!storeId,
   });
 
@@ -41,7 +41,7 @@ export default function IntegrationsPage() {
     const bv = PLATFORM_META[b]?.availability ?? 'unavailable';
     return availabilityOrder[av] - availabilityOrder[bv];
   });
-  const activeCount = connections.filter((c) => c.status === 'active').length;
+  const activeCount = connections.filter((c) => c.status === 'active' && PLATFORM_META[c.platformCode]?.availability === 'available').length;
 
   return (
     <div className="flex flex-col">

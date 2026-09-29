@@ -82,9 +82,10 @@ export const PLATFORM_META: Record<string, PlatformMeta> = {
   rappi: {
     name: 'Rappi',
     colorHex: '#FF441F',
-    enabled: true,
-    availability: 'available',
+    enabled: false,
+    availability: 'roadmap',
     logo: '/platforms/rappi.png',
+    reason: 'Integração aguardando credenciais e homologação comercial da Rappi.',
   },
   keeta: {
     name: 'Keeta',

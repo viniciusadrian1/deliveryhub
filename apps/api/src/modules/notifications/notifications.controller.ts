@@ -24,8 +24,11 @@ export class NotificationsController {
   }
 
   @Get('unread-count')
-  unreadCount(@CurrentUser() auth: AuthContext) {
-    return this.notifications.unreadCount(auth).then((count) => ({ count }));
+  unreadCount(
+    @CurrentUser() auth: AuthContext,
+    @Query(new ZodValidationPipe(listNotificationsQuerySchema)) query: ListNotificationsQuery,
+  ) {
+    return this.notifications.unreadCount(auth, query.storeId).then((count) => ({ count }));
   }
 
   @Post(':id/read')
@@ -41,13 +44,19 @@ export class NotificationsController {
   }
 
   @Post('clear')
-  clear(@CurrentUser() auth: AuthContext) {
-    return this.notifications.clear(auth);
+  clear(
+    @CurrentUser() auth: AuthContext,
+    @Query(new ZodValidationPipe(listNotificationsQuerySchema)) query: ListNotificationsQuery,
+  ) {
+    return this.notifications.clear(auth, query.storeId);
   }
 
   @Post('read-all')
-  markAllRead(@CurrentUser() auth: AuthContext) {
-    return this.notifications.markAllRead(auth);
+  markAllRead(
+    @CurrentUser() auth: AuthContext,
+    @Query(new ZodValidationPipe(listNotificationsQuerySchema)) query: ListNotificationsQuery,
+  ) {
+    return this.notifications.markAllRead(auth, query.storeId);
   }
 
   @Get('preferences')

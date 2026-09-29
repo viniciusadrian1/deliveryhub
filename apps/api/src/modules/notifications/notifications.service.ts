@@ -13,6 +13,7 @@ import { NotificationsEmitter } from './notifications.emitter.js';
 export interface CreateNotificationInput {
   userId: string;
   organizationId?: string | null;
+  storeId?: string | null;
   kind: NotificationKind;
   title: string;
   body: string;
@@ -46,6 +47,7 @@ export class NotificationsService {
         data: {
           userId: input.userId,
           organizationId: input.organizationId ?? null,
+          storeId: input.storeId ?? null,
           kind: input.kind,
           title: input.title,
           body: input.body,
@@ -57,6 +59,7 @@ export class NotificationsService {
       this.emitter.emit({
         id: saved.id,
         organizationId: saved.organizationId,
+        storeId: saved.storeId,
         userId: saved.userId,
         kind: saved.kind,
         title: saved.title,
@@ -84,6 +87,7 @@ export class NotificationsService {
     const rows = await this.prisma.notification.findMany({
       where: {
         userId: auth.userId,
+        storeId: query.storeId ?? undefined,
         readAt: query.unreadOnly ? null : undefined,
       },
       orderBy: { createdAt: 'desc' },
@@ -94,9 +98,9 @@ export class NotificationsService {
     return rows;
   }
 
-  async unreadCount(auth: AuthContext): Promise<number> {
+  async unreadCount(auth: AuthContext, storeId?: string): Promise<number> {
     return this.prisma.notification.count({
-      where: { userId: auth.userId, readAt: null },
+      where: { userId: auth.userId, storeId: storeId ?? undefined, readAt: null },
     });
   }
 
@@ -113,9 +117,9 @@ export class NotificationsService {
     });
   }
 
-  async markAllRead(auth: AuthContext): Promise<{ updated: number }> {
+  async markAllRead(auth: AuthContext, storeId?: string): Promise<{ updated: number }> {
     const r = await this.prisma.notification.updateMany({
-      where: { userId: auth.userId, readAt: null },
+      where: { userId: auth.userId, storeId: storeId ?? undefined, readAt: null },
       data: { readAt: new Date() },
     });
     return { updated: r.count };
@@ -130,8 +134,10 @@ export class NotificationsService {
     await this.prisma.notification.update({ where: { id }, data: { readAt: null } });
   }
 
-  async clear(auth: AuthContext): Promise<{ deleted: number }> {
-    const result = await this.prisma.notification.deleteMany({ where: { userId: auth.userId } });
+  async clear(auth: AuthContext, storeId?: string): Promise<{ deleted: number }> {
+    const result = await this.prisma.notification.deleteMany({
+      where: { userId: auth.userId, storeId: storeId ?? undefined },
+    });
     return { deleted: result.count };
   }
 

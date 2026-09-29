@@ -519,10 +519,15 @@ export class PausesService {
       where: { organizationId: orgId, role: { in: ['owner', 'manager'] } },
       include: { user: { select: { id: true, email: true } } },
     });
+    const pause = await this.prisma.pause.findFirst({
+      where: { id: pauseId, organizationId: orgId },
+      select: { storeId: true },
+    });
     for (const t of targets) {
       await this.notifications.create({
         userId: t.userId,
         organizationId: orgId,
+        storeId: pause?.storeId,
         kind: 'integration_error',
         title: 'Falha ao propagar pausa',
         body: `Pausa ${pauseId.slice(0, 8)} aplicada localmente mas teve erro em: ${errors.join(', ')}`,

@@ -21,22 +21,24 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const { state } = useAuth();
   const qc = useQueryClient();
-  const key = ['notifications', state?.user.id, state?.organization.id];
+  const storeId = state?.storeId ?? null;
+  const key = ['notifications', state?.user.id, state?.organization.id, storeId];
+  const storeQuery = storeId ? `?storeId=${encodeURIComponent(storeId)}` : '';
   const count = useQuery({
     queryKey: [...key, 'count'],
-    queryFn: () => api<{ count: number }>('/notifications/unread-count'),
+    queryFn: () => api<{ count: number }>(`/notifications/unread-count${storeQuery}`),
     enabled: !!state,
     refetchInterval: 30000,
   });
   const list = useQuery({
     queryKey: [...key, 'list'],
-    queryFn: () => api<Notification[]>('/notifications?limit=50'),
+    queryFn: () => api<Notification[]>(`/notifications?limit=50${storeId ? `&storeId=${encodeURIComponent(storeId)}` : ''}`),
     enabled: open && !!state,
     refetchInterval: open ? 30000 : false,
   });
   const read = useMutation({
     mutationFn: (id?: string) =>
-      api(id ? `/notifications/${id}/read` : '/notifications/read-all', { method: 'POST' }),
+      api(id ? `/notifications/${id}/read` : `/notifications/read-all${storeQuery}`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
   const unread = useMutation({
@@ -45,7 +47,7 @@ export function NotificationBell() {
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
   const clear = useMutation({
-    mutationFn: () => api('/notifications/clear', { method: 'POST' }),
+    mutationFn: () => api(`/notifications/clear${storeQuery}`, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
 

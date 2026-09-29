@@ -271,7 +271,7 @@ export default function FinancialPage() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['fin'] });
-      void qc.refetchQueries({ queryKey: ['fin'] });
+      void qc.refetchQueries({ queryKey: ['fin'], type: 'active' });
       setImportOpen(false);
       setCsvText('');
     },
@@ -299,7 +299,7 @@ export default function FinancialPage() {
   const dailyMetricMeta = {
     gross: { label: 'Faturamento bruto', color: '#ff7800', value: (d: DailyPoint) => d.revenueGrossCents },
     expenses: { label: 'Despesas', color: '#f87171', value: (d: DailyPoint) => d.expensesCents },
-    net: { label: 'Faturamento líquido', color: '#4ade80', value: (d: DailyPoint) => d.operatingResultCents },
+    net: { label: 'Faturamento líquido', color: '#4ade80', value: (d: DailyPoint) => d.revenueNetCents },
     fees: { label: 'Taxas de plataforma', color: '#a78bfa', value: (d: DailyPoint) => d.platformFeesCents },
     orders: { label: 'Pedidos concluídos', color: '#38bdf8', value: (d: DailyPoint) => d.orderCount },
   } as const;

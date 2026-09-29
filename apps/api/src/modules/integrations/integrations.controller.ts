@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
+import { z } from 'zod';
 import type { Request } from 'express';
 
 import { CurrentUser } from '../../common/auth/current-user.decorator.js';
@@ -13,13 +14,18 @@ import {
 } from './dto/connect.dto.js';
 import { IntegrationsService } from './integrations.service.js';
 
+const listConnectionsQuerySchema = z.object({ storeId: z.string().uuid() });
+
 @Controller('integrations')
 export class IntegrationsController {
   constructor(private readonly integrations: IntegrationsService) {}
 
   @Get('connections')
-  list(@CurrentUser() auth: AuthContext) {
-    return this.integrations.listConnections(auth);
+  list(
+    @CurrentUser() auth: AuthContext,
+    @Query(new ZodValidationPipe(listConnectionsQuerySchema)) query: z.infer<typeof listConnectionsQuerySchema>,
+  ) {
+    return this.integrations.listConnections(auth, query.storeId);
   }
 
   @Post('connect')

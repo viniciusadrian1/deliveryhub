@@ -139,6 +139,7 @@ async function request(url: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(url, {
       ...init,
+      cache: init.method && init.method !== 'GET' ? undefined : 'no-store',
       signal: init.signal
         ? AbortSignal.any([init.signal, AbortSignal.timeout(30000)])
         : AbortSignal.timeout(30000),

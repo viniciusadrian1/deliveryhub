@@ -1,15 +1,18 @@
 'use client';
 
-import { Building2, Check, Plus, Store } from 'lucide-react';
+import { Building2, Check, Plus, Store, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { Button } from '../../../components/ui/button';
+import { useConfirm } from '../../../components/ui/confirm-dialog';
+import { api } from '../../../lib/api';
 import { useAuth } from '../../../lib/auth-context';
 import { r } from '../../../lib/routes';
 
 export default function SelectStorePage() {
   const router = useRouter();
   const { state, loading, selectStore } = useAuth();
+  const confirm = useConfirm();
 
   if (loading || !state) return null;
 
@@ -30,24 +33,56 @@ export default function SelectStorePage() {
           {state.stores.map((store) => {
             const selected = state.storeId === store.id;
             return (
-              <button
+              <div
                 key={store.id}
-                type="button"
-                onClick={() => {
-                  selectStore(store.id);
-                  router.push(r('/hub'));
-                }}
-                className="flex w-full items-center gap-3 rounded-xl border border-surface-border-subtle bg-surface-base px-4 py-3 text-left transition-colors hover:border-brand-500/60 hover:bg-surface-overlay"
+                className="flex w-full items-center gap-3 rounded-xl border border-surface-border-subtle bg-surface-base px-4 py-3"
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-brand-400">
-                  <Store className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-ink-primary">{store.name}</span>
-                  <span className="text-xs text-ink-tertiary">Unidade cadastrada</span>
-                </span>
-                {selected && <Check className="h-4 w-4 text-success-bright" />}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    selectStore(store.id);
+                    router.push(r('/hub'));
+                  }}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left transition-colors hover:text-brand-300"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-brand-500/10 text-brand-400">
+                    {store.logoUrl ? <img src={store.logoUrl} alt="" className="h-full w-full object-cover" /> : <Store className="h-5 w-5" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-ink-primary">{store.name}</span>
+                    <span className="text-xs text-ink-tertiary">Unidade cadastrada</span>
+                  </span>
+                  {selected && <Check className="h-4 w-4 text-success-bright" />}
+                </button>
+                {state.role === 'owner' && (
+                  <button
+                    type="button"
+                    aria-label={`Excluir ${store.name}`}
+                    className="rounded-md p-2 text-ink-tertiary hover:bg-danger-soft hover:text-danger-bright"
+                    onClick={async (event) => {
+                      event.stopPropagation();
+                      const first = await confirm({
+                        title: 'Excluir loja?',
+                        description: `A loja “${store.name}” será removida da conta. Essa ação não pode ser desfeita.`,
+                        confirmLabel: 'Continuar',
+                        danger: true,
+                      });
+                      if (!first) return;
+                      const second = await confirm({
+                        title: 'Confirma a exclusão permanente?',
+                        description: `Todos os dados operacionais vinculados a “${store.name}” serão apagados permanentemente.`,
+                        confirmLabel: 'Excluir permanentemente',
+                        danger: true,
+                      });
+                      if (!second) return;
+                      await api(`/stores/${store.id}`, { method: 'DELETE' });
+                      window.location.reload();
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

@@ -17,6 +17,7 @@ export const NOTIFICATION_KINDS = [
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
 export const listNotificationsQuerySchema = z.object({
+  storeId: z.string().uuid().optional(),
   unreadOnly: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')

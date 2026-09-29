@@ -74,6 +74,8 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
   });
 
   const renderStatus = () => {
+    if (meta.availability === 'roadmap') return <Badge variant="neutral">Em breve</Badge>;
+    if (meta.availability === 'unavailable') return <Badge variant="danger">Indisponível</Badge>;
     if (!connection) {
       switch (meta.availability) {
         case 'available':
@@ -82,10 +84,6 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
               Não conectado
             </Badge>
           );
-        case 'roadmap':
-          return <Badge variant="neutral">Em breve</Badge>;
-        case 'unavailable':
-          return <Badge variant="danger">Indisponível</Badge>;
       }
     }
     switch (connection.status) {
@@ -195,7 +193,7 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
               Conectar
             </Button>
           )}
-        {connection?.status === 'pending' && (
+        {connection?.status === 'pending' && meta.availability === 'available' && (
           <>
             <Button
               size="sm"
@@ -221,7 +219,7 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
             )}
           </>
         )}
-        {connection?.status === 'active' && (
+        {connection?.status === 'active' && meta.availability === 'available' && (
           <>
             <Button
               size="sm"
@@ -254,7 +252,7 @@ export function PlatformCard({ code, connection, onConnect }: PlatformCardProps)
             </Button>
           </>
         )}
-        {connection?.status === 'error' && (
+        {connection?.status === 'error' && meta.availability === 'available' && (
           <Button
             size="sm"
             variant="secondary"
