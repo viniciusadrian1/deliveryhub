@@ -114,7 +114,7 @@ export default function PausePage() {
   });
 
   const { data: connections = [] } = useQuery({
-    queryKey: ['integrations'],
+    queryKey: ['integrations', storeId],
     queryFn: () => api<PlatformConnection[]>(`/integrations/connections?storeId=${encodeURIComponent(storeId ?? '')}`),
     enabled: !!storeId,
   });

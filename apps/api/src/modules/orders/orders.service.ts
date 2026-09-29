@@ -362,7 +362,7 @@ export class OrdersService {
 
     const menuItems = await this.prisma.menuItem.findMany({
       where: { storeId: store.id },
-      take: 6,
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true,
         name: true,

@@ -309,9 +309,13 @@ export default function FinancialPage() {
   const chartMin = Math.min(0, ...chartValues);
   const chartMax = Math.max(1, ...chartValues);
   const chartRange = chartMax - chartMin || 1;
+  const chartLeft = 52;
+  const chartRight = 744;
+  const chartTop = 24;
+  const chartBottom = 202;
   const chartPoints = daily.map((point, index) => {
-    const x = daily.length === 1 ? 380 : (index / (daily.length - 1)) * 760;
-    const y = 206 - ((selectedDailyMetric.value(point) - chartMin) / chartRange) * 176;
+    const x = daily.length === 1 ? (chartLeft + chartRight) / 2 : chartLeft + (index / (daily.length - 1)) * (chartRight - chartLeft);
+    const y = chartBottom - ((selectedDailyMetric.value(point) - chartMin) / chartRange) * (chartBottom - chartTop);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
 
@@ -520,17 +524,30 @@ export default function FinancialPage() {
               <div className="overflow-x-auto">
               <div className="relative min-w-[720px]">
               <svg viewBox="0 0 760 240" className="h-56 w-full" role="img" aria-label={`Gráfico de linha: ${selectedDailyMetric.label}`}>
-                {[30, 74, 118, 162, 206].map((y) => <line key={y} x1="0" x2="760" y1={y} y2={y} stroke="currentColor" className="text-surface-border-subtle" strokeWidth="1" />)}
+                {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+                  const y = chartBottom - ratio * (chartBottom - chartTop);
+                  const value = chartMin + ratio * chartRange;
+                  return (
+                    <g key={ratio}>
+                      <line x1={chartLeft} x2={chartRight} y1={y} y2={y} stroke="currentColor" className="text-surface-border-subtle" strokeWidth="1" />
+                      <text x="2" y={y + 3} className="fill-current text-[10px] text-ink-tertiary">
+                        {dailyMetric === 'orders' ? Math.round(value) : formatCents(Math.round(value))}
+                      </text>
+                    </g>
+                  );
+                })}
+                <line x1={chartLeft} x2={chartLeft} y1={chartTop} y2={chartBottom} stroke="currentColor" className="text-ink-tertiary" strokeWidth="1.5" />
+                <line x1={chartLeft} x2={chartRight} y1={chartBottom} y2={chartBottom} stroke="currentColor" className="text-ink-tertiary" strokeWidth="1.5" />
                 {daily.length > 0 && <>
                   <polyline points={chartPoints} fill="none" stroke={selectedDailyMetric.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   {daily.map((point, index) => {
-                    const x = daily.length === 1 ? 380 : (index / (daily.length - 1)) * 760;
-                    const y = 206 - ((selectedDailyMetric.value(point) - chartMin) / chartRange) * 176;
+                    const x = daily.length === 1 ? (chartLeft + chartRight) / 2 : chartLeft + (index / (daily.length - 1)) * (chartRight - chartLeft);
+                    const y = chartBottom - ((selectedDailyMetric.value(point) - chartMin) / chartRange) * (chartBottom - chartTop);
                     return <circle
                       key={point.day}
                       cx={x}
                       cy={y}
-                      r={hoveredDailyIndex === index ? 6 : 3.5}
+                      r={hoveredDailyIndex === index ? 8 : 5}
                       fill={selectedDailyMetric.color}
                       className="cursor-pointer transition-all"
                       onMouseEnter={() => setHoveredDailyIndex(index)}
@@ -540,14 +557,14 @@ export default function FinancialPage() {
                 </>}
                 {daily.filter((_, index) => index === 0 || index === daily.length - 1 || index % Math.max(1, Math.floor(daily.length / 6)) === 0).map((point, index, labels) => {
                   const originalIndex = daily.findIndex((d) => d.day === point.day);
-                  const x = daily.length === 1 ? 380 : (originalIndex / (daily.length - 1)) * 760;
+                  const x = daily.length === 1 ? (chartLeft + chartRight) / 2 : chartLeft + (originalIndex / (daily.length - 1)) * (chartRight - chartLeft);
                   return <text key={`${point.day}-${index}`} x={x} y="232" textAnchor={index === 0 ? 'start' : index === labels.length - 1 ? 'end' : 'middle'} className="fill-current text-[10px] text-ink-tertiary">{new Date(point.day).getDate()}</text>;
                 })}
               </svg>
               {hoveredDailyIndex !== null && daily[hoveredDailyIndex] && (
                 <div
                   className="pointer-events-none absolute top-2 z-10 min-w-[132px] -translate-x-1/2 rounded-md border border-surface-border bg-surface-overlay px-2.5 py-1.5 text-center text-[11px] shadow-lg"
-                  style={{ left: `${(hoveredDailyIndex / Math.max(1, daily.length - 1)) * 100}%` }}
+                  style={{ left: `${((chartLeft + (hoveredDailyIndex / Math.max(1, daily.length - 1)) * (chartRight - chartLeft)) / 760) * 100}%` }}
                 >
                   <p className="font-semibold text-ink-primary">{daily[hoveredDailyIndex].day}</p>
                   <p style={{ color: selectedDailyMetric.color }}>

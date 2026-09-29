@@ -66,7 +66,27 @@ export function OrganizationSection() {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setLogoUrl(typeof reader.result === 'string' ? reader.result : null);
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      const image = new Image();
+      image.onload = () => {
+        const maxSize = 512;
+        const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          setMessage('Não foi possível preparar a logo.');
+          return;
+        }
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        // Mantém o payload pequeno o suficiente para ser salvo com segurança no perfil da loja.
+        setLogoUrl(canvas.toDataURL('image/webp', 0.82));
+      };
+      image.onerror = () => setMessage('Não foi possível ler a imagem escolhida.');
+      image.src = reader.result;
+    };
     reader.readAsDataURL(file);
   };
 

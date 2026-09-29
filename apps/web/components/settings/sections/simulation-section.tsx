@@ -54,8 +54,8 @@ export function SimulationSection() {
 
   // Consulta de conexões ativas na loja
   const { data: connections = [] } = useQuery({
-    queryKey: ['integrations'],
-    queryFn: () => api<Array<{ platformCode: string; status: string }>>('/integrations/connections'),
+    queryKey: ['integrations', storeId],
+    queryFn: () => api<Array<{ platformCode: string; status: string }>>(`/integrations/connections?storeId=${encodeURIComponent(storeId ?? '')}`),
     enabled: !!storeId,
   });
 

@@ -7,6 +7,7 @@ import {
 
 import type { PlatformAdapter, StoredTokens } from '@deliveryhub/ifood';
 import type { PlatformCode } from '@deliveryhub/shared';
+import type { Prisma } from '@deliveryhub/db';
 
 import { AuditLogService } from '../../common/audit/audit-log.service.js';
 import { PrismaService } from '../../common/prisma/prisma.service.js';
@@ -371,7 +372,7 @@ export class PausesService {
     storeId: string,
     platformCodes?: PlatformCode[],
   ): Promise<ResolvedConnection[]> {
-    const where: Record<string, unknown> = {
+    const where: Prisma.PlatformConnectionWhereInput = {
       organizationId: orgId,
       storeId,
       status: 'active',
