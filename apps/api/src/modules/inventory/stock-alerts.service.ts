@@ -170,7 +170,7 @@ export class StockAlertsService {
    * Cron diário 08:00 — varre organizações, dispara notificação pros
    * usuários owner/manager de cada org sobre ingredientes abaixo do mínimo.
    */
-  @Cron('0 0 5 * * *')
+  @Cron('0 0 6 * * *', { timeZone: 'America/Sao_Paulo' })
   async runDailyCheck(): Promise<void> {
     this.logger.log('stock_alerts_daily_check_started');
 
@@ -252,4 +252,4 @@ export class StockAlertsService {
 }
 
 // Re-uso com CronExpression conhecido por completude — mas usamos string explícito acima.
-export const STOCK_ALERTS_CRON = '0 0 5 * * *';
+export const STOCK_ALERTS_CRON = '0 0 6 * * *';

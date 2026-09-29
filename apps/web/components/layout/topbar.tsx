@@ -14,7 +14,9 @@ export function Topbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   if (!state) return null;
 
-  const orgInitial = (state.organization.name || 'L').charAt(0).toUpperCase();
+  const activeStore = state.stores.find((store) => store.id === state.storeId);
+  const storeLogo = activeStore?.logoUrl ?? null;
+  const storeInitial = (state.storeName || state.organization.name || 'L').charAt(0).toUpperCase();
 
   return (
     <header className="relative z-30 flex h-16 items-center justify-between border-b border-surface-border-subtle bg-surface-raised/80 px-6 backdrop-blur">
@@ -44,8 +46,12 @@ export function Topbar() {
             onClick={() => setMenuOpen(!menuOpen)}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-overlay"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-gradient text-xs font-bold text-white">
-              {orgInitial}
+            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-brand-gradient text-xs font-bold text-white">
+              {storeLogo ? (
+                <img src={storeLogo} alt="Logo da loja" className="h-full w-full object-cover" />
+              ) : (
+                storeInitial
+              )}
             </div>
             <div className="hidden text-left md:block">
               <p className="text-xs font-semibold leading-tight text-ink-primary">

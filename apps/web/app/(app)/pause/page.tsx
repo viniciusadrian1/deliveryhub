@@ -346,6 +346,7 @@ export default function PausePage() {
               <PauseRow
                 key={p.id}
                 pause={p}
+                connectedPlatformCodes={activeConnections.map((connection) => connection.platformCode)}
                 onCancel={() => cancel.mutate(p.id)}
                 cancelling={cancel.isPending}
               />
@@ -368,7 +369,11 @@ export default function PausePage() {
         ) : (
           <ul className="divide-y divide-surface-border-subtle">
             {history.map((p) => (
-              <PauseRow key={p.id} pause={p} />
+              <PauseRow
+                key={p.id}
+                pause={p}
+                connectedPlatformCodes={activeConnections.map((connection) => connection.platformCode)}
+              />
             ))}
           </ul>
         )}
@@ -499,16 +504,23 @@ export default function PausePage() {
 
 function PauseRow({
   pause,
+  connectedPlatformCodes,
   onCancel,
   cancelling,
 }: {
   pause: Pause;
+  connectedPlatformCodes?: string[];
   onCancel?: () => void;
   cancelling?: boolean;
 }) {
   const isActive = !pause.cancelledAt && !pause.reopenedAt;
   const ScopeIcon =
     pause.scope === 'store' ? Store : pause.scope === 'item' ? UtensilsCrossed : PowerOff;
+  const platformEntries = pause.platforms && pause.platforms.length > 0
+    ? pause.platforms.map((platform) => ({ code: platform.code, name: platform.name, id: platform.id }))
+    : pause.platformIds.length > 0
+      ? pause.platformIds.map((code) => ({ code, name: PLATFORM_META[code]?.name ?? code, id: code }))
+      : (connectedPlatformCodes ?? []).map((code) => ({ code, name: PLATFORM_META[code]?.name ?? code, id: code }));
 
   const fmtDateTime = (iso: string) => {
     if (!iso) return '';
@@ -561,15 +573,11 @@ function PauseRow({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] text-ink-tertiary">Canais:</span>
-            {(pause.platforms ?? []).length > 0 ? pause.platforms?.map((platform) => (
+            {platformEntries.length > 0 ? platformEntries.map((platform) => (
               <span key={platform.id} className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-2 py-0.5 text-[11px] text-ink-secondary">
                 <PlatformLogo platform={platform.code} size="xs" /> {platform.name}
               </span>
-            )) : pause.platformIds.length > 0 ? pause.platformIds.map((code) => (
-              <span key={code} className="inline-flex items-center gap-1 rounded-full bg-surface-raised px-2 py-0.5 text-[11px] text-ink-secondary">
-                <PlatformLogo platform={code} size="xs" /> {PLATFORM_META[code]?.name ?? code}
-              </span>
-            )) : <span className="text-[11px] text-ink-secondary">Todos os canais conectados</span>}
+            )) : <span className="text-[11px] text-ink-secondary">Nenhum canal conectado</span>}
           </div>
 
           {pause.errorMessage && (

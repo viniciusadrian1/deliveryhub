@@ -164,6 +164,7 @@ export default function FinancialPage() {
   const [orderFilter, setOrderFilter] = useState<'all' | 'delivered' | 'in_progress'>('all');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [dailyMetric, setDailyMetric] = useState<'gross' | 'expenses' | 'net' | 'fees' | 'orders'>('gross');
+  const [hoveredDailyIndex, setHoveredDailyIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
@@ -517,14 +518,24 @@ export default function FinancialPage() {
               </span>
               </div>
               <div className="overflow-x-auto">
-              <svg viewBox="0 0 760 240" className="h-56 min-w-[720px] w-full" role="img" aria-label={`Gráfico de linha: ${selectedDailyMetric.label}`}>
+              <div className="relative min-w-[720px]">
+              <svg viewBox="0 0 760 240" className="h-56 w-full" role="img" aria-label={`Gráfico de linha: ${selectedDailyMetric.label}`}>
                 {[30, 74, 118, 162, 206].map((y) => <line key={y} x1="0" x2="760" y1={y} y2={y} stroke="currentColor" className="text-surface-border-subtle" strokeWidth="1" />)}
                 {daily.length > 0 && <>
                   <polyline points={chartPoints} fill="none" stroke={selectedDailyMetric.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                   {daily.map((point, index) => {
                     const x = daily.length === 1 ? 380 : (index / (daily.length - 1)) * 760;
                     const y = 206 - ((selectedDailyMetric.value(point) - chartMin) / chartRange) * 176;
-                    return <circle key={point.day} cx={x} cy={y} r="3.5" fill={selectedDailyMetric.color}><title>{`${point.day}: ${dailyMetric === 'orders' ? `${selectedDailyMetric.value(point)} pedidos` : formatCents(selectedDailyMetric.value(point))}`}</title></circle>;
+                    return <circle
+                      key={point.day}
+                      cx={x}
+                      cy={y}
+                      r={hoveredDailyIndex === index ? 6 : 3.5}
+                      fill={selectedDailyMetric.color}
+                      className="cursor-pointer transition-all"
+                      onMouseEnter={() => setHoveredDailyIndex(index)}
+                      onMouseLeave={() => setHoveredDailyIndex(null)}
+                    />;
                   })}
                 </>}
                 {daily.filter((_, index) => index === 0 || index === daily.length - 1 || index % Math.max(1, Math.floor(daily.length / 6)) === 0).map((point, index, labels) => {
@@ -533,6 +544,20 @@ export default function FinancialPage() {
                   return <text key={`${point.day}-${index}`} x={x} y="232" textAnchor={index === 0 ? 'start' : index === labels.length - 1 ? 'end' : 'middle'} className="fill-current text-[10px] text-ink-tertiary">{new Date(point.day).getDate()}</text>;
                 })}
               </svg>
+              {hoveredDailyIndex !== null && daily[hoveredDailyIndex] && (
+                <div
+                  className="pointer-events-none absolute top-2 z-10 min-w-[132px] -translate-x-1/2 rounded-md border border-surface-border bg-surface-overlay px-2.5 py-1.5 text-center text-[11px] shadow-lg"
+                  style={{ left: `${(hoveredDailyIndex / Math.max(1, daily.length - 1)) * 100}%` }}
+                >
+                  <p className="font-semibold text-ink-primary">{daily[hoveredDailyIndex].day}</p>
+                  <p style={{ color: selectedDailyMetric.color }}>
+                    {dailyMetric === 'orders'
+                      ? `${selectedDailyMetric.value(daily[hoveredDailyIndex])} pedidos`
+                      : formatCents(selectedDailyMetric.value(daily[hoveredDailyIndex]))}
+                  </p>
+                </div>
+              )}
+              </div>
               </div>
             </>
           )}

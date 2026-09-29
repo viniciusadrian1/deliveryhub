@@ -363,6 +363,16 @@ export class OrdersService {
     const menuItems = await this.prisma.menuItem.findMany({
       where: { storeId: store.id },
       take: 6,
+      select: {
+        id: true,
+        name: true,
+        costCents: true,
+        platformConfigs: {
+          where: { isPublished: true, isAvailable: true },
+          select: { sellingPriceCents: true },
+          orderBy: { updatedAt: 'desc' },
+        },
+      },
     });
 
     let items: Array<{
@@ -373,13 +383,14 @@ export class OrdersService {
       totalCents: number;
     }>;
 
-    if (menuItems.length >= 2) {
-      // Embaralha itens reais da loja e escolhe de 1 a 3 itens
+    if (menuItems.length > 0) {
+      // Sempre usa itens reais do cardápio quando a loja possui pelo menos um.
       const shuffled = [...menuItems].sort(() => 0.5 - Math.random());
-      const selected = shuffled.slice(0, Math.floor(Math.random() * 3) + 1);
+      const selected = shuffled.slice(0, Math.min(shuffled.length, Math.floor(Math.random() * 3) + 1));
       items = selected.map((m, idx) => {
         const qty = idx === 0 && Math.random() > 0.6 ? 2 : 1;
-        const unitPrice = m.costCents ? Math.round(m.costCents * 2.4) : 2800;
+        const configuredPrice = m.platformConfigs.find((config) => config.sellingPriceCents > 0)?.sellingPriceCents;
+        const unitPrice = configuredPrice ?? (m.costCents ? Math.round(m.costCents * 2.4) : 2800);
         return {
           externalId: `sim-item-${m.id}`,
           name: m.name,

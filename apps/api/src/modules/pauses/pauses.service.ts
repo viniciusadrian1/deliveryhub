@@ -298,7 +298,7 @@ export class PausesService {
     const ids = [...new Set(pauses.flatMap((pause) => pause.platformIds))];
     if (ids.length === 0) return pauses.map((pause) => ({ ...pause, platforms: [] }));
     const platforms = await this.prisma.platform.findMany({
-      where: { OR: [{ id: { in: ids } }, { code: { in: ids as any } }] },
+      where: { OR: [{ id: { in: ids } }, { code: { in: ids } }] },
       select: { id: true, code: true, name: true },
     });
     const byKey = new Map(platforms.flatMap((platform) => [[platform.id, platform], [platform.code, platform]]));
