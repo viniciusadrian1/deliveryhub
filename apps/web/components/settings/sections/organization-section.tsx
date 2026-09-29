@@ -1,6 +1,6 @@
 'use client';
 
-import { Building2, ImagePlus, Store as StoreIcon } from 'lucide-react';
+import { Building2, ImagePlus, Loader2, Store as StoreIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { api } from '../../../lib/api';
@@ -23,6 +23,7 @@ export function OrganizationSection() {
   const [address, setAddress] = useState({ street: '', number: '', city: '', state: '', zipCode: '' });
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [switchingStore, setSwitchingStore] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,6 +103,21 @@ export function OrganizationSection() {
         </div>
       </SettingsSection>
 
+      <div className="relative">
+      {switchingStore && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border border-brand-500/30 bg-surface-raised/85 backdrop-blur-sm">
+          <div className="flex items-center gap-3 rounded-xl border border-surface-border bg-surface-overlay px-4 py-3 shadow-xl">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-gradient text-white shadow-lg shadow-brand-500/20">
+              <StoreIcon className="h-4 w-4 animate-pulse" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-ink-primary">Trocando de loja</p>
+              <p className="text-xs text-ink-tertiary">Carregando dados da unidade…</p>
+            </div>
+            <Loader2 className="h-4 w-4 animate-spin text-brand-400" />
+          </div>
+        </div>
+      )}
       <SettingsSection
         title="Organização & Loja"
         description="Altere a unidade ativa, identidade visual, endereço e fuso horário."
@@ -111,7 +127,7 @@ export function OrganizationSection() {
           {state.stores.length > 1 && (
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-secondary">Loja ativa</label>
-              <select value={store.id} onChange={(event) => selectStore(event.target.value)} className="h-10 w-full rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none focus:border-brand-500">
+              <select value={store.id} onChange={(event) => { setSwitchingStore(true); selectStore(event.target.value); window.setTimeout(() => setSwitchingStore(false), 650); }} className="h-10 w-full rounded-lg border border-surface-border bg-surface-raised px-3 text-sm text-ink-primary outline-none focus:border-brand-500">
                 {state.stores.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
               </select>
             </div>
@@ -147,6 +163,7 @@ export function OrganizationSection() {
           {message && <p role="status" className="text-sm text-ink-secondary">{message}</p>}
         </div>
       </SettingsSection>
+      </div>
     </div>
   );
 }
